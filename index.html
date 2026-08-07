@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Llama 3.1 Delta AIBOM Lineage</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <p class="eyebrow">Delta AIBOM example</p>
+      <div class="hero-row">
+        <div class="hero-copy">
+          <h1 id="hero-title">Foundation-model lineage explorer</h1>
+          <p class="lede" id="hero-lede">
+            Compare multiple foundation-model families on one page and inspect the full AIBOM
+            for any root or downstream node.
+          </p>
+        </div>
+        <div class="hero-meta" id="hero-meta"></div>
+      </div>
+    </header>
+
+    <section class="metrics" id="metrics" aria-label="Summary metrics"></section>
+
+    <section class="workspace">
+      <div class="lineage-panel">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Supply-chain view</p>
+            <h2>Hierarchy and transformations</h2>
+          </div>
+          <p class="section-note">
+            The graph centers the technical report as the evidence root and shows how
+            descendant models add or modify behavior relative to the inherited AIBOM.
+          </p>
+        </div>
+
+        <div class="lineage-board" id="lineage-board"></div>
+
+        <div class="focus-section">
+          <div class="focus-head">
+            <div>
+              <p class="eyebrow">Selected node</p>
+              <h3>Full AIBOM</h3>
+            </div>
+            <p class="section-note">
+              Click any node above to replace the table below with its full AIBOM view.
+            </p>
+          </div>
+          <div id="full-aibom-panel"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+    <script src="data/families.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
