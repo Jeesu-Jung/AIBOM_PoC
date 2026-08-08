@@ -105,8 +105,14 @@ function initialNodeId() {
   return llamaDefault && nodeMap.has(llamaDefault) ? llamaDefault : allNodes[0]?.id;
 }
 
+function familyIdForNode(nodeId) {
+  return nodeMap.get(nodeId)?.familyId || familyIds[0];
+}
+
+const initialActiveNodeId = initialNodeId();
 const state = {
-  activeNodeId: initialNodeId()
+  activeNodeId: initialActiveNodeId,
+  activeFamilyId: familyIdForNode(initialActiveNodeId)
 };
 
 function syncUrl() {
@@ -241,8 +247,35 @@ function branchLabel(rootNode) {
   return rootNode.title.toLowerCase().includes("instruct") ? "Instruct branch" : "Base branch";
 }
 
+function renderFamilySelect() {
+  const select = document.getElementById("family-select");
+  select.innerHTML = familyContexts
+    .map(
+      (context) => `
+        <option value="${escapeHtml(context.familyId)}"${
+          context.familyId === state.activeFamilyId ? " selected" : ""
+        }>${escapeHtml(context.family.label)}</option>
+      `
+    )
+    .join("");
+
+  select.addEventListener("change", () => {
+    const context = familyContexts.find((item) => item.familyId === select.value);
+    if (!context) return;
+
+    state.activeFamilyId = context.familyId;
+    state.activeNodeId = context.family.default_node_id;
+    renderLineageBoard();
+    renderFullAibomPanel();
+    syncSelection();
+    syncUrl();
+    drawConnections();
+  });
+}
+
 function renderLineageBoard() {
   document.getElementById("lineage-board").innerHTML = familyContexts
+    .filter((context) => context.familyId === state.activeFamilyId)
     .map((context) => {
       const { familyId, family, documentNode, rootNodes, derivedNodes } = context;
       const branchColumns = rootNodes
@@ -574,6 +607,7 @@ function syncSelection() {
 function selectNode(nodeId, scrollIntoView) {
   if (!nodeMap.has(nodeId)) return;
   state.activeNodeId = nodeId;
+  state.activeFamilyId = familyIdForNode(nodeId);
   syncSelection();
   renderFullAibomPanel();
   syncUrl();
@@ -646,6 +680,7 @@ function drawConnections() {
 function initialize() {
   renderHero();
   renderMetrics();
+  renderFamilySelect();
   renderLineageBoard();
   renderFullAibomPanel();
   syncSelection();

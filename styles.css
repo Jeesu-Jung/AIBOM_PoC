@@ -525,6 +525,50 @@ body {
   color: #6e7b8d;
 }
 
+.section-controls {
+  display: grid;
+  justify-items: end;
+  gap: 12px;
+  min-width: min(100%, 310px);
+}
+
+.section-controls .section-note {
+  max-width: 520px;
+  text-align: right;
+}
+
+.family-picker {
+  display: grid;
+  gap: 6px;
+  width: min(100%, 260px);
+}
+
+.family-picker span {
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.family-picker select {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 38px 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.family-picker select:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+
 .status-present {
   background: #e9f8f1;
   border-color: #bfe8d2;
@@ -663,6 +707,15 @@ body {
 
   .root-grid {
     grid-template-columns: 1fr;
+  }
+
+  .section-controls {
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .section-controls .section-note {
+    text-align: left;
   }
 
   .card-actions {

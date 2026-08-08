@@ -31,10 +31,16 @@
             <p class="eyebrow">Supply-chain view</p>
             <h2>Hierarchy and transformations</h2>
           </div>
-          <p class="section-note">
-            The graph centers the technical report as the evidence root and shows how
-            descendant models add or modify behavior relative to the inherited AIBOM.
-          </p>
+          <div class="section-controls">
+            <p class="section-note">
+              The graph centers the technical report as the evidence root and shows how
+              descendant models add or modify behavior relative to the inherited AIBOM.
+            </p>
+            <label class="family-picker" for="family-select">
+              <span>Model family</span>
+              <select id="family-select" aria-label="Select model family"></select>
+            </label>
+          </div>
         </div>
 
         <div class="lineage-board" id="lineage-board"></div>
