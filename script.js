@@ -1,4 +1,5 @@
 const familyRegistry = window.AIBOM_FAMILIES || {};
+const checklistRegistry = window.AIBOM_CHECKLISTS || {};
 const familyIds = Object.keys(familyRegistry);
 
 const RELATION_LABELS = {
@@ -325,33 +326,15 @@ function renderLineageBoard() {
   });
 }
 
-function stringifyLicense(license) {
-  if (!license) return "Not disclosed";
-  if (typeof license === "string") return license;
-  return Object.entries(license)
-    .map(([key, value]) => `${toTitleCase(key)}: ${value}`)
-    .join(" | ");
+function renderTableValue(value) {
+  if (/^https?:\/\//.test(value)) {
+    const label = value.length > 72 ? `${value.slice(0, 69)}...` : value;
+    return `<a class="table-link" href="${escapeHtml(value)}" target="_blank" rel="noreferrer noopener">${escapeHtml(label)}</a>`;
+  }
+  return escapeHtml(value);
 }
 
-function deriveCurrentPurpose(node, family) {
-  if (node.kind === "document") {
-    return `Root evidence for the initial ${family.label} family AIBOM extraction`;
-  }
-  if (node.kind === "root") {
-    if (node.id.toLowerCase().includes("instruct")) {
-      return "General instruction-following assistant";
-    }
-    return "Foundation language model";
-  }
-  const purpose = node.delta?.modified_primary_purpose;
-  if (!purpose) return getNodePreview(node);
-  if (purpose.includes("->")) {
-    return purpose.split("->").at(-1).trim();
-  }
-  return purpose;
-}
-
-function formatValue(value) {
+function formatLegacyValue(value) {
   if (value == null || value === "") return "Not disclosed";
   if (Array.isArray(value)) return value.length ? value.join(", ") : "Not disclosed";
   if (typeof value === "object") {
@@ -362,10 +345,10 @@ function formatValue(value) {
   return String(value);
 }
 
-function row(field, value, status = "Extracted") {
+function legacyRow(field, value, status = "Extracted") {
   return {
     field,
-    value: formatValue(value),
+    value: formatLegacyValue(value),
     status:
       value == null || value === "" || (Array.isArray(value) && !value.length)
         ? "Not disclosed"
@@ -373,216 +356,150 @@ function row(field, value, status = "Extracted") {
   };
 }
 
-function renderTableValue(value) {
-  if (/^https?:\/\//.test(value)) {
-    const label = value.length > 72 ? `${value.slice(0, 69)}...` : value;
-    return `<a class="table-link" href="${escapeHtml(value)}" target="_blank" rel="noreferrer noopener">${escapeHtml(label)}</a>`;
-  }
-  return escapeHtml(value);
-}
-
-function buildEvidenceRows(node, family) {
-  const sources = mergeSources(
-    family.root_family.sources,
-    node.sources || []
-  );
-
-  if (!sources.length) {
-    return [row("Evidence", "No source URLs captured", "Not disclosed")];
-  }
-
-  return sources.map((source) =>
-    row(
+function buildDocumentAibomSections(node, family) {
+  const variant = family.root_family.focus_variant;
+  const rootSources = family.root_family.sources;
+  const hfUrl =
+    rootSources.find((source) =>
+      ["official_model_card", "huggingface_model_card"].includes(source.type)
+    )?.url || null;
+  const reportUrl = rootSources.find((source) =>
+    ["paper", "technical_report", "official_blog", "official_model_card", "huggingface_model_card"].includes(
+      source.type
+    )
+  )?.url || null;
+  const trainingDataNames = family.root_family.pretraining.exact_dataset_inventory || [
+    family.root_family.pretraining.corpus_size_family
+  ];
+  const evidenceRows = rootSources.map((source) =>
+    legacyRow(
       source.title ? `${toTitleCase(source.type)} | ${source.title}` : toTitleCase(source.type),
       source.url,
       source.version || source.title ? "Extracted" : "Context"
     )
   );
-}
 
-function buildAibomSections(node) {
-  const family = familyRegistry[node.familyId];
-  const variant = family.root_family.focus_variant;
-  const rootSources = family.root_family.sources;
-  const hfUrl =
-    node.kind === "document"
-      ? rootSources.find((source) =>
-          ["official_model_card", "huggingface_model_card"].includes(source.type)
-        )?.url || null
-      : `https://huggingface.co/${node.id}`;
-  const repoUrl = (node.sources || []).find((source) => source.type === "github")?.url || null;
-  const reportUrl =
-    mergeSources(rootSources, node.sources || []).find((source) =>
-      ["paper", "technical_report", "official_blog", "official_model_card", "huggingface_model_card"].includes(
-        source.type
-      )
-    )?.url || null;
-
-  const trainingDataNames =
-    node.kind === "document" || node.kind === "root"
-      ? family.root_family.pretraining.exact_dataset_inventory || [
-          family.root_family.pretraining.corpus_size_family
-        ]
-      : (node.delta?.added_training_data || []).map(
-          (item) => item.name || item.role || item.generation
-        );
-  const testDatasets =
-    node.kind === "derived" && node.delta?.added_evaluation
-      ? Object.values(node.delta.added_evaluation)
-      : null;
-
-  const runtimeDependencies =
-    node.kind === "derived"
-      ? [
-          node.artifact?.library,
-          node.artifact?.conversion_tool,
-          node.delta?.operational_dependency
-        ].filter(Boolean)
-      : null;
-
-  const hyperparameters =
-    node.kind === "derived"
-      ? node.delta?.training_hyperparameters || node.delta?.adapter_configuration
-      : {
+  return [
+    {
+      legacy: true,
+      title: "Identity",
+      rows: [
+        legacyRow("Model family", family.label, "Context"),
+        legacyRow("Model name", family.root_family.family_id),
+        legacyRow("Model version", family.root_family.release_date, "Context"),
+        legacyRow("Model description", node.subtitle),
+        legacyRow("Model download location", hfUrl, hfUrl ? "Derived" : "Not disclosed"),
+        legacyRow("Source repository", null),
+        legacyRow("Supplier", family.root_family.developer),
+        legacyRow("License", family.root_family.license)
+      ]
+    },
+    {
+      legacy: true,
+      title: "Purpose and architecture",
+      rows: [
+        legacyRow("Primary purpose", `Root evidence for the initial ${family.label} family AIBOM extraction`, "Context"),
+        legacyRow("Domain", "general-purpose multilingual language modeling", "Context"),
+        legacyRow("Type of model", family.root_family.architecture.family),
+        legacyRow("Hyperparameters", {
           layers: variant.layers,
           hidden_size: variant.hidden_size,
           attention_heads: variant.attention_heads,
           context_length: variant.context_length
-        };
-
-  const trainingInformation =
-    node.kind === "document" || node.kind === "root"
-      ? [
-          `Pretraining stages: ${family.root_family.pretraining.stages.join(" -> ")}`,
-          `Post-training methods: ${family.root_family.post_training.methods.join(", ")}`
-        ]
-      : node.delta?.added_training_methods ||
-        node.delta?.added_training_method ||
-        node.delta?.modified_primary_purpose ||
-        node.delta?.semantic_training_delta;
-
-  const dataPreprocessing =
-    node.kind === "document" || node.kind === "root"
-      ? family.root_family.pretraining.data_processing
-      : (node.delta?.added_training_data || [])
-          .flatMap((item) => item.processing || [])
-          .filter(Boolean);
-
-  const performanceMetrics = node.kind === "derived" ? node.delta?.added_evaluation : null;
-
-  const limitations =
-    node.kind === "derived"
-      ? node.delta?.removed_or_out_of_scope || node.delta?.known_risk || node.delta?.unknown
-      : null;
-
-  const safetyRisk =
-    node.kind === "derived"
-      ? node.delta?.added_security_goal || node.delta?.known_risk || node.delta?.inherited_risks
-      : [
-          "Safety and alignment behavior is only partially disclosed in the root evidence.",
-          "Downstream models may add their own safety or refusal tuning."
-        ];
-
-  return [
-    {
-      title: "Identity",
-      rows: [
-        row("Model family", family.label, "Context"),
-        row("Model name", node.kind === "document" ? family.root_family.family_id : node.title),
-        row(
-          "Model version",
-          node.artifact?.revision || family.root_family.release_date,
-          node.artifact?.revision ? "Extracted" : "Context"
-        ),
-        row("Model description", node.kind === "document" ? node.subtitle : getNodePreview(node)),
-        row("Model download location", hfUrl, hfUrl ? "Derived" : "Not disclosed"),
-        row("Source repository", repoUrl, repoUrl ? "Extracted" : "Not disclosed"),
-        row("Supplier", node.supplier || family.root_family.developer),
-        row(
-          "License",
-          node.kind === "derived" ? stringifyLicense(node.license_reported) : family.root_family.license
-        )
+        }, "Context"),
+        legacyRow("Performance metrics", null),
+        legacyRow("Decision thresholds", null),
+        legacyRow("Energy consumption", null)
       ]
     },
     {
-      title: "Purpose and architecture",
-      rows: [
-        row(
-          "Primary purpose",
-          deriveCurrentPurpose(node, family),
-          node.kind === "derived" ? "Derived" : "Context"
-        ),
-        row(
-          "Domain",
-          node.delta?.added_domain ||
-            (node.kind === "root" && node.id.toLowerCase().includes("instruct")
-              ? "general-purpose assistant"
-              : "general-purpose multilingual language modeling"),
-          node.delta?.added_domain ? "Extracted" : "Context"
-        ),
-        row(
-          "Type of model",
-          node.kind === "derived"
-            ? node.artifact?.type || node.artifact?.format || family.root_family.architecture.family
-            : family.root_family.architecture.family
-        ),
-        row("Hyperparameters", hyperparameters, typeof hyperparameters === "object" ? "Context" : "Extracted"),
-        row("Performance metrics", performanceMetrics, performanceMetrics ? "Extracted" : "Not disclosed"),
-        row("Decision thresholds", null),
-        row("Energy consumption", null)
-      ]
-    },
-    {
+      legacy: true,
       title: "Training and data",
       rows: [
-        row("Training information", trainingInformation, trainingInformation ? "Extracted" : "Not disclosed"),
-        row(
-          "Data preprocessing",
-          dataPreprocessing,
-          dataPreprocessing?.length ? "Extracted" : "Not disclosed"
-        ),
-        row(
-          "Sensitive data usage",
-          node.kind === "document" || node.kind === "root"
-            ? "Not disclosed in the root evidence"
-            : null,
-          node.kind === "document" || node.kind === "root" ? "Context" : "Not disclosed"
-        ),
-        row("Training datasets", trainingDataNames, trainingDataNames ? "Extracted" : "Not disclosed"),
-        row("Test datasets", testDatasets, testDatasets ? "Extracted" : "Not disclosed")
+        legacyRow("Training information", [
+          `Pretraining stages: ${family.root_family.pretraining.stages.join(" -> ")}`,
+          `Post-training methods: ${family.root_family.post_training.methods.join(", ")}`
+        ]),
+        legacyRow("Data preprocessing", family.root_family.pretraining.data_processing),
+        legacyRow("Sensitive data usage", "Not disclosed in the root evidence", "Context"),
+        legacyRow("Training datasets", trainingDataNames),
+        legacyRow("Test datasets", null)
       ]
     },
     {
+      legacy: true,
       title: "Risk and operations",
       rows: [
-        row("Explainability information", null),
-        row("Known limitations", limitations, limitations ? "Extracted" : "Not disclosed"),
-        row("Safety risk assessment", safetyRisk, safetyRisk ? "Extracted" : "Not disclosed"),
-        row(
-          "Runtime dependencies",
-          runtimeDependencies,
-          runtimeDependencies?.length ? "Extracted" : "Not disclosed"
-        ),
-        row(
-          "Model lineage",
-          node.kind === "document"
-            ? `${node.title} -> ${family.root_family.family_id}`
-            : node.kind === "root"
-              ? `Derived from ${family.document_node.title}`
-              : `${RELATION_LABELS[node.relationship] || node.relationship} from ${node.parent_model}`,
-          "Derived"
-        ),
-        row("Supporting document", reportUrl, reportUrl ? "Extracted" : "Not disclosed")
+        legacyRow("Explainability information", null),
+        legacyRow("Known limitations", null),
+        legacyRow("Safety risk assessment", [
+          "Safety and alignment behavior is only partially disclosed in the root evidence.",
+          "Downstream models may add their own safety or refusal tuning."
+        ]),
+        legacyRow("Runtime dependencies", null),
+        legacyRow("Model lineage", `${node.title} -> ${family.root_family.family_id}`, "Derived"),
+        legacyRow("Supporting document", reportUrl, reportUrl ? "Extracted" : "Not disclosed")
       ]
     },
     {
+      legacy: true,
       title: "Evidence references",
-      rows: buildEvidenceRows(node, family)
+      rows: evidenceRows
     }
   ];
 }
 
+function buildAibomSections(node) {
+  const family = familyRegistry[node.familyId];
+  const checklist = checklistRegistry[node.id];
+
+  if (!checklist) {
+    return buildDocumentAibomSections(node, family);
+  }
+
+  return checklist.categories.map((category) => ({
+    title: category.label,
+    summary: `${category.present}/${category.total} present · ${category.score}/${category.maxScore} points`,
+    note: category.displayNote,
+    rows: category.fields
+  }));
+}
+
 function renderAibomTable(section) {
+  if (section.legacy) {
+    return `
+      <section class="aibom-section">
+        <h4>${escapeHtml(section.title)}</h4>
+        <div class="aibom-table-wrap">
+          <table class="aibom-table">
+            <thead>
+              <tr>
+                <th scope="col">Field</th>
+                <th scope="col">Value</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${section.rows
+                .map(
+                  (entry) => `
+                    <tr>
+                      <th scope="row">${escapeHtml(entry.field)}</th>
+                      <td>${renderTableValue(entry.value)}</td>
+                      <td><span class="status-pill status-${escapeHtml(
+                        entry.status.toLowerCase().replaceAll(" ", "-")
+                      )}">${escapeHtml(entry.status)}</span></td>
+                    </tr>
+                  `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    `;
+  }
+
   return `
     <section class="aibom-section">
       <h4>${escapeHtml(section.title)}</h4>
@@ -590,9 +507,11 @@ function renderAibomTable(section) {
         <table class="aibom-table">
           <thead>
             <tr>
-              <th scope="col">Field</th>
-              <th scope="col">Value</th>
               <th scope="col">Status</th>
+              <th scope="col">Field</th>
+              <th scope="col">Actual location</th>
+              <th scope="col">Tier</th>
+              <th scope="col">Type</th>
             </tr>
           </thead>
           <tbody>
@@ -600,11 +519,11 @@ function renderAibomTable(section) {
               .map(
                 (entry) => `
                   <tr>
-                    <th scope="row">${escapeHtml(entry.field)}</th>
-                    <td>${renderTableValue(entry.value)}</td>
-                    <td><span class="status-pill status-${escapeHtml(
-                      entry.status.toLowerCase().replaceAll(" ", "-")
-                    )}">${escapeHtml(entry.status)}</span></td>
+                    <td><span class="status-pill status-${entry.present ? "present" : "missing"}">${entry.present ? "Present" : "Missing"}</span></td>
+                    <th scope="row">${escapeHtml(entry.name)}</th>
+                    <td>${renderTableValue(entry.actualLocation)}</td>
+                    <td>${escapeHtml(entry.tier)}</td>
+                    <td>${escapeHtml(entry.type)}</td>
                   </tr>
                 `
               )

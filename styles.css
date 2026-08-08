@@ -525,6 +525,18 @@ body {
   color: #6e7b8d;
 }
 
+.status-present {
+  background: #e9f8f1;
+  border-color: #bfe8d2;
+  color: #176b4d;
+}
+
+.status-missing {
+  background: #fff0f0;
+  border-color: #f2c4c4;
+  color: #a33b3b;
+}
+
 .nav-button,
 .back-link {
   display: inline-flex;
