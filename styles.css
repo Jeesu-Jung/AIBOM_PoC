@@ -425,6 +425,233 @@ body {
   font-size: 1.08rem;
 }
 
+.delta-comparison {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #cad8f4;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #f7faff 0%, #f4f8fc 100%);
+}
+
+.delta-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.delta-head h5 {
+  margin: 4px 0 0;
+  font-family: "Fraunces", Georgia, serif;
+  font-size: 1.08rem;
+}
+
+.delta-parent-button {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.delta-parent-button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.delta-source-note {
+  margin: -6px 0 0;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.comparison-models,
+.comparison-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.62fr) repeat(2, minmax(0, 1fr));
+}
+
+.comparison-models {
+  overflow: hidden;
+  border: 1px solid #c8d6ef;
+  border-radius: 13px;
+  background: #f8faff;
+}
+
+.comparison-model-spacer,
+.comparison-model {
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.comparison-model-spacer {
+  display: flex;
+  align-items: center;
+  color: var(--text-soft);
+  font-size: 0.73rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.comparison-model {
+  display: grid;
+  gap: 4px;
+  border-left: 1px solid #d9e2f2;
+  background: var(--panel);
+}
+
+.comparison-model span,
+.comparison-mobile-label {
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.comparison-model strong {
+  overflow-wrap: anywhere;
+  font-size: 0.87rem;
+  line-height: 1.4;
+}
+
+.comparison-selected-model {
+  position: relative;
+  padding-right: 92px;
+  background: #eef4ff;
+}
+
+.comparison-relation {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+}
+
+.comparison-sections {
+  display: grid;
+  gap: 14px;
+}
+
+.comparison-section {
+  display: grid;
+  gap: 7px;
+}
+
+.comparison-section h6 {
+  margin: 0;
+  color: #52637f;
+  font-size: 0.76rem;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.comparison-rows {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--panel);
+}
+
+.comparison-row + .comparison-row {
+  border-top: 1px solid var(--line);
+}
+
+.comparison-aspect,
+.comparison-value {
+  min-width: 0;
+  padding: 12px 14px;
+}
+
+.comparison-aspect {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 7px;
+  background: #fbfcfe;
+}
+
+.comparison-aspect strong {
+  font-size: 0.79rem;
+  line-height: 1.4;
+}
+
+.comparison-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.67rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.comparison-added {
+  background: #e5f0ff;
+  color: #225fa8;
+}
+
+.comparison-modified {
+  background: #fff0dc;
+  color: #955817;
+}
+
+.comparison-removed {
+  background: #fde8e8;
+  color: #a33b3b;
+}
+
+.comparison-unchanged {
+  background: #e3f4ed;
+  color: #236e59;
+}
+
+.comparison-risk {
+  background: #fde8e8;
+  color: #a33b3b;
+}
+
+.comparison-value {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  border-left: 1px solid var(--line);
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.comparison-after {
+  background: #f8faff;
+  color: var(--text);
+}
+
+.comparison-empty {
+  color: #8c99ad;
+  font-size: 1rem;
+}
+
+.comparison-value small {
+  color: #8995a7;
+  font-size: 0.69rem;
+  line-height: 1.35;
+}
+
+.comparison-mobile-label {
+  display: none;
+}
+
 .aibom-section-stack {
   display: grid;
   gap: 16px;
@@ -722,6 +949,32 @@ body {
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .comparison-models,
+  .comparison-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .comparison-model-spacer,
+  .comparison-aspect {
+    grid-column: 1 / -1;
+  }
+
+  .comparison-model-spacer {
+    display: none;
+  }
+
+  .comparison-base-model {
+    border-left: 0;
+  }
+
+  .comparison-aspect {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .comparison-before {
+    border-left: 0;
+  }
 }
 
 @media (max-width: 640px) {
@@ -737,6 +990,27 @@ body {
   .detail-page-panel {
     padding: 18px;
     border-radius: 16px;
+  }
+
+  .delta-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .comparison-model-spacer,
+  .comparison-model,
+  .comparison-aspect,
+  .comparison-value {
+    padding: 10px 11px;
+  }
+
+  .comparison-selected-model {
+    padding-right: 11px;
+  }
+
+  .comparison-relation {
+    position: static;
+    transform: none;
   }
 
   .family-cluster,

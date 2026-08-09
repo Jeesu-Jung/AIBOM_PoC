@@ -247,6 +247,162 @@ function branchLabel(rootNode) {
   return rootNode.title.toLowerCase().includes("instruct") ? "Instruct branch" : "Base branch";
 }
 
+function isMissingChecklistValue(value) {
+  return value == null || value === "" || value === "Not found" || (Array.isArray(value) && !value.length);
+}
+
+function checklistValuesEqual(left, right) {
+  if (isMissingChecklistValue(left) && isMissingChecklistValue(right)) return true;
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function buildDeltaComparisonSections(node) {
+  const parentId = node.parent_model || node.parent;
+  const baseChecklist = checklistRegistry[parentId];
+  const selectedChecklist = checklistRegistry[node.id];
+  if (!baseChecklist || !selectedChecklist) return [];
+
+  const baseCategories = new Map(baseChecklist.categories.map((category) => [category.id, category]));
+  const selectedCategories = new Map(
+    selectedChecklist.categories.map((category) => [category.id, category])
+  );
+  const categoryIds = [
+    ...selectedChecklist.categories.map((category) => category.id),
+    ...baseChecklist.categories
+      .map((category) => category.id)
+      .filter((categoryId) => !selectedCategories.has(categoryId))
+  ];
+
+  return categoryIds
+    .map((categoryId) => {
+      const baseCategory = baseCategories.get(categoryId);
+      const selectedCategory = selectedCategories.get(categoryId);
+      const baseFields = new Map((baseCategory?.fields || []).map((field) => [field.name, field]));
+      const selectedFields = new Map(
+        (selectedCategory?.fields || []).map((field) => [field.name, field])
+      );
+      const fieldNames = [
+        ...(selectedCategory?.fields || []).map((field) => field.name),
+        ...(baseCategory?.fields || [])
+          .map((field) => field.name)
+          .filter((fieldName) => !selectedFields.has(fieldName))
+      ];
+      const rows = fieldNames.flatMap((fieldName) => {
+        if (categoryId === "required" && fieldName === "serialNumber") return [];
+        const before = baseFields.get(fieldName)?.value;
+        const after = selectedFields.get(fieldName)?.value;
+        if (checklistValuesEqual(before, after)) return [];
+
+        const beforeMissing = isMissingChecklistValue(before);
+        const afterMissing = isMissingChecklistValue(after);
+        return [
+          {
+            aspect: fieldName,
+            type: beforeMissing ? "added" : afterMissing ? "removed" : "modified",
+            before,
+            after
+          }
+        ];
+      });
+
+      return {
+        label: selectedCategory?.label || baseCategory?.label || toTitleCase(categoryId),
+        rows
+      };
+    })
+    .filter((section) => section.rows.length);
+}
+
+function renderComparisonValue(value, side, type) {
+  if (!isMissingChecklistValue(value)) return `<span>${renderTableValue(value)}</span>`;
+  const beforeHints = {
+    added: "Not present in base JSON",
+    modified: "No base value documented"
+  };
+  const afterHints = {
+    removed: "Not present in selected JSON",
+    modified: "No selected-model value documented"
+  };
+  return `
+    <span class="comparison-empty" aria-label="No corresponding value">—</span>
+    <small>${side === "before" ? beforeHints[type] || "No base value documented" : afterHints[type] || "No selected-model value documented"}</small>
+  `;
+}
+
+function renderComparisonRow(row) {
+  const typeLabels = {
+    added: "Added",
+    modified: "Modified",
+    removed: "Removed"
+  };
+
+  return `
+    <div class="comparison-row">
+      <div class="comparison-aspect">
+        <span class="comparison-badge comparison-${escapeHtml(row.type)}">${typeLabels[row.type]}</span>
+        <strong>${escapeHtml(row.aspect)}</strong>
+      </div>
+      <div class="comparison-value comparison-before">
+        <span class="comparison-mobile-label">Before · Base</span>
+        ${renderComparisonValue(row.before, "before", row.type)}
+      </div>
+      <div class="comparison-value comparison-after">
+        <span class="comparison-mobile-label">After · Selected</span>
+        ${renderComparisonValue(row.after, "after", row.type)}
+      </div>
+    </div>
+  `;
+}
+
+function renderDeltaComparison(node) {
+  if (node.kind !== "derived") return "";
+  const parent = nodeMap.get(node.parent_model || node.parent);
+  const parentLabel = parent?.title || node.parent_model || node.parent;
+  const sections = buildDeltaComparisonSections(node);
+
+  return `
+    <section class="delta-comparison" aria-label="Changes from the base model">
+      <div class="delta-head">
+        <div>
+          <p class="eyebrow">Compared with base · CycloneDX 1.7</p>
+          <h5>What changed in this model?</h5>
+        </div>
+        ${parent ? `<button type="button" class="delta-parent-button" data-delta-parent="${escapeHtml(parent.id)}">View base model</button>` : ""}
+      </div>
+
+      <p class="delta-source-note">Only changed CycloneDX 1.7 field values are shown. The generation-specific serial number is excluded.</p>
+
+      <div class="comparison-models">
+        <div class="comparison-model-spacer" aria-hidden="true">Field</div>
+        <div class="comparison-model comparison-base-model">
+          <span>Before · CycloneDX 1.7</span>
+          <strong>${escapeHtml(parentLabel)}</strong>
+        </div>
+        <div class="comparison-model comparison-selected-model">
+          <span>After · CycloneDX 1.7</span>
+          <strong>${escapeHtml(node.title)}</strong>
+          <div class="comparison-relation">${relationChip(node.relationship)}</div>
+        </div>
+      </div>
+
+      <div class="comparison-sections">
+        ${sections
+          .map(
+            (section) => `
+              <section class="comparison-section">
+                <h6>${escapeHtml(section.label)}</h6>
+                <div class="comparison-rows">
+                  ${section.rows.map(renderComparisonRow).join("")}
+                </div>
+              </section>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderFamilySelect() {
   const select = document.getElementById("family-select");
   select.innerHTML = familyContexts
@@ -360,11 +516,22 @@ function renderLineageBoard() {
 }
 
 function renderTableValue(value) {
-  if (/^https?:\/\//.test(value)) {
-    const label = value.length > 72 ? `${value.slice(0, 69)}...` : value;
-    return `<a class="table-link" href="${escapeHtml(value)}" target="_blank" rel="noreferrer noopener">${escapeHtml(label)}</a>`;
+  if (Array.isArray(value)) {
+    return value.map((item) => renderTableValue(item)).join("<br>");
   }
-  return escapeHtml(value);
+  if (value && typeof value === "object") {
+    return escapeHtml(JSON.stringify(value));
+  }
+  const text = String(value ?? "Not found");
+  if (/^https?:\/\//.test(text)) {
+    const label = text.length > 72 ? `${text.slice(0, 69)}...` : text;
+    return `<a class="table-link" href="${escapeHtml(text)}" target="_blank" rel="noreferrer noopener">${escapeHtml(label)}</a>`;
+  }
+  const linkedValue = text.match(/^(.*?) — (https?:\/\/\S+)$/);
+  if (linkedValue) {
+    return `${escapeHtml(linkedValue[1])} — ${renderTableValue(linkedValue[2])}`;
+  }
+  return escapeHtml(text);
 }
 
 function formatLegacyValue(value) {
@@ -542,7 +709,7 @@ function renderAibomTable(section) {
             <tr>
               <th scope="col">Status</th>
               <th scope="col">Field</th>
-              <th scope="col">Actual location</th>
+              <th scope="col">Value (CycloneDX 1.7)</th>
               <th scope="col">Tier</th>
               <th scope="col">Type</th>
             </tr>
@@ -554,7 +721,7 @@ function renderAibomTable(section) {
                   <tr>
                     <td><span class="status-pill status-${entry.present ? "present" : "missing"}">${entry.present ? "Present" : "Missing"}</span></td>
                     <th scope="row">${escapeHtml(entry.name)}</th>
-                    <td>${renderTableValue(entry.actualLocation)}</td>
+                    <td>${renderTableValue(entry.value)}</td>
                     <td>${escapeHtml(entry.tier)}</td>
                     <td>${escapeHtml(entry.type)}</td>
                   </tr>
@@ -589,11 +756,16 @@ function renderFullAibomPanel() {
           <p class="focus-summary">${escapeHtml(getNodePreview(node))}</p>
         </div>
       </div>
+      ${renderDeltaComparison(node)}
       <div class="aibom-section-stack">
         ${sections.map(renderAibomTable).join("")}
       </div>
     </article>
   `;
+
+  document.querySelector("[data-delta-parent]")?.addEventListener("click", (event) => {
+    selectNode(event.currentTarget.dataset.deltaParent, true);
+  });
 }
 
 function syncSelection() {

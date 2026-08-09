@@ -1,6 +1,7 @@
 (function () {
   const GENERATOR_URL =
     "https://huggingface.co/spaces/GenAISecurityProject/OWASP-AIBOM-Generator";
+  const cycloneDxRegistry = window.AIBOM_CYCLONEDX_VALUES || {};
 
   const requiredFields = [
     ["bomFormat", "$.bomFormat", "Critical", "CDX"],
@@ -202,18 +203,21 @@
     }
   };
 
-  function fieldRows(definitions, presentNames) {
+  function fieldRows(definitions, presentNames, values = {}) {
     const presentSet = new Set(presentNames);
     return definitions.map(([name, location, tier, type]) => ({
       name,
       present: presentSet.has(name),
       actualLocation: presentSet.has(name) ? location : "Not found",
+      value: presentSet.has(name) ? values[name] ?? "Not found" : "Not found",
       tier,
       type
     }));
   }
 
   function buildChecklist(modelId, result) {
+    const cycloneDx = cycloneDxRegistry[modelId] || { categories: {} };
+    const categoryValues = cycloneDx.categories || {};
     const modelCardDefinitionsForModel =
       result.modelCardTotal === 17
         ? modelCardDefinitions.slice(0, 17)
@@ -231,7 +235,11 @@
         total: 4,
         score: 20,
         maxScore: 20,
-        fields: fieldRows(requiredFields, requiredFields.map(([name]) => name))
+        fields: fieldRows(
+          requiredFields,
+          requiredFields.map(([name]) => name),
+          categoryValues.required
+        )
       },
       {
         id: "metadata",
@@ -240,7 +248,11 @@
         total: 5,
         score: 8,
         maxScore: 20,
-        fields: fieldRows(metadataFields, ["primaryPurpose", "suppliedBy"])
+        fields: fieldRows(
+          metadataFields,
+          ["primaryPurpose", "suppliedBy"],
+          categoryValues.metadata
+        )
       },
       {
         id: "component-basic",
@@ -249,7 +261,11 @@
         total: 7,
         score: 17.1,
         maxScore: 20,
-        fields: fieldRows(componentBasicFields, componentBasicFields.map(([name]) => name)),
+        fields: fieldRows(
+          componentBasicFields,
+          componentBasicFields.map(([name]) => name),
+          categoryValues["component-basic"]
+        ),
         displayNote: "The live page renders 6 rows but reports 6/7 present."
       },
       {
@@ -259,7 +275,11 @@
         total: result.modelCardTotal,
         score: result.modelCardScore,
         maxScore: 30,
-        fields: fieldRows(modelCardDefinitionsForModel, result.modelCardPresent)
+        fields: fieldRows(
+          modelCardDefinitionsForModel,
+          result.modelCardPresent,
+          categoryValues["model-card"]
+        )
       },
       {
         id: "external-references",
@@ -268,7 +288,11 @@
         total: 4,
         score: result.externalScore,
         maxScore: 10,
-        fields: fieldRows(externalReferenceDefinitions, externalPresent)
+        fields: fieldRows(
+          externalReferenceDefinitions,
+          externalPresent,
+          categoryValues["external-references"]
+        )
       }
     ];
     const presentFields = categories.reduce((sum, category) => sum + category.present, 0);
@@ -280,6 +304,7 @@
       generatorUrl: GENERATOR_URL,
       sourceDocument: `docs/${modelId.replaceAll("/", "_")}_Field_Checklist.md`,
       generatedAt: result.generatedAt,
+      valueGeneratedAt: cycloneDx.generatedAt || null,
       profile: {
         name: "Basic",
         description: "Minimal fields required for identification"
