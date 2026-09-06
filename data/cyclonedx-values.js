@@ -25,7 +25,8 @@
         "licenses": "[{\"license\":{\"name\":\"llama3.1\"}}]"
       },
       "model-card": {
-        "datasets": null,
+        "datasetNames": null,
+        "datasetUrls": null,
         "ethicalConsiderations": null,
         "energyConsumption": null,
         "hyperparameter": null,
@@ -81,9 +82,13 @@
         "licenses": "[{\"license\":{\"id\":\"Apache-2.0\"}}]"
       },
       "model-card": {
-        "datasets": [
-          "FreedomIntelligence/medical-o1-reasoning-SFT — https://huggingface.co/datasets/FreedomIntelligence/medical-o1-reasoning-SFT",
-          "FreedomIntelligence/medical-o1-verifiable-problem — https://huggingface.co/datasets/FreedomIntelligence/medical-o1-verifiable-problem"
+        "datasetNames": [
+          "FreedomIntelligence/medical-o1-reasoning-SFT",
+          "FreedomIntelligence/medical-o1-verifiable-problem"
+        ],
+        "datasetUrls": [
+          "https://huggingface.co/datasets/FreedomIntelligence/medical-o1-reasoning-SFT",
+          "https://huggingface.co/datasets/FreedomIntelligence/medical-o1-verifiable-problem"
         ],
         "ethicalConsiderations": null,
         "energyConsumption": null,
@@ -142,7 +147,12 @@
         "licenses": "[{\"license\":{\"name\":\"llama3.1\"}}]"
       },
       "model-card": {
-        "datasets": "HiTZ/truthful_judge — https://huggingface.co/datasets/HiTZ/truthful_judge",
+        "datasetNames": [
+          "HiTZ/truthful_judge"
+        ],
+        "datasetUrls": [
+          "https://huggingface.co/datasets/HiTZ/truthful_judge"
+        ],
         "ethicalConsiderations": null,
         "energyConsumption": null,
         "hyperparameter": null,
@@ -199,7 +209,12 @@
         "licenses": "[{\"license\":{\"id\":\"Apache-2.0\"}}]"
       },
       "model-card": {
-        "datasets": "HPAI-BSC/Egida — https://huggingface.co/datasets/HPAI-BSC/Egida",
+        "datasetNames": [
+          "HPAI-BSC/Egida"
+        ],
+        "datasetUrls": [
+          "https://huggingface.co/datasets/HPAI-BSC/Egida"
+        ],
         "ethicalConsiderations": null,
         "energyConsumption": null,
         "hyperparameter": null,
@@ -256,7 +271,12 @@
         "licenses": "[{\"license\":{\"id\":\"Apache-2.0\"}}]"
       },
       "model-card": {
-        "datasets": "top — https://huggingface.co/datasets/top",
+        "datasetNames": [
+          "top"
+        ],
+        "datasetUrls": [
+          "https://huggingface.co/datasets/top"
+        ],
         "ethicalConsiderations": null,
         "energyConsumption": null,
         "hyperparameter": null,
@@ -312,9 +332,13 @@
         "licenses": "[{\"license\":{\"name\":\"llama3.1\"}}]"
       },
       "model-card": {
-        "datasets": [
-          "for — https://huggingface.co/datasets/for",
-          "an — https://huggingface.co/datasets/an"
+        "datasetNames": [
+          "for",
+          "an"
+        ],
+        "datasetUrls": [
+          "https://huggingface.co/datasets/for",
+          "https://huggingface.co/datasets/an"
         ],
         "ethicalConsiderations": null,
         "energyConsumption": null,
@@ -371,9 +395,13 @@
         "licenses": "[{\"license\":{\"name\":\"llama3.1\"}}]"
       },
       "model-card": {
-        "datasets": [
-          "for` — `https://huggingface.co/datasets/for",
-          "an` — `https://huggingface.co/datasets/an"
+        "datasetNames": [
+          "for",
+          "an"
+        ],
+        "datasetUrls": [
+          "https://huggingface.co/datasets/for",
+          "https://huggingface.co/datasets/an"
         ],
         "ethicalConsiderations": null,
         "energyConsumption": null,
@@ -430,7 +458,8 @@
         "licenses": "[{\"license\":{\"name\":\"llama3.1\"}}]"
       },
       "model-card": {
-        "datasets": null,
+        "datasetNames": null,
+        "datasetUrls": null,
         "ethicalConsiderations": null,
         "energyConsumption": null,
         "hyperparameter": null,
@@ -486,7 +515,8 @@
         "licenses": "[{\"license\":{\"id\":\"Apache-2.0\"}}]"
       },
       "model-card": {
-        "datasets": null,
+        "datasetNames": null,
+        "datasetUrls": null,
         "ethicalConsiderations": null,
         "energyConsumption": null,
         "hyperparameter": null,
@@ -542,7 +572,12 @@
         "licenses": "[{\"license\":{\"name\":\"llama3\"}}]"
       },
       "model-card": {
-        "datasets": "specific — https://huggingface.co/datasets/specific",
+        "datasetNames": [
+          "specific"
+        ],
+        "datasetUrls": [
+          "https://huggingface.co/datasets/specific"
+        ],
         "ethicalConsiderations": null,
         "energyConsumption": null,
         "hyperparameter": null,
@@ -599,7 +634,8 @@
         "licenses": "[{\"license\":{\"id\":\"Apache-2.0\"}}]"
       },
       "model-card": {
-        "datasets": null,
+        "datasetNames": null,
+        "datasetUrls": null,
         "ethicalConsiderations": null,
         "energyConsumption": null,
         "hyperparameter": null,
@@ -655,7 +691,8 @@
         "licenses": "[{\"license\":{\"id\":\"Apache-2.0\"}}]"
       },
       "model-card": {
-        "datasets": null,
+        "datasetNames": null,
+        "datasetUrls": null,
         "ethicalConsiderations": null,
         "energyConsumption": null,
         "hyperparameter": null,
@@ -714,7 +751,8 @@
         "licenses": "[{\"license\":{\"id\":\"Apache-2.0\"}}]"
       },
       "model-card": {
-        "datasets": null,
+        "datasetNames": null,
+        "datasetUrls": null,
         "ethicalConsiderations": null,
         "energyConsumption": null,
         "hyperparameter": null,

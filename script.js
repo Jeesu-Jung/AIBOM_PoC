@@ -519,6 +519,15 @@ function renderTableValue(value) {
   if (Array.isArray(value)) {
     return value.map((item) => renderTableValue(item)).join("<br>");
   }
+  if (value && Array.isArray(value.datasetNames) && Array.isArray(value.datasetUrls)) {
+    return value.datasetNames
+      .map((name, index) => {
+        const url = value.datasetUrls[index];
+        if (!url) return escapeHtml(name);
+        return `<a class="table-link" href="${escapeHtml(url)}" target="_blank" rel="noreferrer noopener">${escapeHtml(name)}</a>`;
+      })
+      .join("<br>");
+  }
   if (value && typeof value === "object") {
     return escapeHtml(JSON.stringify(value));
   }

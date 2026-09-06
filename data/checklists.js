@@ -209,7 +209,14 @@
       name,
       present: presentSet.has(name),
       actualLocation: presentSet.has(name) ? location : "Not found",
-      value: presentSet.has(name) ? values[name] ?? "Not found" : "Not found",
+      value: presentSet.has(name)
+        ? name === "datasets"
+          ? {
+              datasetNames: values.datasetNames,
+              datasetUrls: values.datasetUrls
+            }
+          : values[name] ?? "Not found"
+        : "Not found",
       tier,
       type
     }));
