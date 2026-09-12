@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "validate:data": "node scripts/validate-datasets.js",
     "validate:react": "node scripts/smoke-render.mjs"
   },
   "dependencies": {
