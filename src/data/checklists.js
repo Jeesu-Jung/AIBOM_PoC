@@ -1,7 +1,7 @@
-(function () {
-  const GENERATOR_URL =
+import { cycloneDxRegistry } from "./cyclonedxValues.js";
+
+const GENERATOR_URL =
     "https://huggingface.co/spaces/GenAISecurityProject/OWASP-AIBOM-Generator";
-  const cycloneDxRegistry = window.AIBOM_CYCLONEDX_VALUES || {};
 
   const requiredFields = [
     ["bomFormat", "$.bomFormat", "Critical", "CDX"],
@@ -325,10 +325,9 @@
     };
   }
 
-  window.AIBOM_CHECKLISTS = Object.fromEntries(
+  export const checklistRegistry = Object.fromEntries(
     Object.entries(modelResults).map(([modelId, result]) => [
       modelId,
       buildChecklist(modelId, result)
     ])
   );
-})();

@@ -1,5 +1,4 @@
-(function () {
-  window.AIBOM_CYCLONEDX_VALUES = {
+export const cycloneDxRegistry = {
   "FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp": {
     "generatedAt": "2026-08-09T03:00:20+00:00",
     "categories": {
@@ -784,4 +783,3 @@
     }
   }
 };
-})();

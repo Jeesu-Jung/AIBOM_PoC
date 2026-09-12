@@ -1,4 +1,4 @@
-window.AIBOM_FAMILIES = {
+export const familyRegistry = {
   llama31: {
     id: "llama31",
     label: "Llama 3.1",

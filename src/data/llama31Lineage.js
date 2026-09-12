@@ -1,4 +1,4 @@
-window.LLAMA31_DELTA_AIBOM = {
+export const llama31DeltaAibom = {
   schema_name: "DeltaAIBOM-canonical",
   schema_version: "0.1",
   generated_at: "2026-08-06T07:25:24.516301+00:00",
