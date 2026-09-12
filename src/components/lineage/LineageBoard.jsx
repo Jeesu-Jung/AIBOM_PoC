@@ -5,7 +5,7 @@ function branchLabel(rootNode) {
   return rootNode.title.toLowerCase().includes("instruct") ? "Instruct branch" : "Base branch";
 }
 
-export default function LineageBoard({ context, activeNodeId, onSelect }) {
+export default function LineageBoard({ context, activeNodeId, onSelect, familyRegistry }) {
   const { familyId, family, documentNode, rootNodes, derivedNodes } = context;
 
   return (
@@ -26,7 +26,7 @@ export default function LineageBoard({ context, activeNodeId, onSelect }) {
         <div className="lane lane-document">
           <div className="lane-header"><span className="lane-title">Source document</span></div>
           <div className="lane-stack">
-            <NodeCard node={documentNode} activeNodeId={activeNodeId} onSelect={onSelect} />
+            <NodeCard node={documentNode} activeNodeId={activeNodeId} onSelect={onSelect} familyRegistry={familyRegistry} />
           </div>
         </div>
 
@@ -34,7 +34,7 @@ export default function LineageBoard({ context, activeNodeId, onSelect }) {
           <div className="lane-header"><span className="lane-title">Root AIBOM nodes</span></div>
           <div className="root-grid">
             {rootNodes.map((node) => (
-              <NodeCard key={node.id} node={node} activeNodeId={activeNodeId} onSelect={onSelect} />
+              <NodeCard key={node.id} node={node} activeNodeId={activeNodeId} onSelect={onSelect} familyRegistry={familyRegistry} />
             ))}
           </div>
         </div>
@@ -56,7 +56,7 @@ export default function LineageBoard({ context, activeNodeId, onSelect }) {
                   </header>
                   <div className="lane-stack">
                     {children.map((node) => (
-                      <NodeCard key={node.id} node={node} activeNodeId={activeNodeId} onSelect={onSelect} />
+                      <NodeCard key={node.id} node={node} activeNodeId={activeNodeId} onSelect={onSelect} familyRegistry={familyRegistry} />
                     ))}
                   </div>
                 </section>

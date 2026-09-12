@@ -1,5 +1,3 @@
-import { checklistRegistry } from "../data/checklists.js";
-import { familyRegistry } from "../data/families.js";
 import { toTitleCase } from "../utils/format.js";
 
 export function isMissingChecklistValue(value) {
@@ -11,7 +9,7 @@ function checklistValuesEqual(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-export function buildDeltaComparisonSections(node) {
+export function buildDeltaComparisonSections(node, checklistRegistry) {
   const parentId = node.parent_model || node.parent;
   const baseChecklist = checklistRegistry[parentId];
   const selectedChecklist = checklistRegistry[node.id];
@@ -125,7 +123,7 @@ function buildDocumentAibomSections(node, family) {
   ];
 }
 
-export function buildAibomSections(node) {
+export function buildAibomSections(node, checklistRegistry, familyRegistry) {
   const checklist = checklistRegistry[node.id];
   if (!checklist) return buildDocumentAibomSections(node, familyRegistry[node.familyId]);
   return checklist.categories.map((category) => ({

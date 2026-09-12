@@ -1,15 +1,10 @@
-import { allNodes, familyContexts } from "../../domain/lineage.js";
 import { formatDate } from "../../utils/format.js";
 
-export default function DashboardHeader({ metrics }) {
-  const latestRelease = familyContexts
-    .map((context) => context.family.root_family.release_date)
-    .sort()
-    .at(-1);
+export default function DashboardHeader({ metrics, familyIndex, nodeCount }) {
   const metaItems = [
-    ["Families", familyContexts.length],
-    ["Nodes", allNodes.length],
-    ["Latest root release", formatDate(latestRelease)]
+    ["Families", familyIndex.summary.familyCount],
+    ["Loaded nodes", nodeCount],
+    ["Latest root release", formatDate(familyIndex.summary.latestRelease)]
   ];
 
   return (

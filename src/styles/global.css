@@ -34,6 +34,26 @@ body {
   min-height: 100vh;
 }
 
+.app-state {
+  width: min(720px, calc(100vw - 32px));
+  margin: 80px auto;
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.app-state h1,
+.app-state p {
+  margin: 0;
+}
+
+.app-state h1 + p {
+  margin-top: 12px;
+  color: var(--text-soft);
+}
+
 .page-shell,
 .detail-page-shell {
   width: min(1080px, calc(100vw - 32px));

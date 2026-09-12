@@ -1,4 +1,3 @@
-import { familyRegistry } from "../data/families.js";
 import { RELATION_SHORT_NOTES } from "../constants/relationships.js";
 
 function mergeSources(...sourceLists) {
@@ -10,7 +9,7 @@ function mergeSources(...sourceLists) {
   });
 }
 
-function buildFamilyContext(familyId) {
+function buildFamilyContext(familyRegistry, familyId) {
   const family = familyRegistry[familyId];
   const documentNode = {
     ...family.document_node,
@@ -45,11 +44,17 @@ function buildFamilyContext(familyId) {
   };
 }
 
-export const familyContexts = Object.keys(familyRegistry).map(buildFamilyContext);
-export const allNodes = familyContexts.flatMap((context) => context.nodes);
-export const nodeMap = new Map(allNodes.map((node) => [node.id, node]));
+export function buildLineageCatalog(familyRegistry) {
+  const familyContexts = Object.keys(familyRegistry).map((familyId) =>
+    buildFamilyContext(familyRegistry, familyId)
+  );
+  const allNodes = familyContexts.flatMap((context) => context.nodes);
+  const nodeMap = new Map(allNodes.map((node) => [node.id, node]));
+  return { familyContexts, allNodes, nodeMap };
+}
 
-export function getInitialNodeId(search = window.location.search) {
+export function getInitialNodeId(lineageCatalog, familyRegistry, search = window.location.search) {
+  const { allNodes, nodeMap } = lineageCatalog;
   const requestedNodeId = new URLSearchParams(search).get("node");
   if (requestedNodeId && nodeMap.has(requestedNodeId)) return requestedNodeId;
   const defaultNode = familyRegistry.llama31?.default_node_id;
@@ -67,7 +72,7 @@ function summarizeDelta(delta) {
   return "Incremental delta extracted from descendant evidence.";
 }
 
-export function getNodePreview(node) {
+export function getNodePreview(node, familyRegistry) {
   const family = familyRegistry[node.familyId];
   if (node.kind === "document") return node.subtitle;
   if (node.kind === "root") {
@@ -79,7 +84,7 @@ export function getNodePreview(node) {
   return RELATION_SHORT_NOTES[node.relationship] || summarizeDelta(node.delta);
 }
 
-export function getSummaryMetrics() {
+export function getSummaryMetrics(familyContexts) {
   return [
     ["Model families", familyContexts.length],
     ["Root variants", familyContexts.reduce((count, context) => count + context.family.root_family.model_variants.length, 0)],

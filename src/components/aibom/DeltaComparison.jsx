@@ -1,7 +1,6 @@
 import { RelationChip } from "../common/Chips.jsx";
 import Value from "../common/Value.jsx";
 import { buildDeltaComparisonSections, isMissingChecklistValue } from "../../domain/aibom.js";
-import { nodeMap } from "../../domain/lineage.js";
 
 function ComparisonValue({ value, side, type }) {
   if (!isMissingChecklistValue(value)) return <span><Value value={value} /></span>;
@@ -17,11 +16,11 @@ function ComparisonValue({ value, side, type }) {
   );
 }
 
-export default function DeltaComparison({ node, onSelect }) {
+export default function DeltaComparison({ node, onSelect, nodeMap, checklistRegistry }) {
   if (node.kind !== "derived") return null;
   const parent = nodeMap.get(node.parent_model || node.parent);
   const parentLabel = parent?.title || node.parent_model || node.parent;
-  const sections = buildDeltaComparisonSections(node);
+  const sections = buildDeltaComparisonSections(node, checklistRegistry);
   const typeLabels = { added: "Added", modified: "Modified", removed: "Removed" };
 
   return (

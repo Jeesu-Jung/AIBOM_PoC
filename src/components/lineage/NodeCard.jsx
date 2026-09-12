@@ -1,7 +1,7 @@
 import { KindChip, RelationChip } from "../common/Chips.jsx";
 import { getNodePreview } from "../../domain/lineage.js";
 
-export default function NodeCard({ node, activeNodeId, onSelect }) {
+export default function NodeCard({ node, activeNodeId, onSelect, familyRegistry }) {
   return (
     <button
       type="button"
@@ -16,7 +16,7 @@ export default function NodeCard({ node, activeNodeId, onSelect }) {
         {node.kind === "derived" && <RelationChip relation={node.relationship} />}
       </div>
       <div className="node-title">{node.title}</div>
-      <p className="node-preview">{getNodePreview(node)}</p>
+      <p className="node-preview">{getNodePreview(node, familyRegistry)}</p>
     </button>
   );
 }
