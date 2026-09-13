@@ -32,6 +32,9 @@ API 문서는 `http://127.0.0.1:8000/docs`에서 확인할 수 있습니다.
 
 ## 엔드포인트
 
+전체 API 명세(OpenAPI 3.1)는 `backend/openapi.yaml` 에 있습니다. Swagger Editor(https://editor.swagger.io) 에 붙여 넣거나 `/docs` 와 함께 참고하세요.
+
+
 - `GET /api/v1/health`
 - `GET /api/v1/families` (lightweight family index and aggregate counts)
 - `GET /api/v1/models`

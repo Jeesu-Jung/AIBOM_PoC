@@ -1,0 +1,905 @@
+openapi: 3.1.0
+info:
+  title: AIBOM Model Catalog API
+  version: 1.0.0
+  description: |
+    MySQL 기반 AI 모델 카탈로그 및 모델 계층(lineage) 데이터를 제공하는 FastAPI 백엔드 명세입니다.
+
+    ## 구성
+    - **system**: 서비스/DB 상태 확인
+    - **families**: 모델 패밀리 인덱스와 선택 패밀리의 계층(hierarchy) 트리
+    - **models**: 개별 모델 상세 메타데이터 (`model_info` + `model_hierarchy`)
+    - **admin**: 모델 CRUD 및 OpenRouter 기반 AI 리서치 초안 생성
+
+    ## 공통 규칙
+    - 모든 JSON 필드는 **camelCase** 를 사용합니다. (families hierarchy 응답은 예외적으로 snake_case)
+    - `modelId` 는 `namespace/model-name` 형식이며 슬래시를 포함하므로 경로 파라미터는 path 전체를 매칭합니다.
+      예: `GET /api/v1/models/meta-llama/Llama-3.1-8B-Instruct`
+    - DB 연결 실패 시 DB를 사용하는 모든 엔드포인트는 `503` 을 반환합니다.
+    - 요청 본문 검증 실패(Pydantic) 시 FastAPI 표준 `422` 응답을 반환합니다.
+    - 인증/인가는 현재 구현되어 있지 않습니다. admin 엔드포인트도 공개 상태입니다.
+    - CORS: `CORS_ORIGINS` 환경 변수 (기본 `http://localhost:5173,http://127.0.0.1:5173`), 허용 메서드 GET/POST/PUT/DELETE
+
+    ## 프론트엔드 로딩 순서
+    1. `GET /api/v1/families` 로 경량 인덱스를 먼저 로드
+    2. 선택된 패밀리에 대해 `GET /api/v1/families/{familyKey}/hierarchy` 지연 로드
+    3. 노드 클릭 시 `GET /api/v1/models/{modelId}` 로 상세 로드
+  contact:
+    name: AIBOM PoC
+
+servers:
+  - url: http://127.0.0.1:8000
+    description: Local development (uvicorn app.main:app --reload)
+
+tags:
+  - name: system
+    description: 서비스 상태 확인
+  - name: families
+    description: 모델 패밀리 인덱스 및 계층 트리
+  - name: models
+    description: 모델 상세 조회
+  - name: admin
+    description: 모델 카탈로그 관리(CRUD) 및 AI 리서치
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [system]
+      summary: 헬스 체크
+      description: DB에 `SELECT 1` 을 실행해 연결 상태를 확인합니다. DB 오류 시 예외 대신 `503` 과 `unhealthy` 상태를 반환합니다.
+      operationId: health
+      responses:
+        '200':
+          description: 정상
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example: { status: ok }
+        '503':
+          description: DB 연결 불가
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example: { status: unhealthy }
+
+  /api/v1/families:
+    get:
+      tags: [families]
+      summary: 패밀리 인덱스 조회
+      description: UI 부트스트랩에 필요한 경량 패밀리 목록과 집계 요약을 반환합니다. 패밀리 출시일 오름차순, 동일 시 `familyKey` 순으로 정렬됩니다.
+      operationId: listFamilies
+      responses:
+        '200':
+          description: 패밀리 인덱스
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyIndex'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/families/{familyKey}/hierarchy:
+    get:
+      tags: [families]
+      summary: 패밀리 계층 트리 조회
+      description: |
+        선택한 패밀리의 루트 노드와 파생 모델 목록을 반환합니다.
+        루트는 `sibling_order` 순, 파생 모델은 `(parent_model_id, sibling_order)` 순으로 정렬됩니다.
+        `details_json.family_config` 가 있으면 그 값을 기반으로, 없으면 기본 문서 노드를 생성합니다.
+        이 응답의 필드는 **snake_case** 입니다.
+      operationId: getFamilyHierarchy
+      parameters:
+        - $ref: '#/components/parameters/FamilyKey'
+      responses:
+        '200':
+          description: 패밀리 계층
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyHierarchy'
+        '404':
+          description: 패밀리를 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+              example: { detail: Model family not found. }
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/models:
+    get:
+      tags: [models]
+      summary: 전체 모델 목록 조회
+      description: 모든 모델의 상세 메타데이터를 반환합니다. 패밀리 출시일, `familyKey`, `modelId` 순으로 정렬됩니다.
+      operationId: listModels
+      responses:
+        '200':
+          description: 모델 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ModelDetail'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/models/{modelId}:
+    get:
+      tags: [models]
+      summary: 모델 상세 조회
+      description: '`modelId` 는 `namespace/model-name` 형식이며 슬래시를 포함합니다 (path 파라미터 전체 매칭).'
+      operationId: getModel
+      parameters:
+        - $ref: '#/components/parameters/ModelId'
+      responses:
+        '200':
+          description: 모델 상세
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelDetail'
+        '404':
+          description: 모델을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+              example: { detail: Model not found. }
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/admin/models:
+    get:
+      tags: [admin]
+      summary: '[관리자] 모델 목록 조회'
+      description: 관리 화면용 평탄화된(flat) 모델 레코드 목록입니다. `familyKey`, `modelId` 순으로 정렬됩니다. BOM/체크리스트 필드와 계층 정보를 모두 포함합니다.
+      operationId: adminListModels
+      responses:
+        '200':
+          description: 관리자용 모델 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminModel'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+    post:
+      tags: [admin]
+      summary: '[관리자] 모델 생성'
+      description: |
+        `model_info` 와 `model_hierarchy` 레코드를 함께 생성합니다.
+        - `parentModelId` 가 있으면 부모가 존재하고 동일 패밀리여야 하며, `hierarchyDepth` 는 부모 depth + 1 로 계산됩니다.
+        - 루트 모델(`parentModelId: null`)은 `relationshipType` 을 가질 수 없고, 파생 모델은 반드시 가져야 합니다.
+      operationId: adminCreateModel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminModelWrite'
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminModel'
+        '409':
+          description: 동일 `modelId` 가 이미 존재하거나 DB 무결성 제약 충돌
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+              examples:
+                duplicate:
+                  value: { detail: A model with this ID already exists. }
+                integrity:
+                  value: { detail: The model could not be saved because its data conflicts with another record. }
+        '422':
+          description: 검증 실패 (Pydantic 또는 계층 규칙)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorDetail'
+                  - $ref: '#/components/schemas/HTTPValidationError'
+              examples:
+                parentMissing:
+                  value: { detail: The selected parent model does not exist. }
+                familyMismatch:
+                  value: { detail: Parent and child must belong to the same family. }
+                noHierarchy:
+                  value: { detail: The selected parent has no hierarchy record. }
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/admin/models/{modelId}:
+    put:
+      tags: [admin]
+      summary: '[관리자] 모델 수정'
+      description: |
+        모델 메타데이터와 계층 위치를 전체 교체(full replace)합니다.
+        - 본문의 `modelId` 는 경로의 `modelId` 와 동일해야 합니다 (ID 변경 불가).
+        - 자식이 있는 모델은 다른 패밀리로 이동할 수 없습니다.
+        - 자기 자신 또는 자신의 후손을 부모로 지정하면 순환으로 거부됩니다.
+        - 부모가 바뀌면 모든 후손의 `hierarchyDepth` 가 재계산됩니다.
+      operationId: adminUpdateModel
+      parameters:
+        - $ref: '#/components/parameters/ModelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminModelWrite'
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminModel'
+        '404':
+          description: 모델을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+              example: { detail: 'Model not found: org/model' }
+        '409':
+          description: DB 무결성 제약 충돌
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+              example: { detail: The model could not be saved because its data conflicts with another record. }
+        '422':
+          description: 검증 실패 (Pydantic 또는 계층 규칙)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorDetail'
+                  - $ref: '#/components/schemas/HTTPValidationError'
+              examples:
+                idChanged:
+                  value: { detail: Model ID cannot be changed after creation. }
+                moveWithChildren:
+                  value: { detail: A model with children cannot be moved to another family. }
+                cycle:
+                  value: { detail: The selected parent would create a hierarchy cycle. }
+                parentMissing:
+                  value: { detail: The selected parent model does not exist. }
+                familyMismatch:
+                  value: { detail: Parent and child must belong to the same family. }
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+    delete:
+      tags: [admin]
+      summary: '[관리자] 모델 삭제'
+      description: 자식이 없는 모델만 삭제할 수 있습니다. `model_hierarchy` 행을 먼저 삭제한 뒤 `model_info` 행을 삭제합니다.
+      operationId: adminDeleteModel
+      parameters:
+        - $ref: '#/components/parameters/ModelId'
+      responses:
+        '204':
+          description: 삭제됨 (본문 없음)
+        '404':
+          description: 모델을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+              example: { detail: 'Model not found: org/model' }
+        '409':
+          description: 자식 모델이 존재함
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+              example: { detail: "Move or delete this model's children before deleting it." }
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/admin/model-research/stream:
+    post:
+      tags: [admin]
+      summary: '[관리자] AI 모델 리서치 (SSE 스트리밍)'
+      description: |
+        OpenRouter(웹 검색 도구 포함)를 호출해 모델 메타데이터 초안과 근거(evidence) 맵을 **Server-Sent Events** 로 스트리밍합니다.
+        **DB에는 절대 쓰지 않습니다.** `complete` 이벤트의 `result.draft` 는 `AdminModelWrite` 와 호환되며, 검토 후 `POST /api/v1/admin/models` 에 그대로 사용할 수 있습니다.
+
+        환경 변수: `OPENROUTER_API_KEY`(필수), `OPENROUTER_MODEL`, `OPENROUTER_BASE_URL`, `OPENROUTER_HTTP_REFERER`, `OPENROUTER_TIMEOUT_SECONDS`(기본 120초)
+
+        HTTP 상태는 항상 `200` 이며, 오류(API 키 미설정, 타임아웃, 429/401/403, 응답 검증 실패 등)는 `error` 이벤트로 전달됩니다.
+        응답 헤더: `Cache-Control: no-cache, no-transform`, `X-Accel-Buffering: no`
+
+        이벤트 종류 (`event:` 필드):
+
+        | event | data | 설명 |
+        |---|---|---|
+        | `status` | `{stage, message}` | `connecting` → `researching` → `validating` 단계 알림 |
+        | `provider_event` | OpenRouter 원본 chunk (reasoning 필드 제거) | 파싱 불가 시 `{type: "unparsed", data}` |
+        | `content` | `{delta, characters}` | 모델 응답 텍스트 증분과 누적 글자 수 |
+        | `activity` | `{kind: "citation"\|"tool", message, toolCalls?}` | 출처 확인 / 웹 검색 도구 실행 알림 |
+        | `complete` | `{result: ModelResearchResult}` | 최종 검증된 결과 (마지막 이벤트) |
+        | `error` | `{message}` | 오류 (이후 스트림 종료) |
+
+        data 페이로드 스키마는 `ResearchStreamEvent` 를 참고하세요.
+      operationId: adminStreamModelResearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelResearchRequest'
+      responses:
+        '200':
+          description: SSE 스트림
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              example: no-cache, no-transform
+            X-Accel-Buffering:
+              schema: { type: string }
+              example: 'no'
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: '`event: <name>` / `data: <json>` 프레임의 연속'
+              example: |
+                event: status
+                data: {"stage": "connecting", "message": "OpenRouter에 연결하고 있습니다."}
+
+                event: status
+                data: {"stage": "researching", "message": "웹 자료를 검색하고 응답을 분석하고 있습니다."}
+
+                event: activity
+                data: {"kind": "tool", "message": "웹 검색 도구를 실행하고 있습니다.", "toolCalls": []}
+
+                event: content
+                data: {"delta": "{\"draft\":", "characters": 9}
+
+                event: status
+                data: {"stage": "validating", "message": "수집한 정보를 검증하고 초안을 정리하고 있습니다."}
+
+                event: complete
+                data: {"result": {"draft": {"modelId": "Qwen/Qwen2.5-7B-Instruct"}, "parentCandidates": [], "fieldEvidence": [], "sources": [], "warnings": [], "research": {}}}
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+components:
+  parameters:
+    FamilyKey:
+      name: familyKey
+      in: path
+      required: true
+      description: 패밀리 식별자 (`model_info.family_key`)
+      schema:
+        type: string
+        maxLength: 100
+      example: qwen2.5-7b
+    ModelId:
+      name: modelId
+      in: path
+      required: true
+      description: '`namespace/model-name` 형식의 모델 ID. 슬래시를 포함하며 경로 나머지 전체가 매칭됩니다.'
+      schema:
+        type: string
+        maxLength: 512
+      example: meta-llama/Llama-3.1-8B-Instruct
+
+  responses:
+    DatabaseUnavailable:
+      description: 모델 카탈로그 DB 연결 불가
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorDetail'
+          example: { detail: The model catalog database is unavailable. }
+    ValidationError:
+      description: 요청 본문 검증 실패
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/HTTPValidationError'
+
+  schemas:
+    # ---------- 공통 ----------
+    ErrorDetail:
+      type: object
+      required: [detail]
+      properties:
+        detail:
+          type: string
+    HTTPValidationError:
+      type: object
+      description: FastAPI 표준 Pydantic 검증 오류
+      properties:
+        detail:
+          type: array
+          items:
+            type: object
+            required: [loc, msg, type]
+            properties:
+              loc:
+                type: array
+                items:
+                  anyOf: [{ type: string }, { type: integer }]
+              msg: { type: string }
+              type: { type: string }
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unhealthy]
+    ModelRole:
+      type: string
+      enum: [BASE, INSTRUCT, DERIVED]
+      description: BASE = 사전학습 기반 모델, INSTRUCT = 공식 지시 튜닝 변형, DERIVED = 파인튜닝/양자화/병합/변환 등 파생 모델
+
+    # ---------- families ----------
+    FamilyIndex:
+      type: object
+      required: [items, summary]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FamilyIndexItem'
+        summary:
+          $ref: '#/components/schemas/FamilyIndexSummary'
+      example:
+        items:
+          - familyKey: qwen2.5-7b
+            familyName: Qwen2.5-7B
+            releaseDate: '2024-09-19'
+            modelCount: 5
+            rootCount: 2
+            derivedCount: 3
+            defaultNodeId: Qwen/Qwen2.5-7B-Instruct
+        summary:
+          familyCount: 1
+          modelCount: 5
+          rootCount: 2
+          derivedCount: 3
+          transformationTypeCount: 3
+          latestRelease: '2024-09-19'
+    FamilyIndexItem:
+      type: object
+      required: [familyKey, familyName, releaseDate, modelCount, rootCount, derivedCount, defaultNodeId]
+      properties:
+        familyKey: { type: string }
+        familyName: { type: string }
+        releaseDate:
+          type: [string, 'null']
+          format: date
+        modelCount: { type: integer }
+        rootCount:
+          type: integer
+          description: '`hierarchy_depth == 0` 인 모델 수'
+        derivedCount:
+          type: integer
+          description: '`hierarchy_depth > 0` 인 모델 수'
+        defaultNodeId:
+          type: [string, 'null']
+          description: 기본 선택 노드. INSTRUCT 루트가 있으면 그 중 최소 ID, 없으면 depth 0 루트 중 최소 ID
+    FamilyIndexSummary:
+      type: object
+      required: [familyCount, modelCount, rootCount, derivedCount, transformationTypeCount, latestRelease]
+      properties:
+        familyCount: { type: integer }
+        modelCount: { type: integer }
+        rootCount: { type: integer }
+        derivedCount: { type: integer }
+        transformationTypeCount:
+          type: integer
+          description: 전체 `relationship_type` 고유값 수
+        latestRelease:
+          type: [string, 'null']
+          format: date
+
+    FamilyHierarchy:
+      type: object
+      description: |
+        패밀리 계층 트리. `details_json.family_config` 의 키가 그대로 병합되므로 추가 속성이 존재할 수 있습니다.
+        이 스키마는 **snake_case** 입니다.
+      required: [id, label, root_nodes, derived_models, default_node_id]
+      properties:
+        id:
+          type: string
+          description: familyKey 와 동일
+        label:
+          type: string
+          description: familyName 과 동일
+        default_node_id:
+          type: [string, 'null']
+        document_node:
+          type: object
+          description: family_config 가 없을 때 생성되는 기본 문서 노드
+          properties:
+            id: { type: string, example: 'document:qwen2.5-7b' }
+            title: { type: string }
+            subtitle: { type: string }
+        root_family:
+          type: object
+          additionalProperties: true
+          description: '`details_json.family` 원본 (fallback 시)'
+        root_nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/HierarchyRootNode'
+        derived_models:
+          type: array
+          items:
+            $ref: '#/components/schemas/HierarchyDerivedModel'
+      additionalProperties: true
+    HierarchyRootNode:
+      type: object
+      description: '`details_json.model` 의 키가 병합된 루트 노드'
+      required: [id, kind, title, subtitle]
+      properties:
+        id: { type: string }
+        kind:
+          type: string
+          const: root
+        title: { type: string }
+        subtitle:
+          type: [string, 'null']
+      additionalProperties: true
+    HierarchyDerivedModel:
+      type: object
+      description: '`details_json.model` 의 키가 병합된 파생 모델 노드'
+      required: [model_id, parent_model, relationship, supplier, license_reported, artifact, delta]
+      properties:
+        model_id: { type: string }
+        parent_model:
+          type: string
+          description: 직접 부모 모델 ID
+        relationship:
+          type: string
+          description: 부모와의 관계 (예 fineTunedFrom, quantizedFrom, convertedFrom)
+        supplier:
+          type: [string, 'null']
+        license_reported:
+          description: JSON 컬럼 (보통 문자열 배열)
+        artifact:
+          type: object
+          additionalProperties: true
+        delta:
+          type: [object, 'null']
+          additionalProperties: true
+          description: '`model_hierarchy.change_details_json`'
+      additionalProperties: true
+
+    # ---------- models ----------
+    ModelDetail:
+      type: object
+      description: 공개 모델 상세 (`model_info` + `model_hierarchy` 결합)
+      required:
+        - modelId
+        - namespace
+        - modelName
+        - familyKey
+        - familyName
+        - modelRole
+        - supplier
+        - familyDeveloper
+        - familyReleaseDate
+        - familyLicenseName
+        - primaryPurpose
+        - modelVersion
+        - packageUrl
+        - modelUrl
+        - licenseReported
+        - artifactFormat
+        - tensorType
+        - parameterScale
+        - artifactRevision
+        - description
+        - checklistScore
+        - sourceGeneratedAt
+        - hierarchy
+        - details
+      properties:
+        modelId: { type: string, example: Qwen/Qwen2.5-7B-Instruct }
+        namespace: { type: string, example: Qwen }
+        modelName: { type: string, example: Qwen2.5-7B-Instruct }
+        familyKey: { type: string }
+        familyName: { type: string }
+        modelRole:
+          $ref: '#/components/schemas/ModelRole'
+        supplier: { type: [string, 'null'] }
+        familyDeveloper: { type: [string, 'null'] }
+        familyReleaseDate: { type: [string, 'null'], format: date }
+        familyLicenseName: { type: [string, 'null'] }
+        primaryPurpose: { type: [string, 'null'] }
+        modelVersion: { type: [string, 'null'] }
+        packageUrl: { type: [string, 'null'], description: 'PURL (예 pkg:huggingface/Qwen/Qwen2.5-7B-Instruct@rev)' }
+        modelUrl: { type: string, format: uri }
+        licenseReported:
+          description: JSON 컬럼. 보통 라이선스 문자열 배열
+          type: [array, string, object, 'null']
+        artifactFormat: { type: [string, 'null'], example: safetensors }
+        tensorType: { type: [string, 'null'], example: BF16 }
+        parameterScale: { type: [string, 'null'], example: 7.6B }
+        artifactRevision: { type: [string, 'null'] }
+        description: { type: [string, 'null'] }
+        checklistScore:
+          type: [number, 'null']
+          minimum: 0
+          maximum: 100
+        sourceGeneratedAt: { type: [string, 'null'], format: date-time }
+        hierarchy:
+          $ref: '#/components/schemas/ModelHierarchyInfo'
+        details:
+          type: object
+          additionalProperties: true
+          description: '`details_json` 원본 (family_config, model, checklist, family 등)'
+    ModelHierarchyInfo:
+      type: object
+      required: [parentModelId, relationshipType, depth, siblingOrder, changeDetails]
+      properties:
+        parentModelId: { type: [string, 'null'] }
+        relationshipType: { type: [string, 'null'] }
+        depth: { type: integer, minimum: 0 }
+        siblingOrder: { type: integer, minimum: 0 }
+        changeDetails:
+          type: [object, 'null']
+          additionalProperties: true
+
+    # ---------- admin ----------
+    AdminModelWrite:
+      type: object
+      description: |
+        모델 생성/수정 요청 본문. 계층 규칙:
+        - `parentModelId == modelId` 불가
+        - `parentModelId` 가 null 이면 `relationshipType` 도 null 이어야 함
+        - `parentModelId` 가 있으면 `relationshipType` 필수
+        - `checklistPresentFields <= checklistTotalFields`
+      required: [modelId, namespace, modelName, familyKey, familyName, modelRole, modelUrl]
+      properties:
+        modelId: { type: string, minLength: 1, maxLength: 512 }
+        namespace: { type: string, minLength: 1, maxLength: 255 }
+        modelName: { type: string, minLength: 1, maxLength: 255 }
+        familyKey: { type: string, minLength: 1, maxLength: 100 }
+        familyName: { type: string, minLength: 1, maxLength: 255 }
+        modelRole:
+          $ref: '#/components/schemas/ModelRole'
+        supplier: { type: [string, 'null'], maxLength: 255, default: null }
+        familyDeveloper: { type: [string, 'null'], maxLength: 255, default: null }
+        familyReleaseDate: { type: [string, 'null'], format: date, default: null }
+        familyLicenseName: { type: [string, 'null'], maxLength: 255, default: null }
+        primaryPurpose: { type: [string, 'null'], maxLength: 255, default: null }
+        modelVersion: { type: [string, 'null'], maxLength: 255, default: null }
+        packageUrl: { type: [string, 'null'], maxLength: 1000, default: null }
+        modelUrl: { type: string, minLength: 1, maxLength: 1000 }
+        licenseReported:
+          description: 임의 JSON (보통 문자열 배열)
+          default: null
+        artifactFormat: { type: [string, 'null'], maxLength: 100, default: null }
+        tensorType: { type: [string, 'null'], maxLength: 100, default: null }
+        parameterScale: { type: [string, 'null'], maxLength: 100, default: null }
+        artifactRevision: { type: [string, 'null'], maxLength: 255, default: null }
+        description: { type: [string, 'null'], default: null }
+        bomFormat: { type: [string, 'null'], maxLength: 50, default: null, example: CycloneDX }
+        bomSpecVersion: { type: [string, 'null'], maxLength: 20, default: null, example: '1.6' }
+        bomSerialNumber: { type: [string, 'null'], maxLength: 100, default: null }
+        bomVersion: { type: [string, 'null'], maxLength: 50, default: null }
+        checklistPresentFields: { type: [integer, 'null'], minimum: 0, default: null }
+        checklistTotalFields: { type: [integer, 'null'], minimum: 0, default: null }
+        checklistScore: { type: [number, string, 'null'], minimum: 0, maximum: 100, default: null, description: Decimal(5,2) }
+        checklistPenaltyFactor: { type: [number, string, 'null'], minimum: 0, maximum: 1, default: null, description: Decimal(6,4) }
+        sourceGeneratedAt: { type: [string, 'null'], format: date-time, default: null }
+        detailsJson:
+          type: object
+          additionalProperties: true
+          default: {}
+        parentModelId: { type: [string, 'null'], maxLength: 512, default: null }
+        relationshipType: { type: [string, 'null'], maxLength: 100, default: null }
+        siblingOrder: { type: integer, minimum: 0, default: 0 }
+        changeDetailsJson:
+          type: [object, 'null']
+          additionalProperties: true
+          default: null
+      example:
+        modelId: org/child-model
+        namespace: org
+        modelName: child-model
+        familyKey: sample
+        familyName: Sample
+        modelRole: DERIVED
+        supplier: org
+        modelUrl: https://huggingface.co/org/child-model
+        licenseReported: [apache-2.0]
+        artifactFormat: safetensors
+        parameterScale: 7B
+        detailsJson: {}
+        parentModelId: org/root-model
+        relationshipType: fineTunedFrom
+        siblingOrder: 0
+        changeDetailsJson: { summary: SFT on domain data }
+    AdminModel:
+      type: object
+      description: 관리자용 평탄화 모델 레코드. `AdminModelWrite` 의 모든 필드에 계산된 `hierarchyDepth` 가 추가됩니다.
+      allOf:
+        - $ref: '#/components/schemas/AdminModelWrite'
+        - type: object
+          required: [hierarchyDepth]
+          properties:
+            checklistScore:
+              type: [number, 'null']
+              description: 응답에서는 항상 number 로 직렬화
+            checklistPenaltyFactor:
+              type: [number, 'null']
+            hierarchyDepth:
+              type: integer
+              minimum: 0
+              description: 서버가 계산한 트리 깊이 (루트 = 0)
+
+    # ---------- admin / research ----------
+    ModelResearchRequest:
+      type: object
+      required: [modelName]
+      properties:
+        modelName:
+          type: string
+          minLength: 2
+          maxLength: 512
+          description: 조사할 모델 식별자 또는 이름. 프롬프트 내에서 데이터로만 취급됩니다.
+      example:
+        modelName: Qwen/Qwen2.5-7B-Instruct
+    ModelResearchResult:
+      type: object
+      required: [draft, parentCandidates, fieldEvidence, sources, warnings, research]
+      properties:
+        draft:
+          $ref: '#/components/schemas/ResearchDraft'
+        parentCandidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParentCandidate'
+        fieldEvidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldEvidence'
+        sources:
+          type: array
+          description: OpenRouter `url_citation` 어노테이션에서 추출한 중복 제거된 출처
+          items:
+            $ref: '#/components/schemas/ResearchSource'
+        warnings:
+          type: array
+          items: { type: string }
+          description: 모델이 보고한 경고. 인용 출처가 없으면 한국어 경고가 추가됩니다.
+        research:
+          $ref: '#/components/schemas/ResearchMeta'
+    ResearchDraft:
+      type: object
+      description: |
+        `AdminModelWrite` 와 호환되는 초안. LLM 산출 필드 외에 서버가 다음을 고정값으로 채웁니다:
+        checklist* = null, sourceGeneratedAt = null, parentModelId = null, relationshipType = null,
+        hierarchyDepth = 0, siblingOrder = 0, changeDetailsJson = null,
+        detailsJson = { model: {id, title, subtitle, sources}, ai_research: {provider, model, reviewed: false} }.
+        부모 관계는 `parentCandidates` 를 검토해 사용자가 직접 지정해야 합니다.
+      allOf:
+        - $ref: '#/components/schemas/AdminModelWrite'
+        - type: object
+          properties:
+            licenseReported:
+              type: [array, 'null']
+              items: { type: string }
+            hierarchyDepth: { type: integer, const: 0 }
+            detailsJson:
+              type: object
+              properties:
+                model:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    title: { type: string }
+                    subtitle: { type: [string, 'null'] }
+                    sources:
+                      type: array
+                      items: { type: string, format: uri }
+                ai_research:
+                  type: object
+                  properties:
+                    provider: { type: string, const: OpenRouter }
+                    model: { type: string }
+                    reviewed: { type: boolean, const: false }
+    ParentCandidate:
+      type: object
+      required: [modelId, relationshipType, confidence, evidenceUrls]
+      properties:
+        modelId: { type: string }
+        relationshipType: { type: string, example: fineTunedFrom }
+        confidence:
+          $ref: '#/components/schemas/Confidence'
+        evidenceUrls:
+          type: array
+          items: { type: string, format: uri }
+    FieldEvidence:
+      type: object
+      required: [fields, confidence, urls, note]
+      properties:
+        fields:
+          type: array
+          items: { type: string }
+          description: 근거가 뒷받침하는 draft 필드 이름 목록
+        confidence:
+          $ref: '#/components/schemas/Confidence'
+        urls:
+          type: array
+          items: { type: string, format: uri }
+        note: { type: [string, 'null'] }
+    Confidence:
+      type: string
+      enum: [high, medium, low]
+    ResearchSource:
+      type: object
+      required: [title, url, excerpt]
+      properties:
+        title: { type: string, description: 인용 제목. 없으면 URL 호스트명 }
+        url: { type: string, format: uri }
+        excerpt: { type: [string, 'null'] }
+    ResearchMeta:
+      type: object
+      required: [provider, model, webSearchRequests, usage]
+      properties:
+        provider: { type: string, const: OpenRouter }
+        model: { type: string, example: anthropic/claude-opus-5 }
+        webSearchRequests:
+          type: [integer, 'null']
+          description: '`usage.server_tool_use.web_search_requests`'
+        usage:
+          type: object
+          additionalProperties: true
+          description: OpenRouter usage 원본
+
+    ResearchStreamEvent:
+      description: SSE `data` 페이로드. `event` 이름에 따라 형태가 달라집니다.
+      oneOf:
+        - title: status
+          type: object
+          required: [stage, message]
+          properties:
+            stage: { type: string, enum: [connecting, researching, validating] }
+            message: { type: string }
+        - title: provider_event
+          type: object
+          additionalProperties: true
+          description: OpenRouter chunk 원본에서 reasoning / reasoning_details / encrypted_reasoning 제거
+        - title: content
+          type: object
+          required: [delta, characters]
+          properties:
+            delta: { type: string }
+            characters: { type: integer, description: 누적 글자 수 }
+        - title: activity
+          type: object
+          required: [kind, message]
+          properties:
+            kind: { type: string, enum: [citation, tool] }
+            message: { type: string }
+            toolCalls: { type: array, items: { type: object, additionalProperties: true } }
+        - title: complete
+          type: object
+          required: [result]
+          properties:
+            result:
+              $ref: '#/components/schemas/ModelResearchResult'
+        - title: error
+          type: object
+          required: [message]
+          properties:
+            message: { type: string }
