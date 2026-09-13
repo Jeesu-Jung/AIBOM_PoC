@@ -1,6 +1,7 @@
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -21,8 +22,8 @@ from .admin import (
     update_admin_model,
 )
 from .config import settings
-from .database import get_db
-from .research import ModelResearchRequest, stream_model_research
+from .database import SessionLocal, get_db
+from .research import CatalogContext, ModelResearchRequest, load_catalog_context, stream_model_research
 
 
 app = FastAPI(
@@ -104,11 +105,25 @@ def admin_models(db: Session = Depends(get_db)) -> list[dict]:
         raise _database_unavailable() from error
 
 
+def _load_research_context() -> CatalogContext:
+    """Collect existing family keys, relationship types, and model ids for the research prompt."""
+    session = SessionLocal()
+    try:
+        return load_catalog_context(session)
+    except SQLAlchemyError:
+        return CatalogContext(
+            warnings=("카탈로그 DB를 읽지 못해 기존 패밀리 키와 모델 ID 없이 조사했습니다. familyKey와 부모 후보를 직접 확인하세요.",)
+        )
+    finally:
+        session.close()
+
+
 @app.post("/api/v1/admin/model-research/stream", tags=["admin"])
 async def admin_stream_model_research(payload: ModelResearchRequest) -> StreamingResponse:
     """Stream public OpenRouter activity and finish with a validated admin draft."""
+    context = await run_in_threadpool(_load_research_context)
     return StreamingResponse(
-        stream_model_research(payload.model_name),
+        stream_model_research(payload.model_name, context=context),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )

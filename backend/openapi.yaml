@@ -313,7 +313,11 @@ paths:
       summary: '[관리자] AI 모델 리서치 (SSE 스트리밍)'
       description: |
         OpenRouter(웹 검색 도구 포함)를 호출해 모델 메타데이터 초안과 근거(evidence) 맵을 **Server-Sent Events** 로 스트리밍합니다.
-        **DB에는 절대 쓰지 않습니다.** `complete` 이벤트의 `result.draft` 는 `AdminModelWrite` 와 호환되며, 검토 후 `POST /api/v1/admin/models` 에 그대로 사용할 수 있습니다.
+        **DB에는 쓰지 않고 읽기만 합니다.** 프롬프트에 기존 카탈로그의 `familyKey`/`familyName`/`familyDeveloper` 목록, `relationshipType` 어휘, 모델 ID 목록을 주입해
+        초안이 기존 식별자를 재사용하도록 합니다. DB를 읽지 못하면 컨텍스트 없이 조사하고 `warnings` 에 한국어 경고를 추가합니다.
+        `complete` 이벤트의 `result.draft` 는 `AdminModelWrite` 와 호환되며, 검토 후 `POST /api/v1/admin/models` 에 그대로 사용할 수 있습니다.
+        `bomFormat`/`bomSpecVersion`/`bomSerialNumber`/`bomVersion` 은 웹 조사 대상이 아니므로 서버가 항상 `null` 로 채웁니다.
+        `result.status` 가 `ambiguous` 또는 `not_found` 이면 `warnings` 첫 항목에 그 사유가 들어가고, `not_found` 인 초안은 식별자 외 값이 모두 `null` 입니다.
 
         환경 변수: `OPENROUTER_API_KEY`(필수), `OPENROUTER_MODEL`, `OPENROUTER_BASE_URL`, `OPENROUTER_HTTP_REFERER`, `OPENROUTER_TIMEOUT_SECONDS`(기본 120초)
 
@@ -371,7 +375,7 @@ paths:
                 data: {"stage": "validating", "message": "수집한 정보를 검증하고 초안을 정리하고 있습니다."}
 
                 event: complete
-                data: {"result": {"draft": {"modelId": "Qwen/Qwen2.5-7B-Instruct"}, "parentCandidates": [], "fieldEvidence": [], "sources": [], "warnings": [], "research": {}}}
+                data: {"result": {"status": "found", "draft": {"modelId": "Qwen/Qwen2.5-7B-Instruct"}, "parentCandidates": [], "fieldEvidence": [], "sources": [], "warnings": [], "research": {}}}
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -760,8 +764,14 @@ components:
         modelName: Qwen/Qwen2.5-7B-Instruct
     ModelResearchResult:
       type: object
-      required: [draft, parentCandidates, fieldEvidence, sources, warnings, research]
+      required: [status, draft, parentCandidates, fieldEvidence, sources, warnings, research]
       properties:
+        status:
+          type: string
+          enum: [found, ambiguous, not_found]
+          description: |
+            `found`: 요청 모델을 1차 출처로 확인. `ambiguous`: 후보가 여럿이라 가장 유력한 모델 기준으로 초안 작성.
+            `not_found`: 신뢰할 출처가 없어 초안은 식별자만 채움.
         draft:
           $ref: '#/components/schemas/ResearchDraft'
         parentCandidates:
@@ -780,16 +790,18 @@ components:
         warnings:
           type: array
           items: { type: string }
-          description: 모델이 보고한 경고. 인용 출처가 없으면 한국어 경고가 추가됩니다.
+          description: 한국어 검토 항목. 순서는 status 경고 → 카탈로그 컨텍스트 경고 → 모델이 보고한 경고 → 인용 출처 없음 경고.
         research:
           $ref: '#/components/schemas/ResearchMeta'
     ResearchDraft:
       type: object
       description: |
         `AdminModelWrite` 와 호환되는 초안. LLM 산출 필드 외에 서버가 다음을 고정값으로 채웁니다:
-        checklist* = null, sourceGeneratedAt = null, parentModelId = null, relationshipType = null,
+        bom* = null, checklist* = null, sourceGeneratedAt = null, parentModelId = null, relationshipType = null,
         hierarchyDepth = 0, siblingOrder = 0, changeDetailsJson = null,
-        detailsJson = { model: {id, title, subtitle, sources}, ai_research: {provider, model, reviewed: false} }.
+        detailsJson = { model: {id, title, subtitle, sources}, ai_research: {provider, model, status, reviewed: false} }.
+        LLM 산출 필드의 형식 규약(familyKey 슬러그, purl 형식 packageUrl, HF pipeline tag 형식 primaryPurpose, 커밋 short SHA 형식 modelVersion 등)은
+        `backend/app/research.py` 의 `ResearchDraft` 필드 description 이 기준이며, 같은 설명이 OpenRouter JSON 스키마로 전달됩니다.
         부모 관계는 `parentCandidates` 를 검토해 사용자가 직접 지정해야 합니다.
       allOf:
         - $ref: '#/components/schemas/AdminModelWrite'
