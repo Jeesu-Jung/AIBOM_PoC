@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Date, DateTime, ForeignKey, JSON, Numeric, String, Text
+from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -68,3 +68,20 @@ class ModelHierarchy(Base):
     model: Mapped[ModelInfo] = relationship(
         back_populates="hierarchy", foreign_keys=[model_id]
     )
+
+
+class ModelResearchResult(Base):
+    """Stored AI research result for one requested model name and source."""
+
+    __tablename__ = "model_research_result"
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
+    )
+    requested_model: Mapped[str] = mapped_column(String(512))
+    source: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str | None] = mapped_column(String(20))
+    result_model_id: Mapped[str | None] = mapped_column(String(512))
+    research_model: Mapped[str | None] = mapped_column(String(255))
+    result_json: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=datetime.utcnow)

@@ -19,11 +19,11 @@ async function request(path, options = {}) {
 const modelPath = (modelId) => modelId.split("/").map(encodeURIComponent).join("/");
 
 export const fetchAdminModels = () => request("/api/v1/admin/models");
-export async function streamAdminModelResearch(modelName, onEvent, signal) {
-  const response = await fetch(`${API_BASE_URL}/api/v1/admin/model-research/stream`, {
+async function streamAdminSse(path, body, onEvent, signal) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     method: "POST",
     headers: { Accept: "text/event-stream", "Content-Type": "application/json" },
-    body: JSON.stringify({ modelName }),
+    body: JSON.stringify(body),
     signal
   });
   if (!response.ok) {
@@ -64,6 +64,14 @@ export async function streamAdminModelResearch(modelName, onEvent, signal) {
   if (!completed) throw new Error("OpenRouter 스트림이 결과 없이 종료되었습니다.");
   return completed;
 }
+export const streamAdminModelResearch = (modelName, onEvent, signal, source = "huggingface") =>
+  streamAdminSse("/api/v1/admin/model-research/stream", { modelName, source }, onEvent, signal);
+export const streamAdminModelMerge = (modelName, results, onEvent, signal) =>
+  streamAdminSse("/api/v1/admin/model-research/merge/stream", { modelName, results }, onEvent, signal);
+export const fetchAdminResearchResults = (modelName) =>
+  request(`/api/v1/admin/model-research/results?modelName=${encodeURIComponent(modelName)}`);
+export const saveAdminResearchResults = (modelName, results, replacePrevious = false) =>
+  request("/api/v1/admin/model-research/results", { method: "POST", body: JSON.stringify({ modelName, results, replacePrevious }) });
 export const createAdminModel = (payload) => request("/api/v1/admin/models", {
   method: "POST", body: JSON.stringify(payload)
 });

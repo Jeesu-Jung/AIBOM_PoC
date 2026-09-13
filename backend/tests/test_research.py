@@ -2,14 +2,20 @@ import json
 from dataclasses import replace
 from datetime import date
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from app import main, research
 from app.research import (
     CatalogContext,
     CatalogFamily,
+    MergeResearchRequest,
     _public_chunk,
+    build_merge_payload,
     build_openrouter_payload,
+    compact_merge_inputs,
+    parse_merge_response,
     parse_openrouter_response,
 )
 
@@ -60,6 +66,41 @@ def test_openrouter_payload_prioritizes_deep_bounded_search() -> None:
     assert payload["response_format"]["type"] == "json_schema"
     assert payload["response_format"]["json_schema"]["strict"] is True
     assert "2026-09-12" in payload["messages"][1]["content"]
+
+
+def test_openrouter_payload_defaults_to_huggingface_strategy() -> None:
+    payload = build_openrouter_payload("org/model")
+
+    assert "Research strategy: HUGGING FACE REPOSITORY." in payload["messages"][0]["content"]
+    assert "TECHNICAL PAPER" not in payload["messages"][0]["content"]
+    assert "from the repository and its model card" in payload["messages"][1]["content"]
+
+
+def test_openrouter_payload_switches_to_paper_strategy() -> None:
+    payload = build_openrouter_payload("org/model", source="paper")
+
+    system_prompt = payload["messages"][0]["content"]
+    assert "Research strategy: TECHNICAL PAPER." in system_prompt
+    assert "HUGGING FACE REPOSITORY" not in system_prompt
+    assert "arXiv" in system_prompt
+    assert "official paper or technical report" in payload["messages"][1]["content"]
+    assert payload["response_format"]["json_schema"]["schema"] == build_openrouter_payload("org/model")["response_format"]["json_schema"]["schema"]
+
+
+def test_openrouter_payload_rejects_unknown_source() -> None:
+    with pytest.raises(ValueError):
+        build_openrouter_payload("org/model", source="wikipedia")  # type: ignore[arg-type]
+
+
+def test_research_request_validates_source() -> None:
+    from pydantic import ValidationError
+
+    from app.research import ModelResearchRequest
+
+    assert ModelResearchRequest.model_validate({"modelName": "org/model"}).source == "huggingface"
+    assert ModelResearchRequest.model_validate({"modelName": "org/model", "source": "paper"}).source == "paper"
+    with pytest.raises(ValidationError):
+        ModelResearchRequest.model_validate({"modelName": "org/model", "source": "blog"})
 
 
 def test_openrouter_schema_carries_field_glossary_without_bom_fields() -> None:
@@ -115,6 +156,9 @@ def test_openrouter_response_becomes_reviewable_admin_draft() -> None:
     result = parse_openrouter_response(upstream)
 
     assert result["status"] == "found"
+    assert result["source"] == "huggingface"
+    assert result["research"]["source"] == "huggingface"
+    assert result["draft"]["detailsJson"]["ai_research"]["source"] == "huggingface"
     assert result["draft"]["modelId"] == "org/model"
     assert result["draft"]["bomFormat"] is None
     assert result["draft"]["detailsJson"]["ai_research"]["reviewed"] is False
@@ -205,4 +249,89 @@ def test_stream_endpoint_reports_missing_configuration(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "event: error" in response.text
+    assert "OPENROUTER_API_KEY is not configured." in response.text
+
+
+def research_result(source: str, **draft_overrides) -> dict:
+    content = research_content()
+    content["draft"].update(draft_overrides)
+    upstream = {
+        "model": "anthropic/claude-opus-5",
+        "choices": [{"message": {
+            "content": json.dumps(content),
+            "annotations": [{"type": "url_citation", "url_citation": {"url": f"https://example.test/{source}", "title": source}}],
+        }}],
+        "usage": {"server_tool_use": {"web_search_requests": 1}},
+    }
+    return parse_openrouter_response(upstream, source=source)
+
+
+def merge_content() -> dict:
+    draft = research_content()["draft"]
+    draft["familyDeveloper"] = "Example Org (paper)"
+    fields = list(draft.keys())
+    return {
+        "status": "found",
+        "draft": draft,
+        "fieldDecisions": [
+            {"field": field, "chosen": "paper" if field == "familyDeveloper" else "huggingface", "rationale": "근거가 더 명확합니다."}
+            for field in fields
+        ],
+        "parentCandidates": [],
+        "warnings": ["familyDeveloper 값이 두 조사에서 달랐습니다."],
+    }
+
+
+def test_merge_request_requires_at_least_one_result() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        MergeResearchRequest.model_validate({"modelName": "org/model", "results": {"huggingface": None, "paper": None}})
+    request = MergeResearchRequest.model_validate({"modelName": "org/model", "results": {"huggingface": research_result("huggingface")}})
+    assert request.results.get("paper") is None
+
+
+def test_merge_payload_compacts_inputs_and_disables_web_search() -> None:
+    results = {"huggingface": research_result("huggingface"), "paper": research_result("paper", familyDeveloper="Example Org (paper)")}
+    inputs = compact_merge_inputs(results)
+
+    assert inputs["huggingface"]["draft"]["familyDeveloper"] == "Example Org"
+    assert "detailsJson" not in inputs["huggingface"]["draft"]
+    assert inputs["paper"]["sources"] == [{"title": "paper", "url": "https://example.test/paper"}]
+
+    payload = build_merge_payload("org/model", inputs, as_of=date(2026, 9, 13))
+
+    assert "tools" not in payload
+    assert payload["response_format"]["json_schema"]["name"] == "aibom_model_merge"
+    assert "<research_inputs>" in payload["messages"][1]["content"]
+    assert "Example Org (paper)" in payload["messages"][1]["content"]
+    assert "fieldDecisions" in payload["response_format"]["json_schema"]["schema"]["properties"]
+
+
+def test_merge_response_becomes_admin_draft_with_decisions() -> None:
+    results = {"huggingface": research_result("huggingface"), "paper": research_result("paper")}
+    upstream = {"model": "anthropic/claude-opus-5", "choices": [{"message": {"content": json.dumps(merge_content())}}]}
+
+    result = parse_merge_response(upstream, results, context=CatalogContext())
+
+    assert result["source"] == "merged"
+    assert result["draft"]["familyDeveloper"] == "Example Org (paper)"
+    assert result["draft"]["bomFormat"] is None
+    assert result["draft"]["detailsJson"]["ai_research"]["merged"] is True
+    assert result["draft"]["detailsJson"]["ai_research"]["fieldDecisions"]["familyDeveloper"] == "paper"
+    assert result["draft"]["detailsJson"]["ai_research"]["runs"]["paper"]["webSearchRequests"] == 1
+    assert [item["source"] for item in result["sources"]] == ["huggingface", "paper"]
+    assert result["warnings"] == ["familyDeveloper 값이 두 조사에서 달랐습니다."]
+    assert len(result["fieldDecisions"]) == len(merge_content()["fieldDecisions"])
+
+
+def test_merge_stream_endpoint_reports_missing_configuration(monkeypatch) -> None:
+    monkeypatch.setattr(research, "settings", replace(research.settings, openrouter_api_key=""))
+    monkeypatch.setattr(main, "_load_research_context", lambda: CatalogContext())
+    response = TestClient(main.app).post(
+        "/api/v1/admin/model-research/merge/stream",
+        json={"modelName": "org/model", "results": {"huggingface": research_result("huggingface"), "paper": None}},
+    )
+
+    assert response.status_code == 200
     assert "OPENROUTER_API_KEY is not configured." in response.text

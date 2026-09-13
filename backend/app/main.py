@@ -23,7 +23,20 @@ from .admin import (
 )
 from .config import settings
 from .database import SessionLocal, get_db
-from .research import CatalogContext, ModelResearchRequest, load_catalog_context, stream_model_research
+from .research_store import (
+    SaveResearchResultsRequest,
+    delete_research_results,
+    load_research_results,
+    save_research_results,
+)
+from .research import (
+    CatalogContext,
+    MergeResearchRequest,
+    ModelResearchRequest,
+    load_catalog_context,
+    stream_model_merge,
+    stream_model_research,
+)
 
 
 app = FastAPI(
@@ -123,7 +136,49 @@ async def admin_stream_model_research(payload: ModelResearchRequest) -> Streamin
     """Stream public OpenRouter activity and finish with a validated admin draft."""
     context = await run_in_threadpool(_load_research_context)
     return StreamingResponse(
-        stream_model_research(payload.model_name, context=context),
+        stream_model_research(payload.model_name, context=context, source=payload.source),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/v1/admin/model-research/results", tags=["admin"])
+def admin_research_results(modelName: str, db: Session = Depends(get_db)) -> dict:
+    """Return stored research results (huggingface / paper / merged) for a requested model name."""
+    if len(modelName.strip()) < 2:
+        raise HTTPException(status_code=422, detail="modelName must be at least 2 characters.")
+    try:
+        return load_research_results(db, modelName)
+    except SQLAlchemyError as error:
+        raise _database_unavailable() from error
+
+
+@app.post("/api/v1/admin/model-research/results", tags=["admin"])
+def admin_save_research_results(payload: SaveResearchResultsRequest, db: Session = Depends(get_db)) -> dict:
+    """Persist research results; with replacePrevious the previous rows for the name are deleted first."""
+    try:
+        return save_research_results(db, payload)
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise _database_unavailable() from error
+
+
+@app.delete("/api/v1/admin/model-research/results", tags=["admin"], status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_research_results(modelName: str, db: Session = Depends(get_db)) -> Response:
+    try:
+        delete_research_results(db, modelName)
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise _database_unavailable() from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post("/api/v1/admin/model-research/merge/stream", tags=["admin"])
+async def admin_stream_model_merge(payload: MergeResearchRequest) -> StreamingResponse:
+    """Reconcile the Hugging Face and paper research results into one draft over SSE."""
+    context = await run_in_threadpool(_load_research_context)
+    return StreamingResponse(
+        stream_model_merge(payload, context=context),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )

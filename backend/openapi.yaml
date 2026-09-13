@@ -328,7 +328,7 @@ paths:
 
         | event | data | 설명 |
         |---|---|---|
-        | `status` | `{stage, message}` | `connecting` → `researching` → `validating` 단계 알림 |
+        | `status` | `{stage, message}` | `researching` → `validating` 단계 알림 (병합은 `merging` → `validating`) |
         | `provider_event` | OpenRouter 원본 chunk (reasoning 필드 제거) | 파싱 불가 시 `{type: "unparsed", data}` |
         | `content` | `{delta, characters}` | 모델 응답 텍스트 증분과 누적 글자 수 |
         | `activity` | `{kind: "citation"\|"tool", message, toolCalls?}` | 출처 확인 / 웹 검색 도구 실행 알림 |
@@ -360,9 +360,6 @@ paths:
                 description: '`event: <name>` / `data: <json>` 프레임의 연속'
               example: |
                 event: status
-                data: {"stage": "connecting", "message": "OpenRouter에 연결하고 있습니다."}
-
-                event: status
                 data: {"stage": "researching", "message": "웹 자료를 검색하고 응답을 분석하고 있습니다."}
 
                 event: activity
@@ -375,7 +372,111 @@ paths:
                 data: {"stage": "validating", "message": "수집한 정보를 검증하고 초안을 정리하고 있습니다."}
 
                 event: complete
-                data: {"result": {"status": "found", "draft": {"modelId": "Qwen/Qwen2.5-7B-Instruct"}, "parentCandidates": [], "fieldEvidence": [], "sources": [], "warnings": [], "research": {}}}
+                data: {"result": {"status": "found", "source": "huggingface", "draft": {"modelId": "Qwen/Qwen2.5-7B-Instruct"}, "parentCandidates": [], "fieldEvidence": [], "sources": [], "warnings": [], "research": {}}}
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/admin/model-research/results:
+    get:
+      tags: [admin]
+      summary: '[관리자] 저장된 AI 조사 결과 조회'
+      description: |
+        요청 모델명(`modelName`, 공백 정규화 후 비교) 기준으로 `model_research_result` 테이블에 저장된
+        huggingface / paper / merged 결과를 반환합니다. 프론트는 조사 시작 전에 이 API로 이전 결과 유무를 확인하고,
+        있으면 "저장된 결과 불러오기 / 새로 조사하기" 를 선택하게 합니다.
+      operationId: adminGetResearchResults
+      parameters:
+        - name: modelName
+          in: query
+          required: true
+          schema: { type: string, minLength: 2, maxLength: 512 }
+      responses:
+        '200':
+          description: '저장된 결과 (없으면 `exists: false`, 각 source 는 null)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredResearchResults'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+    post:
+      tags: [admin]
+      summary: '[관리자] AI 조사 결과 저장'
+      description: |
+        조사 결과를 (modelName, source) 단위로 upsert 합니다. `replacePrevious: true` 이면 같은 modelName 의
+        기존 행을 모두 삭제한 뒤 저장합니다. 프론트는 두 조사가 끝난 시점에 `replacePrevious: true` 로 huggingface/paper 를
+        저장하고, AI 병합이 끝나면 `replacePrevious: false` 로 merged 를 추가 저장합니다.
+      operationId: adminSaveResearchResults
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveResearchResultsRequest'
+      responses:
+        '200':
+          description: 저장 후 현재 저장 상태
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredResearchResults'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+    delete:
+      tags: [admin]
+      summary: '[관리자] 저장된 AI 조사 결과 삭제'
+      operationId: adminDeleteResearchResults
+      parameters:
+        - name: modelName
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '204':
+          description: 삭제됨 (없어도 204)
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/admin/model-research/merge/stream:
+    post:
+      tags: [admin]
+      summary: '[관리자] AI 조사 결과 병합 (SSE 스트리밍)'
+      description: |
+        `/model-research/stream` 을 `source=huggingface`, `source=paper` 로 각각 호출해 얻은 두 `ModelResearchResult` 를
+        OpenRouter(웹 검색 없음)에 넘겨 **하나의 초안으로 병합**합니다. 항목별로 근거가 강한 값을 고르고, 선택 이유(`fieldDecisions`)와
+        충돌 경고를 한국어로 남깁니다. 저장소 사실(modelId, packageUrl, artifactFormat 등)은 Hugging Face, 패밀리 사실(familyDeveloper,
+        familyReleaseDate 등)은 논문이 명시한 경우 논문을 우선하되, fieldEvidence 신뢰도가 더 높은 쪽이 있으면 그쪽을 따릅니다.
+        `description` 만 두 결과를 결합(`combined`)할 수 있고 나머지 값은 한쪽 값을 그대로 사용합니다.
+
+        DB는 읽기만 하며(카탈로그 컨텍스트 주입), 결과는 저장하지 않습니다. 두 결과 중 하나만 있어도 호출할 수 있지만,
+        프론트는 한 경로만 성공하면 병합을 생략하고 해당 결과를 그대로 사용합니다.
+
+        이벤트 종류는 `/model-research/stream` 과 같고, `status.stage` 는 `merging` → `validating` 입니다.
+        `complete` 이벤트의 `result` 는 `ModelMergeResult` 입니다.
+      operationId: adminStreamModelMerge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MergeResearchRequest'
+      responses:
+        '200':
+          description: SSE 스트림
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              example: |
+                event: status
+                data: {"stage": "merging", "message": "두 조사 결과를 항목별로 비교하고 병합하고 있습니다."}
+
+                event: complete
+                data: {"result": {"status": "found", "source": "merged", "draft": {"modelId": "Qwen/Qwen2.5-7B-Instruct"}, "fieldDecisions": [{"field": "familyDeveloper", "chosen": "paper", "rationale": "논문 저자 소속이 명시되어 있습니다."}], "parentCandidates": [], "sources": [], "warnings": [], "research": {}}}
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -760,12 +861,126 @@ components:
           minLength: 2
           maxLength: 512
           description: 조사할 모델 식별자 또는 이름. 프롬프트 내에서 데이터로만 취급됩니다.
+        source:
+          type: string
+          enum: [huggingface, paper]
+          default: huggingface
+          description: |
+            조사 방식. `huggingface`: Hugging Face 저장소 페이지와 모델 카드 메타데이터(base_model, license, pipeline_tag 등)를 1차 출처로 사용.
+            `paper`: arXiv·ACL Anthology·OpenReview 등에서 공식 논문/기술 보고서를 찾아 개발사, 공개일, 규모, 계보를 도출.
+            논문이 배포 저장소를 명시하지 않으면 modelUrl 은 논문 URL, packageUrl/modelVersion 은 null 로 채워집니다.
+            두 방식은 동일한 응답 스키마를 사용합니다.
       example:
         modelName: Qwen/Qwen2.5-7B-Instruct
+        source: huggingface
+    SaveResearchResultsRequest:
+      type: object
+      required: [modelName, results]
+      properties:
+        modelName: { type: string, minLength: 2, maxLength: 512 }
+        replacePrevious: { type: boolean, default: false }
+        results:
+          type: object
+          description: 최소 한 개는 null 이 아니어야 합니다.
+          properties:
+            huggingface: { oneOf: [{ $ref: '#/components/schemas/ModelResearchResult' }, { type: 'null' }] }
+            paper: { oneOf: [{ $ref: '#/components/schemas/ModelResearchResult' }, { type: 'null' }] }
+            merged: { oneOf: [{ $ref: '#/components/schemas/ModelMergeResult' }, { type: 'null' }] }
+    StoredResearchResult:
+      type: object
+      required: [id, source, status, resultModelId, researchModel, createdAt, result]
+      properties:
+        id: { type: integer }
+        source: { type: string, enum: [huggingface, paper, merged] }
+        status: { type: [string, 'null'], enum: [found, ambiguous, not_found, null] }
+        resultModelId: { type: [string, 'null'] }
+        researchModel: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        result:
+          description: 저장 당시의 ModelResearchResult 또는 ModelMergeResult 원본
+          type: object
+          additionalProperties: true
+    StoredResearchResults:
+      type: object
+      required: [modelName, exists, latestCreatedAt, results]
+      properties:
+        modelName: { type: string }
+        exists: { type: boolean }
+        latestCreatedAt: { type: [string, 'null'], format: date-time }
+        results:
+          type: object
+          properties:
+            huggingface: { oneOf: [{ $ref: '#/components/schemas/StoredResearchResult' }, { type: 'null' }] }
+            paper: { oneOf: [{ $ref: '#/components/schemas/StoredResearchResult' }, { type: 'null' }] }
+            merged: { oneOf: [{ $ref: '#/components/schemas/StoredResearchResult' }, { type: 'null' }] }
+    MergeResearchRequest:
+      type: object
+      required: [modelName, results]
+      properties:
+        modelName:
+          type: string
+          minLength: 2
+          maxLength: 512
+        results:
+          type: object
+          description: 경로별 조사 결과. 최소 한 개는 null 이 아니어야 합니다.
+          properties:
+            huggingface:
+              oneOf: [{ $ref: '#/components/schemas/ModelResearchResult' }, { type: 'null' }]
+            paper:
+              oneOf: [{ $ref: '#/components/schemas/ModelResearchResult' }, { type: 'null' }]
+    FieldDecision:
+      type: object
+      required: [field, chosen, rationale]
+      properties:
+        field: { type: string, description: 초안 필드 이름 }
+        chosen:
+          type: string
+          enum: [huggingface, paper, combined, none]
+          description: '`combined` 는 description 에만 허용, `none` 은 양쪽 모두 비어 null 로 둔 경우'
+        rationale: { type: string, description: 한국어 한 문장 선택 근거 }
+    ModelMergeResult:
+      type: object
+      required: [status, source, draft, fieldDecisions, parentCandidates, sources, warnings, research]
+      properties:
+        status:
+          type: string
+          enum: [found, ambiguous, not_found]
+        source: { type: string, const: merged }
+        draft:
+          $ref: '#/components/schemas/ResearchDraft'
+        fieldDecisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldDecision'
+        parentCandidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParentCandidate'
+        sources:
+          type: array
+          description: 두 입력의 출처를 URL 기준으로 합친 목록. 각 항목에 `source`(huggingface|paper) 가 추가됩니다.
+          items:
+            allOf:
+              - $ref: '#/components/schemas/ResearchSource'
+              - type: object
+                properties:
+                  source: { type: string, enum: [huggingface, paper] }
+        warnings:
+          type: array
+          items: { type: string }
+        research:
+          type: object
+          description: '`provider`, `model`, `source: merged`, 경로별 `runs`(model, status, webSearchRequests), `usage`'
+          additionalProperties: true
     ModelResearchResult:
       type: object
-      required: [status, draft, parentCandidates, fieldEvidence, sources, warnings, research]
+      required: [status, source, draft, parentCandidates, fieldEvidence, sources, warnings, research]
       properties:
+        source:
+          type: string
+          enum: [huggingface, paper]
+          description: 요청에 사용된 조사 방식. `research.source` 와 `draft.detailsJson.ai_research.source` 에도 동일하게 기록됩니다.
         status:
           type: string
           enum: [found, ambiguous, not_found]
@@ -799,7 +1014,8 @@ components:
         `AdminModelWrite` 와 호환되는 초안. LLM 산출 필드 외에 서버가 다음을 고정값으로 채웁니다:
         bom* = null, checklist* = null, sourceGeneratedAt = null, parentModelId = null, relationshipType = null,
         hierarchyDepth = 0, siblingOrder = 0, changeDetailsJson = null,
-        detailsJson = { model: {id, title, subtitle, sources}, ai_research: {provider, model, status, reviewed: false} }.
+        detailsJson = { model: {id, title, subtitle, sources}, ai_research: {provider, model, source, status, reviewed: false} }.
+        병합 결과(`source: merged`)의 ai_research 에는 `merged: true`, 경로별 `runs`, 필드별 `fieldDecisions`(field → chosen) 가 추가됩니다.
         LLM 산출 필드의 형식 규약(familyKey 슬러그, purl 형식 packageUrl, HF pipeline tag 형식 primaryPurpose, 커밋 short SHA 형식 modelVersion 등)은
         `backend/app/research.py` 의 `ResearchDraft` 필드 description 이 기준이며, 같은 설명이 OpenRouter JSON 스키마로 전달됩니다.
         부모 관계는 `parentCandidates` 를 검토해 사용자가 직접 지정해야 합니다.
@@ -866,10 +1082,11 @@ components:
         excerpt: { type: [string, 'null'] }
     ResearchMeta:
       type: object
-      required: [provider, model, webSearchRequests, usage]
+      required: [provider, model, source, webSearchRequests, usage]
       properties:
         provider: { type: string, const: OpenRouter }
         model: { type: string, example: anthropic/claude-opus-5 }
+        source: { type: string, enum: [huggingface, paper] }
         webSearchRequests:
           type: [integer, 'null']
           description: '`usage.server_tool_use.web_search_requests`'
@@ -885,7 +1102,7 @@ components:
           type: object
           required: [stage, message]
           properties:
-            stage: { type: string, enum: [connecting, researching, validating] }
+            stage: { type: string, enum: [researching, merging, validating] }
             message: { type: string }
         - title: provider_event
           type: object
