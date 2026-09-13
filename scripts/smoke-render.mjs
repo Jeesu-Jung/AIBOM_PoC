@@ -81,7 +81,58 @@ try {
   datasetValue.datasetNames.forEach((name) => assert(datasetHtml.includes(name)));
   datasetValue.datasetUrls.forEach((url) => assert(datasetHtml.includes(url)));
 
-  console.log("PASS: React renders the default and query-selected AIBOM views.");
+  const { buildLineageCatalog } = await vite.ssrLoadModule("/src/domain/lineage.js");
+  const { buildModelChecklist } = await vite.ssrLoadModule("/src/domain/aibom.js");
+  const { default: LineageBoard } = await vite.ssrLoadModule("/src/components/lineage/LineageBoard.jsx");
+  const { default: AibomPanel } = await vite.ssrLoadModule("/src/components/aibom/AibomPanel.jsx");
+  const sparseFamily = {
+    id: "gpt-oss",
+    label: "gpt-oss",
+    default_node_id: "openai/gpt-oss-20b",
+    document_node: { id: "document:gpt-oss", title: "gpt-oss source materials", subtitle: "Evidence source" },
+    root_family: {},
+    root_nodes: [{
+      id: "openai/gpt-oss-20b",
+      title: "openai/gpt-oss-20b",
+      subtitle: "OpenAI's smaller open-weight reasoning model."
+    }],
+    derived_models: []
+  };
+  const sparseRegistry = { "gpt-oss": sparseFamily };
+  const sparseLineage = buildLineageCatalog(sparseRegistry);
+  const sparseNode = sparseLineage.nodeMap.get("openai/gpt-oss-20b");
+  const sparseModel = {
+    modelId: sparseNode.id,
+    modelName: "gpt-oss-20b",
+    supplier: "OpenAI",
+    familyDeveloper: "OpenAI",
+    modelUrl: "https://openai.com/index/introducing-gpt-oss/",
+    packageUrl: "https://huggingface.co/openai/gpt-oss-20b",
+    licenseReported: ["apache-2.0"],
+    parameterScale: "20.91B total parameters",
+    description: sparseNode.subtitle,
+    details: { model: { title: sparseNode.id } }
+  };
+  const sparseChecklistRegistry = { [sparseNode.id]: buildModelChecklist(sparseModel) };
+  const boardHtml = renderToStaticMarkup(React.createElement(LineageBoard, {
+    context: sparseLineage.familyContexts[0],
+    activeNodeId: sparseNode.id,
+    onSelect: () => {},
+    familyRegistry: sparseRegistry
+  }));
+  const panelHtml = renderToStaticMarkup(React.createElement(AibomPanel, {
+    node: sparseNode,
+    onSelect: () => {},
+    familyRegistry: sparseRegistry,
+    checklistRegistry: sparseChecklistRegistry,
+    nodeMap: sparseLineage.nodeMap
+  }));
+  assert(boardHtml.includes("No example descendants added for this root yet."));
+  assert(boardHtml.includes("openai/gpt-oss-20b"));
+  assert(panelHtml.includes("20.91B total parameters"));
+  assert(panelHtml.includes("apache-2.0"));
+
+  console.log("PASS: React renders query-selected and sparse single-model AIBOM views.");
 } finally {
   await vite.close();
 }

@@ -7,16 +7,19 @@ function branchLabel(rootNode) {
 
 export default function LineageBoard({ context, activeNodeId, onSelect, familyRegistry }) {
   const { familyId, family, documentNode, rootNodes, derivedNodes } = context;
+  const rootFamily = family.root_family || {};
+  const focusLabel = rootFamily.focus_variant?.label || `${rootNodes.length} root model${rootNodes.length === 1 ? "" : "s"}`;
+  const releaseLabel = rootFamily.release_date ? formatDate(rootFamily.release_date) : "release date not disclosed";
 
   return (
     <section className="family-cluster" data-family-cluster={familyId}>
       <div className="cluster-head">
         <div>
           <p className="eyebrow">{family.label}</p>
-          <h3>{family.root_family.family_id}</h3>
+          <h3>{rootFamily.family_id || family.label}</h3>
         </div>
         <p className="section-note">
-          {`${family.root_family.focus_variant.label} focus slice, released ${formatDate(family.root_family.release_date)}.`}
+          {`${focusLabel}, ${releaseLabel}.`}
         </p>
       </div>
 

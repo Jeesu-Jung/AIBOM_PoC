@@ -4,6 +4,51 @@ export function isMissingChecklistValue(value) {
   return value == null || value === "" || value === "Not found" || (Array.isArray(value) && !value.length);
 }
 
+function checklistField(name, value, tier = "Critical", type = "CDX") {
+  return {
+    name,
+    value,
+    present: !isMissingChecklistValue(value),
+    actualLocation: "model catalog",
+    tier,
+    type
+  };
+}
+
+function checklistCategory(id, label, fields) {
+  const present = fields.filter((field) => field.present).length;
+  return { id, label, present, total: fields.length, score: present, maxScore: fields.length, fields };
+}
+
+export function buildModelChecklist(model) {
+  const provided = model.details?.checklist;
+  if (provided?.categories) return provided;
+
+  return {
+    modelId: model.modelId,
+    categories: [
+      checklistCategory("identity", "Identity", [
+        checklistField("modelId", model.modelId),
+        checklistField("modelName", model.modelName),
+        checklistField("modelVersion", model.modelVersion),
+        checklistField("supplier", model.supplier),
+        checklistField("familyDeveloper", model.familyDeveloper),
+        checklistField("modelUrl", model.modelUrl),
+        checklistField("packageUrl", model.packageUrl),
+        checklistField("license", model.licenseReported || model.familyLicenseName)
+      ]),
+      checklistCategory("model-card", "Model card", [
+        checklistField("description", model.description),
+        checklistField("primaryPurpose", model.primaryPurpose),
+        checklistField("artifactFormat", model.artifactFormat),
+        checklistField("tensorType", model.tensorType),
+        checklistField("parameterScale", model.parameterScale),
+        checklistField("artifactRevision", model.artifactRevision)
+      ])
+    ]
+  };
+}
+
 function checklistValuesEqual(left, right) {
   if (isMissingChecklistValue(left) && isMissingChecklistValue(right)) return true;
   return JSON.stringify(left) === JSON.stringify(right);
@@ -67,11 +112,15 @@ function legacyRow(field, value, status = "Extracted") {
 }
 
 function buildDocumentAibomSections(node, family) {
-  const variant = family.root_family.focus_variant;
-  const rootSources = family.root_family.sources;
+  const rootFamily = family.root_family || {};
+  const variant = rootFamily.focus_variant || {};
+  const rootSources = Array.isArray(rootFamily.sources) ? rootFamily.sources : [];
+  const pretraining = rootFamily.pretraining || {};
+  const postTraining = rootFamily.post_training || {};
+  const architecture = rootFamily.architecture || {};
   const hfUrl = rootSources.find((source) => ["official_model_card", "huggingface_model_card"].includes(source.type))?.url || null;
   const reportUrl = rootSources.find((source) => ["paper", "technical_report", "official_blog", "official_model_card", "huggingface_model_card"].includes(source.type))?.url || null;
-  const trainingDataNames = family.root_family.pretraining.exact_dataset_inventory || [family.root_family.pretraining.corpus_size_family];
+  const trainingDataNames = pretraining.exact_dataset_inventory || (pretraining.corpus_size_family ? [pretraining.corpus_size_family] : []);
   const evidenceRows = rootSources.map((source) => legacyRow(
     source.title ? `${toTitleCase(source.type)} | ${source.title}` : toTitleCase(source.type),
     source.url,
@@ -81,18 +130,18 @@ function buildDocumentAibomSections(node, family) {
   return [
     { legacy: true, title: "Identity", rows: [
       legacyRow("Model family", family.label, "Context"),
-      legacyRow("Model name", family.root_family.family_id),
-      legacyRow("Model version", family.root_family.release_date, "Context"),
+      legacyRow("Model name", rootFamily.family_id || family.label),
+      legacyRow("Model version", rootFamily.release_date, "Context"),
       legacyRow("Model description", node.subtitle),
       legacyRow("Model download location", hfUrl, hfUrl ? "Derived" : "Not disclosed"),
       legacyRow("Source repository", null),
-      legacyRow("Supplier", family.root_family.developer),
-      legacyRow("License", family.root_family.license)
+      legacyRow("Supplier", rootFamily.developer),
+      legacyRow("License", rootFamily.license)
     ]},
     { legacy: true, title: "Purpose and architecture", rows: [
       legacyRow("Primary purpose", `Root evidence for the initial ${family.label} family AIBOM extraction`, "Context"),
       legacyRow("Domain", "general-purpose multilingual language modeling", "Context"),
-      legacyRow("Type of model", family.root_family.architecture.family),
+      legacyRow("Type of model", architecture.family),
       legacyRow("Hyperparameters", { layers: variant.layers, hidden_size: variant.hidden_size, attention_heads: variant.attention_heads, context_length: variant.context_length }, "Context"),
       legacyRow("Performance metrics", null),
       legacyRow("Decision thresholds", null),
@@ -100,10 +149,10 @@ function buildDocumentAibomSections(node, family) {
     ]},
     { legacy: true, title: "Training and data", rows: [
       legacyRow("Training information", [
-        `Pretraining stages: ${family.root_family.pretraining.stages.join(" -> ")}`,
-        `Post-training methods: ${family.root_family.post_training.methods.join(", ")}`
+        `Pretraining stages: ${(pretraining.stages || []).join(" -> ") || "Not disclosed"}`,
+        `Post-training methods: ${(postTraining.methods || []).join(", ") || "Not disclosed"}`
       ]),
-      legacyRow("Data preprocessing", family.root_family.pretraining.data_processing),
+      legacyRow("Data preprocessing", pretraining.data_processing),
       legacyRow("Sensitive data usage", "Not disclosed in the root evidence", "Context"),
       legacyRow("Training datasets", trainingDataNames),
       legacyRow("Test datasets", null)
@@ -116,7 +165,7 @@ function buildDocumentAibomSections(node, family) {
         "Downstream models may add their own safety or refusal tuning."
       ]),
       legacyRow("Runtime dependencies", null),
-      legacyRow("Model lineage", `${node.title} -> ${family.root_family.family_id}`, "Derived"),
+      legacyRow("Model lineage", `${node.title} -> ${rootFamily.family_id || family.label}`, "Derived"),
       legacyRow("Supporting document", reportUrl, reportUrl ? "Extracted" : "Not disclosed")
     ]},
     { legacy: true, title: "Evidence references", rows: evidenceRows }

@@ -3,6 +3,7 @@ import AibomPanel from "./components/aibom/AibomPanel.jsx";
 import DashboardHeader from "./components/layout/DashboardHeader.jsx";
 import LineageBoard from "./components/lineage/LineageBoard.jsx";
 import { fetchFamilies, fetchFamilyHierarchy, fetchModel } from "./api/catalog.js";
+import { buildModelChecklist } from "./domain/aibom.js";
 import { buildLineageCatalog, getInitialNodeId } from "./domain/lineage.js";
 import { useLineageConnections } from "./hooks/useLineageConnections.js";
 
@@ -73,8 +74,7 @@ export default function App({ initialCatalog = null }) {
         try {
           const model = await fetchModel(requestedNodeId);
           if (!active) return;
-          const checklist = model.details?.checklist;
-          if (checklist) setChecklistRegistry({ [model.modelId]: checklist });
+          setChecklistRegistry({ [model.modelId]: buildModelChecklist(model) });
           setActiveFamilyId(model.familyKey);
           setActiveNodeId(model.modelId);
           return;
@@ -135,7 +135,7 @@ export default function App({ initialCatalog = null }) {
       setChecklistRegistry((current) => {
         const next = { ...current };
         models.forEach((model) => {
-          if (model.details?.checklist) next[model.modelId] = model.details.checklist;
+          next[model.modelId] = buildModelChecklist(model);
         });
         return next;
       });

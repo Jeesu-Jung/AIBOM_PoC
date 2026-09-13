@@ -11,18 +11,19 @@ function mergeSources(...sourceLists) {
 
 function buildFamilyContext(familyRegistry, familyId) {
   const family = familyRegistry[familyId];
+  const familySources = Array.isArray(family.root_family?.sources) ? family.root_family.sources : [];
   const documentNode = {
     ...family.document_node,
     kind: "document",
     familyId,
-    sources: family.root_family.sources
+    sources: familySources
   };
   const rootNodes = family.root_nodes.map((node) => ({
     ...node,
     kind: "root",
     familyId,
     parent: documentNode.id,
-    sources: family.root_family.sources
+    sources: familySources
   }));
   const derivedNodes = family.derived_models.map((model) => ({
     ...model,
@@ -31,7 +32,7 @@ function buildFamilyContext(familyRegistry, familyId) {
     title: model.model_id,
     familyId,
     parent: model.parent_model,
-    sources: mergeSources(family.root_family.sources, model.sources || [])
+    sources: mergeSources(familySources, model.sources || [])
   }));
 
   return {
@@ -76,10 +77,11 @@ export function getNodePreview(node, familyRegistry) {
   const family = familyRegistry[node.familyId];
   if (node.kind === "document") return node.subtitle;
   if (node.kind === "root") {
-    const variant = family.root_family.focus_variant;
+    const variantLabel = family.root_family?.focus_variant?.label;
+    if (!variantLabel) return node.subtitle || `Root model in the ${family.label} family.`;
     return node.id.toLowerCase().includes("instruct")
-      ? `Official post-trained ${variant.label.toLowerCase()} instruct checkpoint.`
-      : `Base ${variant.label.toLowerCase()} checkpoint inherited directly from the family evidence root.`;
+      ? `Official post-trained ${variantLabel.toLowerCase()} instruct checkpoint.`
+      : `Base ${variantLabel.toLowerCase()} checkpoint inherited directly from the family evidence root.`;
   }
   return RELATION_SHORT_NOTES[node.relationship] || summarizeDelta(node.delta);
 }
