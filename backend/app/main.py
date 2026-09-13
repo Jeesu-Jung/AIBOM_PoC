@@ -1,5 +1,6 @@
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -21,6 +22,7 @@ from .admin import (
 )
 from .config import settings
 from .database import get_db
+from .research import ModelResearchRequest, stream_model_research
 
 
 app = FastAPI(
@@ -100,6 +102,16 @@ def admin_models(db: Session = Depends(get_db)) -> list[dict]:
         return [admin_model_to_dict(row) for row in load_admin_models(db)]
     except SQLAlchemyError as error:
         raise _database_unavailable() from error
+
+
+@app.post("/api/v1/admin/model-research/stream", tags=["admin"])
+async def admin_stream_model_research(payload: ModelResearchRequest) -> StreamingResponse:
+    """Stream public OpenRouter activity and finish with a validated admin draft."""
+    return StreamingResponse(
+        stream_model_research(payload.model_name),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/v1/admin/models", tags=["admin"], status_code=status.HTTP_201_CREATED)

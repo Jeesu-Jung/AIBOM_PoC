@@ -2,6 +2,9 @@ node_modules/
 dist/
 .idea
 backend/.venv/
+backend/.env
+backend/.env.local
+backend/.uvicorn.*.log
 __pycache__/
 .pytest_cache/
 *.pyc

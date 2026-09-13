@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
-import "react-loading-skeleton/dist/skeleton.css";
-import { createAdminModel, deleteAdminModel, fetchAdminModels, updateAdminModel } from "./api/admin.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createAdminModel, deleteAdminModel, fetchAdminModels, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
 
 const EMPTY_MODEL = {
   modelId: "", namespace: "", modelName: "", familyKey: "", familyName: "", modelRole: "DERIVED",
@@ -59,49 +57,39 @@ function Input({ field, form, setForm, ...props }) {
   return <input value={form[field] ?? ""} onChange={(event) => setForm({ ...form, [field]: event.target.value })} {...props} />;
 }
 
-function mockAiResult(query) {
-  const modelId = query.includes("/") ? query.trim() : `community/${query.trim().replace(/\s+/g, "-")}`;
-  const [namespace, ...nameParts] = modelId.split("/");
-  const modelName = nameParts.join("/") || namespace;
-  const familyName = modelName.split(/[-_]/).slice(0, 2).join(" ") || modelName;
-  const familyKey = familyName.toLowerCase().replace(/[^a-z0-9가-힣]+/g, "-").replace(/^-|-$/g, "") || "new-family";
-  return {
-    ...EMPTY_MODEL,
-    modelId,
-    namespace: nameParts.length ? namespace : "community",
-    modelName,
-    familyKey,
-    familyName,
-    modelRole: "BASE",
-    supplier: nameParts.length ? namespace : "Community",
-    primaryPurpose: "Text generation",
-    modelVersion: "1.0",
-    modelUrl: `https://huggingface.co/${modelId}`,
-    artifactFormat: "safetensors",
-    tensorType: "BF16",
-    description: `${modelName} 모델의 공개 웹 자료를 기반으로 생성된 검토용 초안입니다.`,
-    licenseReported: "apache-2.0",
-    detailsJson: {
-      model: { title: modelId, subtitle: "AI-assisted metadata draft", sources: [`https://huggingface.co/${modelId}`] },
-      checklist: { modelId, categories: [] },
-      ai_assisted: { status: "mock", reviewed: false }
-    }
-  };
+const stageLabels = {
+  connecting: "OpenRouter 연결",
+  researching: "웹 검색 및 분석",
+  validating: "응답 검증"
+};
+
+function ResearchStreamLog({ events, partialContent, live = false }) {
+  const publicEvents = events.filter((item) => item.type !== "provider_event");
+  const providerEvents = events.filter((item) => item.type === "provider_event");
+  return <div className="research-stream-log">
+    <div className="research-stream-head"><strong>실시간 조사 로그</strong><span className={live ? "is-live" : ""}>{live ? "LIVE" : "완료"}</span></div>
+    <ol className="research-event-list">
+      {publicEvents.map((item, index) => <li key={`${item.type}-${index}`}>
+        <span className={item.type === "error" ? "error" : item.type === "complete" ? "done" : ""}>{item.type === "complete" ? "✓" : item.type === "error" ? "!" : index + 1}</span>
+        <div><strong>{item.type === "status" ? stageLabels[item.data.stage] || "진행 상태" : item.type === "activity" ? "도구 실행" : item.type === "complete" ? "초안 생성 완료" : "오류"}</strong><p>{item.data.message || (item.type === "complete" ? "구조화된 결과를 검증했습니다." : "")}</p></div>
+      </li>)}
+      {live && <li><span className="stream-pulse" /><div><strong>응답 수신 중</strong><p>{partialContent ? `${partialContent.length.toLocaleString()}자 생성됨` : "검색 결과를 기다리고 있습니다."}</p></div></li>}
+    </ol>
+    {partialContent && <details className="research-stream-detail"><summary>생성 중인 JSON 보기</summary><pre>{partialContent}</pre></details>}
+    <details className="research-stream-detail"><summary>OpenRouter 원본 이벤트 {providerEvents.length}개</summary><pre>{providerEvents.length ? providerEvents.map((item) => JSON.stringify(item.data)).join("\n") : "아직 수신된 이벤트가 없습니다."}</pre></details>
+  </div>;
 }
 
 function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }) {
   const [query, setQuery] = useState("");
   const [stage, setStage] = useState("input");
   const [result, setResult] = useState(null);
+  const [searchError, setSearchError] = useState(null);
+  const [streamEvents, setStreamEvents] = useState([]);
+  const [partialContent, setPartialContent] = useState("");
+  const abortRef = useRef(null);
 
-  useEffect(() => {
-    if (stage !== "loading") return undefined;
-    const timer = window.setTimeout(() => {
-      setResult(mockAiResult(query));
-      setStage("review");
-    }, 2400);
-    return () => window.clearTimeout(timer);
-  }, [stage, query]);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -114,10 +102,34 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
     };
   }, [stage, onClose]);
 
-  const beginSearch = (event) => {
+  const beginSearch = async (event) => {
     event.preventDefault();
     if (!query.trim()) return;
+    setSearchError(null);
+    setStreamEvents([]);
+    setPartialContent("");
     setStage("loading");
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      const payload = await streamAdminModelResearch(query.trim(), (streamEvent) => {
+        if (streamEvent.type === "content") setPartialContent((current) => current + (streamEvent.data.delta || ""));
+        else setStreamEvents((current) => [...current, streamEvent]);
+      }, controller.signal);
+      setResult(payload);
+      setStage("review");
+    } catch (error) {
+      if (error.name !== "AbortError") setSearchError(error.message);
+      setStage("input");
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  };
+
+  const cancelSearch = () => {
+    abortRef.current?.abort();
+    setSearchError("검색을 취소했습니다.");
+    setStage("input");
   };
 
   return (
@@ -141,24 +153,31 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
           <button type="button" className="create-back" onClick={() => onModeChange("method")}>← 등록 방식 다시 선택</button>
           <div className="ai-intro"><span className="ai-spark">✦</span><div><h3>AI 모델 정보 검색</h3><p>Hugging Face 형식의 모델 ID나 모델명을 입력해 주세요. 검색 결과는 등록 전 수정할 수 있습니다.</p></div></div>
           <label><span>모델명 또는 모델 ID</span><div className="ai-search-input"><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: mistralai/Mistral-7B-Instruct-v0.3" /><button type="submit" disabled={!query.trim()}>웹에서 찾기</button></div></label>
-          <p className="ai-beta-note">현재 데모에서는 실제 검색 대신 예시 메타데이터를 생성합니다.</p>
+          {searchError && <div className="ai-search-error" role="alert"><strong>검색하지 못했습니다.</strong><span>{searchError}</span></div>}
+          <p className="ai-beta-note">OpenRouter가 공개 웹 자료를 검색합니다. 검색 결과는 저장 전에 반드시 검토해 주세요.</p>
         </form>}
 
         {mode === "ai" && stage === "loading" && <div className="ai-loading" aria-live="polite">
           <div className="ai-orbit"><span>✦</span></div><h3>“{query}” 정보를 찾고 있습니다</h3><p>여러 공개 소스를 비교하고 신뢰할 수 있는 항목을 정리하는 중입니다.</p>
-          <ol><li className="done"><span>✓</span>모델 저장소 검색</li><li className="active"><span className="mini-spinner" />모델 카드와 라이선스 분석</li><li><span>3</span>계층 관계 및 메타데이터 정리</li></ol>
-          <SkeletonTheme baseColor="#e9eef6" highlightColor="#f8faff"><div className="ai-skeleton"><Skeleton height={14} width="62%" /><Skeleton height={14} count={2} /><Skeleton height={38} /></div></SkeletonTheme>
+          <ResearchStreamLog events={streamEvents} partialContent={partialContent} live />
+          <button type="button" className="admin-secondary stream-cancel" onClick={cancelSearch}>검색 취소</button>
         </div>}
 
-        {mode === "ai" && stage === "review" && result && <div className="ai-review">
-          <div className="ai-review-banner"><span>✓</span><div><strong>초안 생성 완료</strong><p>아래 내용은 목 데이터입니다. 편집 화면에서 검토한 뒤 최종 등록해 주세요.</p></div><em>DEMO</em></div>
+        {mode === "ai" && stage === "review" && result?.draft && <div className="ai-review">
+          <div className="ai-review-banner"><span>✓</span><div><strong>웹 검색 초안 생성 완료</strong><p>출처와 경고를 확인하고 편집 화면에서 최종 검토해 주세요.</p></div><em>AI DRAFT</em></div>
           <div className="ai-review-grid">
-            <div><span>Model ID</span><strong>{result.modelId}</strong></div><div><span>Supplier</span><strong>{result.supplier}</strong></div>
-            <div><span>Family</span><strong>{result.familyName}</strong></div><div><span>Role</span><strong>{result.modelRole}</strong></div>
-            <div><span>Format</span><strong>{result.artifactFormat}</strong></div><div><span>License</span><strong>{result.licenseReported}</strong></div>
+            <div><span>Model ID</span><strong>{result.draft.modelId}</strong></div><div><span>Supplier</span><strong>{result.draft.supplier || "확인 필요"}</strong></div>
+            <div><span>Family</span><strong>{result.draft.familyName}</strong></div><div><span>Role</span><strong>{result.draft.modelRole}</strong></div>
+            <div><span>Format</span><strong>{result.draft.artifactFormat || "확인 필요"}</strong></div><div><span>License</span><strong>{result.draft.licenseReported?.join(", ") || "확인 필요"}</strong></div>
           </div>
-          <div className="ai-sources"><span>참고한 소스</span><a href={result.modelUrl} target="_blank" rel="noreferrer">Hugging Face 모델 페이지 ↗</a><small>실제 연동 시 공식 문서와 모델 카드가 여기에 표시됩니다.</small></div>
-          <div className="create-dialog-actions"><button type="button" className="admin-secondary" onClick={() => setStage("input")}>다시 검색</button><button type="button" className="admin-primary" onClick={() => onUseDraft(result)}>편집 화면에서 검토</button></div>
+          <div className="ai-result-section"><div className="ai-result-heading"><strong>참고한 소스</strong><span>{result.sources?.length || 0}</span></div>
+            {result.sources?.length ? <ul className="ai-source-list">{result.sources.map((source) => <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.title || source.url} ↗</a>{source.excerpt && <p>{source.excerpt}</p>}</li>)}</ul> : <p className="ai-result-empty">응답에서 URL 출처를 확인하지 못했습니다.</p>}
+          </div>
+          {result.parentCandidates?.length > 0 && <div className="ai-result-section"><div className="ai-result-heading"><strong>부모 모델 후보</strong><span>{result.parentCandidates.length}</span></div><ul className="ai-parent-list">{result.parentCandidates.map((candidate) => <li key={`${candidate.modelId}-${candidate.relationshipType}`}><strong>{candidate.modelId}</strong><span>{candidate.relationshipType} · 신뢰도 {candidate.confidence}</span></li>)}</ul></div>}
+          {result.warnings?.length > 0 && <div className="ai-warning-list"><strong>검토할 항목</strong><ul>{result.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div>}
+          <div className="ai-research-meta"><span>Research model: {result.research?.model || "OpenRouter"}</span>{result.research?.webSearchRequests != null && <span>Web searches: {result.research.webSearchRequests}</span>}</div>
+          <ResearchStreamLog events={streamEvents} partialContent={partialContent} />
+          <div className="create-dialog-actions"><button type="button" className="admin-secondary" onClick={() => { setResult(null); setSearchError(null); setStreamEvents([]); setPartialContent(""); setStage("input"); }}>다시 검색</button><button type="button" className="admin-primary" onClick={() => onUseDraft(result.draft)}>편집 화면에서 검토</button></div>
         </div>}
       </section>
     </div>
