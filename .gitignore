@@ -8,3 +8,4 @@ backend/.uvicorn.*.log
 __pycache__/
 .pytest_cache/
 *.pyc
+dbhub.toml

@@ -1,0 +1,26 @@
+# DBHub (https://github.com/bytebase/dbhub) MCP config for the aibom database.
+# Copy to dbhub.toml (gitignored) and fill in the aibom_mcp password.
+# Table-level access is enforced by MySQL grants, not here:
+# see scripts/mysql-mcp/grant_aibom_mcp.sql.
+
+[[sources]]
+id = "aibom"
+description = "AIBOM PoC catalog (models, datasets, research results)"
+dsn = "mysql://aibom_mcp:CHANGE_ME@127.0.0.1:3306/aibom"
+charset = "utf8mb4"
+connection_timeout = 10
+query_timeout = 30
+
+[[tools]]
+name = "execute_sql"
+source = "aibom"
+readonly = false
+max_rows = 500
+
+[[tools]]
+name = "search_objects"
+source = "aibom"
+
+[[tools]]
+name = "explain_sql"
+source = "aibom"
