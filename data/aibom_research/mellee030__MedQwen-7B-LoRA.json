@@ -1,0 +1,195 @@
+{
+  "model_id": "mellee030/MedQwen-7B-LoRA",
+  "model": {
+    "release_date": "2026-04-17",
+    "architecture_family": "decoder-only Transformer (Qwen2.5 architecture); LoRA adapter on frozen base weights",
+    "architecture_details": {
+      "layers": 28,
+      "hidden_size": 3584,
+      "ffn_size": 18944,
+      "attention_heads": 28,
+      "kv_heads": 4,
+      "activation": "SwiGLU",
+      "position_embedding": "RoPE",
+      "rope_theta": 1000000
+    },
+    "parameter_count": null,
+    "context_length": 32768,
+    "tokenizer": "Qwen2Tokenizer (BPE), inherited unchanged from Qwen2.5-7B-Instruct",
+    "vocab_size": 152064,
+    "modality_input": ["text"],
+    "modality_output": ["text"],
+    "languages": ["zh"],
+    "knowledge_cutoff": null,
+    "intended_use": "Domain-adapted Chinese medical question-answering / dialogue assistant, produced by LoRA fine-tuning Qwen2.5-7B-Instruct on Chinese medical Q&A pairs.",
+    "capabilities": [
+      "Chinese medical Q&A (symptoms, medications, diseases, treatment advice)",
+      "concise, on-format chat-style answers",
+      "retains base Qwen2.5-7B-Instruct general instruction-following via frozen base weights"
+    ],
+    "limitations": [
+      "Intended for Chinese medical Q&A only",
+      "Not a substitute for professional medical advice",
+      "Performance may vary on medical topics underrepresented in the training data",
+      "Evaluated only on a specific, undisclosed Chinese medical Q&A corpus (412 held-out samples, 50-sample subset scored); results may differ on other datasets"
+    ]
+  },
+  "references": [
+    {"key": "hf_card", "type": "model_card", "title": "mellee030/MedQwen-7B-LoRA (README)", "uri": "https://huggingface.co/mellee030/MedQwen-7B-LoRA", "revision": "240ea2f26040208aaa7a8125f8e84ae74a4df09f"},
+    {"key": "hf_adapter_config", "type": "config", "title": "adapter_config.json", "uri": "https://huggingface.co/mellee030/MedQwen-7B-LoRA/raw/main/adapter_config.json", "revision": "240ea2f26040208aaa7a8125f8e84ae74a4df09f"},
+    {"key": "hf_api", "type": "api_metadata", "title": "HF Hub API model record", "uri": "https://huggingface.co/api/models/mellee030/MedQwen-7B-LoRA", "revision": "240ea2f26040208aaa7a8125f8e84ae74a4df09f"},
+    {"key": "qwen_base_card", "type": "official_model_card", "title": "Qwen/Qwen2.5-7B-Instruct", "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct", "revision": null},
+    {"key": "qwen_base_config", "type": "config", "title": "Qwen2.5-7B-Instruct config.json", "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/raw/main/config.json", "revision": null},
+    {"key": "github_repo", "type": "code_repository", "title": "melc030/MedQwen (training code, evaluation scripts, Gradio demo — linked from HF card)", "uri": "https://github.com/melc030/MedQwen", "revision": null}
+  ],
+  "provenance": {
+    "origin": "Qwen2.5",
+    "provider": "mellee030",
+    "relation": "adapter_trained_from",
+    "disclosure_status": "partially_disclosed",
+    "notes": "Personal/community LoRA fine-tune of Qwen/Qwen2.5-7B-Instruct. Author identity beyond the HF handle 'mellee030' (linked GitHub user 'melc030') and any organizational affiliation are not disclosed. base_model_name_or_path in adapter_config.json points to a local path ('/home/yuxincui/MedQwen/Qwen2.5-7B-Instruct'), consistent with a local copy of the public Qwen/Qwen2.5-7B-Instruct checkpoint rather than a modified base.",
+    "evidence": ["hf_card", "hf_adapter_config"]
+  },
+  "transformation": {
+    "methods": ["LoRA PEFT fine-tuning"],
+    "objective": "Adapt Qwen2.5-7B-Instruct to Chinese medical question answering / dialogue while keeping the adapter lightweight and the base model's general capabilities intact.",
+    "hyperparameters": {
+      "lora_rank": 8,
+      "lora_alpha": 16,
+      "lora_dropout": 0.05,
+      "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+      "learning_rate": 0.0002,
+      "lr_scheduler": "cosine with warmup",
+      "batch_size": 1,
+      "gradient_accumulation_steps": 8,
+      "effective_batch_size": 8,
+      "epochs": 3,
+      "max_sequence_length": 256,
+      "precision": "FP16",
+      "trainable_params_share": "~1% of base model parameters (per HF card)"
+    },
+    "adapter_config": {
+      "peft_type": "LORA",
+      "task_type": "CAUSAL_LM",
+      "r": 8,
+      "lora_alpha": 16,
+      "lora_dropout": 0.05,
+      "bias": "none",
+      "target_modules": ["down_proj", "k_proj", "up_proj", "o_proj", "v_proj", "q_proj", "gate_proj"],
+      "use_dora": false,
+      "use_rslora": false,
+      "base_model_name_or_path": "/home/yuxincui/MedQwen/Qwen2.5-7B-Instruct",
+      "peft_version": "0.19.1"
+    },
+    "performed_at": null,
+    "notes": "Trained on a single GCP L4 GPU (24GB VRAM); training time ~12 hours per HF card. HF repo was created 2026-04-17 and last modified 2026-04-18, used only as a rough proxy for release timing since no explicit training/release date is stated.",
+    "inputs": [
+      {"model_id": "Qwen/Qwen2.5-7B-Instruct", "external_model_name": null, "role": "base"}
+    ],
+    "datasets": [
+      {"dataset_key": "slug:medqwen-7b-lora-chinese-medical-dialogue-30284", "role": "finetuning"}
+    ],
+    "evidence": ["hf_card", "hf_adapter_config"]
+  },
+  "datasets": [
+    {
+      "key": "slug:medqwen-7b-lora-chinese-medical-dialogue-30284",
+      "name": "MedQwen-7B-LoRA Chinese medical dialogue pairs (30,284)",
+      "hf_id": null,
+      "version": null,
+      "description": "30,284 Chinese medical Q&A dialogue pairs covering symptoms, medications, diseases, and treatment advice; converted to the Qwen2.5 chat template format (system/user/assistant).",
+      "size": "30,284 pairs",
+      "modality": "text",
+      "provider": "mellee030",
+      "license": null,
+      "disclosure_status": "partially_disclosed",
+      "processing": ["converted to Qwen2.5 chat template (system/user/assistant roles)"],
+      "uri": null,
+      "parents": [],
+      "evidence": ["hf_card"]
+    }
+  ],
+  "evaluations": [
+    {
+      "benchmark": "ROUGE-1",
+      "dataset_key": "slug:medqwen-7b-lora-chinese-medical-dialogue-30284",
+      "metric": "rouge-1_f1_char-level",
+      "value": 0.033,
+      "value_text": "0.0330 (base Qwen2.5-7B-Instruct: 0.0407)",
+      "configuration": {"eval_set": "50-sample subset of 412 held-out validation samples", "notes": "ROUGE is lower for the fine-tuned model because it learns concise, on-format answers rather than verbose outputs (per HF card)."},
+      "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct",
+      "baseline_value": 0.0407,
+      "evaluator_model": null,
+      "reference_key": "hf_card"
+    },
+    {
+      "benchmark": "ROUGE-2",
+      "dataset_key": "slug:medqwen-7b-lora-chinese-medical-dialogue-30284",
+      "metric": "rouge-2_f1_char-level",
+      "value": 0.0024,
+      "value_text": "0.0024 (base Qwen2.5-7B-Instruct: 0.0040)",
+      "configuration": {"eval_set": "50-sample subset of 412 held-out validation samples"},
+      "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct",
+      "baseline_value": 0.004,
+      "evaluator_model": null,
+      "reference_key": "hf_card"
+    },
+    {
+      "benchmark": "ROUGE-L",
+      "dataset_key": "slug:medqwen-7b-lora-chinese-medical-dialogue-30284",
+      "metric": "rouge-l_f1_char-level",
+      "value": 0.033,
+      "value_text": "0.0330 (base Qwen2.5-7B-Instruct: 0.0389)",
+      "configuration": {"eval_set": "50-sample subset of 412 held-out validation samples"},
+      "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct",
+      "baseline_value": 0.0389,
+      "evaluator_model": null,
+      "reference_key": "hf_card"
+    },
+    {
+      "benchmark": "BERTScore",
+      "dataset_key": "slug:medqwen-7b-lora-chinese-medical-dialogue-30284",
+      "metric": "bertscore_f1_bert-base-chinese",
+      "value": 0.667,
+      "value_text": "0.6670 (base Qwen2.5-7B-Instruct: 0.5959), +7.11% absolute improvement",
+      "configuration": {"eval_set": "50-sample subset of 412 held-out validation samples", "embedding_model": "bert-base-chinese", "notes": "Card states BERTScore is the primary metric for open-ended Chinese generation."},
+      "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct",
+      "baseline_value": 0.5959,
+      "evaluator_model": "bert-base-chinese",
+      "reference_key": "hf_card"
+    }
+  ],
+  "safety": {
+    "risk_level": "Low-scope community domain adapter; card explicitly disclaims clinical use and provides no formal safety evaluation.",
+    "items": [
+      {"type": "prohibited_use", "description": "Not a substitute for professional medical advice.", "reference_key": "hf_card"},
+      {"type": "risk", "description": "Performance may vary on medical topics underrepresented in the training data.", "reference_key": "hf_card"},
+      {"type": "risk", "description": "Evaluated on a specific Chinese medical Q&A corpus (undisclosed source/composition); results may differ on other datasets or domains.", "reference_key": "hf_card"},
+      {"type": "risk", "description": "Intended for Chinese medical Q&A only; behavior outside this domain/language is not characterized.", "reference_key": "hf_card"}
+    ]
+  },
+  "licenses": [
+    {
+      "license_key": "apache-2.0",
+      "name": "Apache License 2.0",
+      "spdx_id": "Apache-2.0",
+      "uri": "https://www.apache.org/licenses/LICENSE-2.0",
+      "usage_policy_name": null,
+      "usage_policy_uri": null,
+      "commercial_use": "allowed",
+      "restrictions": [],
+      "kind": "declared",
+      "scope_note": "Declared in the HF card YAML front-matter (license: apache-2.0) for the adapter itself; the base model Qwen/Qwen2.5-7B-Instruct is also released under Apache-2.0."
+    }
+  ],
+  "unknowns": [
+    "Exact number of trainable LoRA parameters (only artifact size ~150MB / '~1% of parameters' is reported; base Qwen2.5-7B-Instruct has 7.61B parameters, 6.53B non-embedding per its own card).",
+    "Exact release/publish date of the adapter; used HF repo createdAt (2026-04-17T17:15:06Z, per the Hub API) as a proxy since the card gives no explicit date.",
+    "Precise composition/provenance of the '30,284 Chinese medical dialogue pairs' training set: no dataset name, license, or public source is given on the HF card. The linked GitHub repo (github.com/melc030/MedQwen) describes what appears to be a related/evolved version of the same personal project, but its current README documents a different configuration (Qwen2.5-1.5B-Instruct base, LoRA r=16/alpha=32, ~43K pairs derived from an 8,807-disease template-generated set and a 'medgraphrag_qa_clean' split) — these numbers do not match the 7B adapter's r=8/alpha=16/30,284-pair configuration, so the repo could not be used to confirm the exact dataset behind this specific model; treated as directionally related evidence only, not as a confirmed source.",
+    "Whether ROUGE was computed with character-level tokenization for Chinese (confirmed for the related 1.5B project in the GitHub README) also applies identically to this 7B adapter's reported numbers; not explicitly restated on the 7B model card.",
+    "Author's real-world identity/organization behind the HF account 'mellee030' and GitHub account 'melc030'.",
+    "Whether the base_model_name_or_path in adapter_config.json ('/home/yuxincui/MedQwen/Qwen2.5-7B-Instruct', a local path referencing a 'yuxincui' user) indicates the actual author's name is separate from the HF/GitHub handles used.",
+    "Knowledge cutoff date of the underlying base model / adapter training data.",
+    "The 'top' dataset name/URL surfaced in the catalog's automated CycloneDX checklist (datasetNames: ['top'], https://huggingface.co/datasets/top) does not correspond to any dataset referenced in the HF card's YAML front-matter or body text; treated as a checklist extraction artifact and omitted from datasets[]."
+  ]
+}

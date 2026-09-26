@@ -1,0 +1,355 @@
+{
+  "model_id": "HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge",
+  "model": {
+    "release_date": "2025-05-27",
+    "architecture_family": "decoder-only Transformer (Llama 3.1 architecture)",
+    "architecture_details": {
+      "layers": 32,
+      "hidden_size": 4096,
+      "ffn_size": 14336,
+      "attention_heads": 32,
+      "kv_heads": 8,
+      "activation": "SiLU/SwiGLU",
+      "position_embedding": "RoPE (llama3 rope_scaling, factor 8.0)",
+      "rope_theta": 500000
+    },
+    "parameter_count": 8030261248,
+    "context_length": 131072,
+    "tokenizer": "Llama 3 tokenizer, tiktoken-based BPE (PreTrainedTokenizerFast)",
+    "vocab_size": 128257,
+    "modality_input": [
+      "text"
+    ],
+    "modality_output": [
+      "text"
+    ],
+    "languages": [
+      "en",
+      "es",
+      "ca",
+      "gl",
+      "eu"
+    ],
+    "knowledge_cutoff": "2023-12",
+    "intended_use": "LLM-as-a-Judge that takes a question, a reference answer, and a candidate model-generated answer and outputs a Yes/No judgment of whether the candidate answer is truthful, used to evaluate models on the multilingual TruthfulQA-Multi benchmark (English, Basque, Catalan, Galician, Spanish).",
+    "capabilities": [
+      "binary truthfulness judgment of QA answers",
+      "multilingual evaluation (en/es/ca/gl/eu)",
+      "automated fact-checking / benchmark scoring support"
+    ],
+    "limitations": [
+      "not designed for general-purpose creative text or dialogue generation",
+      "does not provide factual information directly, only judges",
+      "not validated for safety-critical use",
+      "performance varies by language (weaker on culturally specific / time-dependent questions)",
+      "inherits biases and imitative-falsehood framing from original TruthfulQA"
+    ]
+  },
+  "references": [
+    {
+      "key": "hf_card",
+      "type": "model_card",
+      "title": "HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge model card",
+      "uri": "https://huggingface.co/HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge",
+      "revision": "68a7dee9fe59d2dc64766066f1a3a1a73050fde3"
+    },
+    {
+      "key": "hf_config",
+      "type": "config_file",
+      "title": "config.json",
+      "uri": "https://huggingface.co/HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge/raw/main/config.json",
+      "revision": "68a7dee9fe59d2dc64766066f1a3a1a73050fde3"
+    },
+    {
+      "key": "hf_api",
+      "type": "api_metadata",
+      "title": "HF models API record",
+      "uri": "https://huggingface.co/api/models/HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge",
+      "revision": "68a7dee9fe59d2dc64766066f1a3a1a73050fde3"
+    },
+    {
+      "key": "dataset_card",
+      "type": "dataset_card",
+      "title": "HiTZ/truthful_judge dataset card",
+      "uri": "https://huggingface.co/datasets/HiTZ/truthful_judge",
+      "revision": null
+    },
+    {
+      "key": "paper",
+      "type": "paper",
+      "title": "Truth Knows No Language: Evaluating Truthfulness Beyond English",
+      "uri": "https://arxiv.org/abs/2502.09387",
+      "revision": "v3"
+    },
+    {
+      "key": "github_repo",
+      "type": "github",
+      "title": "hitz-zentroa/truthfulqa-multi",
+      "uri": "https://github.com/hitz-zentroa/truthfulqa-multi",
+      "revision": null
+    },
+    {
+      "key": "base_model_card",
+      "type": "official_model_card",
+      "title": "meta-llama/Llama-3.1-8B-Instruct",
+      "uri": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct",
+      "revision": null
+    },
+    {
+      "key": "original_truthfulqa",
+      "type": "paper",
+      "title": "TruthfulQA: Measuring How Models Mimic Human Falsehoods (Lin et al., 2022)",
+      "uri": "https://aclanthology.org/2022.acl-long.229",
+      "revision": null
+    }
+  ],
+  "provenance": {
+    "origin": "Meta Llama 3.1",
+    "provider": "HiTZ Center - Ixa (UPV/EHU) and collaborators (Elhuyar, CiTIUS/USC, Universitat Pompeu Fabra)",
+    "relation": "fine_tuned_from",
+    "disclosure_status": "partially_disclosed",
+    "notes": "Fine-tuned from meta-llama/Meta-Llama-3.1-8B-Instruct to act as an LLM-as-a-Judge for truthfulness, as part of the 'Truth Knows No Language' project (TruthfulQA-Multi). Base model weights/license remain Llama 3.1 Community License; this model's weights, fine-tuning code, and training dataset are released under Apache-2.0.",
+    "evidence": [
+      "hf_card",
+      "paper"
+    ]
+  },
+  "transformation": {
+    "methods": [
+      "supervised fine-tuning (judge task: predict Yes/No truthfulness label)"
+    ],
+    "objective": "Turn a general-purpose instruction-tuned LLM into an automatic LLM-as-a-Judge that scores truthfulness of QA answers consistently across English, Basque, Catalan, Galician and Spanish, as a more reliable alternative to multiple-choice truthfulness metrics.",
+    "hyperparameters": {
+      "epochs": 5,
+      "learning_rate": 0.01,
+      "precision": "bfloat16 mixed precision",
+      "batch_size": null,
+      "optimizer": null
+    },
+    "adapter_config": {},
+    "performed_at": "2025-05-27",
+    "notes": "Model card states batch size and optimizer are 'refer to project code' (https://github.com/hitz-zentroa/truthfulqa-multi, judge/train_judge/); these were not documented in the README or found in the fetched repo excerpt.",
+    "inputs": [
+      {
+        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+        "external_model_name": null,
+        "role": "base"
+      }
+    ],
+    "datasets": [
+      {
+        "dataset_key": "HiTZ/truthful_judge",
+        "role": "finetuning"
+      }
+    ],
+    "evidence": [
+      "hf_card",
+      "paper"
+    ]
+  },
+  "datasets": [
+    {
+      "key": "HiTZ/truthful_judge",
+      "name": "TruthfulQA-Multi Judge Training Data (Truthfulness)",
+      "hf_id": "HiTZ/truthful_judge",
+      "version": null,
+      "description": "Prompt/completion pairs (Yes/No) for training LLM-as-a-Judge truthfulness models; derived from TruthfulQA (Lin et al., 2022) with professional translation plus new culturally-specific questions for Basque, Catalan, Galician and Spanish. Two configs: 'en' (finetune_truth.jsonl, English only) and 'multi' (finetune_truth_multi.json, all 5 languages) - this model was trained on the multilingual ('multi'/MT) configuration.",
+      "size": "817 source TruthfulQA questions across 38 categories per language (per paper), expanded into judge prompt/completion pairs; exact instance count not stated in card",
+      "modality": "text",
+      "provider": "HiTZ Center - Ixa, University of the Basque Country (UPV/EHU) and collaborators",
+      "license": "Apache-2.0",
+      "disclosure_status": "disclosed",
+      "processing": [
+        "professional translation of English TruthfulQA questions",
+        "creation of new culturally-specific questions per target language",
+        "validation and refinement of questions/answers",
+        "pairing of one correct and one incorrect answer per instance",
+        "conversion to Yes/No judge prompt-completion format"
+      ],
+      "uri": "https://huggingface.co/datasets/HiTZ/truthful_judge",
+      "parents": [
+        {
+          "dataset_key": "truthfulqa/truthful_qa",
+          "relation": "derived_from"
+        }
+      ],
+      "evidence": [
+        "dataset_card",
+        "paper"
+      ]
+    },
+    {
+      "key": "truthfulqa/truthful_qa",
+      "name": "TruthfulQA",
+      "hf_id": "truthfulqa/truthful_qa",
+      "version": null,
+      "description": "Original English benchmark of questions designed to elicit imitative falsehoods (Lin, Hilton, Evans, 2022); source of the base questions extended by TruthfulQA-Multi.",
+      "size": "817 questions, 38 categories",
+      "modality": "text",
+      "provider": "Stephanie Lin, Jacob Hilton, Owain Evans",
+      "license": "Apache-2.0",
+      "disclosure_status": "disclosed",
+      "processing": [],
+      "uri": "https://aclanthology.org/2022.acl-long.229",
+      "parents": [],
+      "evidence": [
+        "dataset_card",
+        "paper"
+      ]
+    },
+    {
+      "key": "slug:llama-3.1-pretraining-mixture",
+      "name": "Llama 3.1 pretraining corpus (inherited from base model)",
+      "hf_id": null,
+      "version": null,
+      "description": "Undisclosed multilingual/code/math pretraining mixture used to train the base meta-llama/Llama-3.1-8B-Instruct model; not modified by this fine-tuning, listed for lineage completeness.",
+      "size": "about 15T tokens (family-level, per Llama 3 Herd technical report)",
+      "modality": "text",
+      "provider": "Meta",
+      "license": null,
+      "disclosure_status": "undisclosed",
+      "processing": [
+        "deduplication",
+        "HTML extraction and cleaning",
+        "quality filtering",
+        "PII-heavy domain filtering",
+        "unsafe/adult-domain filtering",
+        "domain-specific code and math processing",
+        "multilingual processing"
+      ],
+      "uri": "https://arxiv.org/pdf/2407.21783",
+      "parents": [],
+      "evidence": [
+        "hf_card"
+      ]
+    }
+  ],
+  "evaluations": [
+    {
+      "benchmark": "TruthfulQA-Multi (Judge agreement, Cohen's Kappa vs human judgment)",
+      "dataset_key": "HiTZ/truthful_judge",
+      "metric": "cohen_kappa",
+      "value": 0.51,
+      "value_text": null,
+      "configuration": {
+        "language": "eu (Basque)",
+        "training_data": "MT data (all languages except English)",
+        "notes": "Per model card, citing paper Table 4"
+      },
+      "baseline_model_id": null,
+      "baseline_value": null,
+      "evaluator_model": "HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge",
+      "reference_key": "hf_card"
+    },
+    {
+      "benchmark": "TruthfulQA-Multi (Judge agreement, Cohen's Kappa vs human judgment)",
+      "dataset_key": "HiTZ/truthful_judge",
+      "metric": "cohen_kappa",
+      "value": 0.54,
+      "value_text": null,
+      "configuration": {
+        "language": "ca (Catalan)",
+        "training_data": "MT data (all languages except English)",
+        "notes": "Per model card, citing paper Table 4"
+      },
+      "baseline_model_id": null,
+      "baseline_value": null,
+      "evaluator_model": "HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge",
+      "reference_key": "hf_card"
+    },
+    {
+      "benchmark": "TruthfulQA-Multi (Judge agreement, Cohen's Kappa vs human judgment)",
+      "dataset_key": "HiTZ/truthful_judge",
+      "metric": "cohen_kappa",
+      "value": 0.49,
+      "value_text": null,
+      "configuration": {
+        "language": "gl (Galician)",
+        "training_data": "MT data (all languages except English)",
+        "notes": "Per model card, citing paper Table 4"
+      },
+      "baseline_model_id": null,
+      "baseline_value": null,
+      "evaluator_model": "HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge",
+      "reference_key": "hf_card"
+    },
+    {
+      "benchmark": "TruthfulQA-Multi (Judge agreement, Cohen's Kappa vs human judgment)",
+      "dataset_key": "HiTZ/truthful_judge",
+      "metric": "cohen_kappa",
+      "value": 0.57,
+      "value_text": null,
+      "configuration": {
+        "language": "es (Spanish)",
+        "training_data": "MT data (all languages except English)",
+        "notes": "Per model card, citing paper Table 4"
+      },
+      "baseline_model_id": null,
+      "baseline_value": null,
+      "evaluator_model": "HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge",
+      "reference_key": "hf_card"
+    }
+  ],
+  "safety": {
+    "risk_level": "Low-to-moderate: a text-judgment tool, not a generative assistant; main risks are language-uneven judgment quality and inherited TruthfulQA/base-model biases.",
+    "items": [
+      {
+        "type": "risk",
+        "description": "Judge performance varies across languages (weaker on culturally specific and time-dependent questions than universal-knowledge questions).",
+        "reference_key": "hf_card"
+      },
+      {
+        "type": "risk",
+        "description": "Inherits Anglocentric framing and imitative-falsehood biases from the original TruthfulQA benchmark.",
+        "reference_key": "dataset_card"
+      },
+      {
+        "type": "prohibited_use",
+        "description": "Not for general-purpose creative text/dialogue generation, providing direct factual information, safety-critical use without validation, or building systems intended to deceive or spread misinformation.",
+        "reference_key": "hf_card"
+      },
+      {
+        "type": "mitigation",
+        "description": "Recommend cross-verification with human oversight for critical applications.",
+        "reference_key": "hf_card"
+      }
+    ]
+  },
+  "licenses": [
+    {
+      "license_key": "llama3.1-community",
+      "name": "Llama 3.1 Community License",
+      "spdx_id": null,
+      "uri": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct/blob/main/LICENSE",
+      "usage_policy_name": "Llama 3.1 Acceptable Use Policy",
+      "usage_policy_uri": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct/blob/main/USE_POLICY.md",
+      "commercial_use": "restricted",
+      "restrictions": [
+        ">700M MAU requires separate license from Meta",
+        "attribution 'Built with Llama'"
+      ],
+      "kind": "declared",
+      "scope_note": "governs the base model meta-llama/Meta-Llama-3.1-8B-Instruct whose weights this model was fine-tuned from"
+    },
+    {
+      "license_key": "apache-2.0",
+      "name": "Apache License 2.0",
+      "spdx_id": "Apache-2.0",
+      "uri": "https://www.apache.org/licenses/LICENSE-2.0",
+      "usage_policy_name": null,
+      "usage_policy_uri": null,
+      "commercial_use": "allowed",
+      "restrictions": [],
+      "kind": "declared",
+      "scope_note": "declared license for this model's fine-tuned weights, fine-tuning code, and the HiTZ/truthful_judge training dataset (per model card); the HF repo tag itself is 'license:llama3.1'"
+    }
+  ],
+  "unknowns": [
+    "Exact batch size and optimizer used for fine-tuning (model card says 'refer to project code'; not found in fetched GitHub README excerpt)",
+    "Exact number of training instances in the 'multi' config (finetune_truth_multi.json) and per-language breakdown",
+    "Whether an English-language Kappa/Spearman score exists for this exact model (card and paper Table 4 report scores only for eu/ca/gl/es, described as trained on 'MT data (all languages except English)', despite the model card's language list including English)",
+    "Training hardware/compute used",
+    "Exact license file wording on the HF repo (page shows tag 'license:llama3.1' while model card body states fine-tuned weights are Apache-2.0; both stated as-is, not reconciled by an inspected LICENSE file)",
+    "Independent verification of full paper Table 3 vs Table 4 contents was inconsistent across automated fetches of the arXiv HTML; evaluation numbers here are taken directly from the model card's own quoted Table 4 values rather than re-derived from the paper PDF/HTML"
+  ]
+}

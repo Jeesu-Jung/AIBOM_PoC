@@ -1,0 +1,116 @@
+{
+  "datasets": {
+    "slug:api-bank": {
+      "name": "API-Bank",
+      "hf_id": "liminghao1630/API-Bank",
+      "uri": "https://huggingface.co/datasets/liminghao1630/API-Bank",
+      "version": "12e8158b7628c168f07e8f31fbbe3445e99f44cf",
+      "license": "MIT",
+      "provider": "Alibaba (API-Bank paper authors)",
+      "description": "A benchmark of dialog traces with tool-call annotations across three complexity levels for evaluating LLM tool-use / API-calling ability.",
+      "size": "~95 MB (train/test splits across level 1-3 API and response files)",
+      "reference": {
+        "type": "dataset_card",
+        "title": "liminghao1630/API-Bank dataset card",
+        "uri": "https://huggingface.co/datasets/liminghao1630/API-Bank",
+        "revision": "12e8158b7628c168f07e8f31fbbe3445e99f44cf"
+      }
+    },
+    "slug:bfcl": {
+      "name": "Berkeley Function Calling Leaderboard (BFCL)",
+      "hf_id": "gorilla-llm/Berkeley-Function-Calling-Leaderboard",
+      "uri": "https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard",
+      "version": "61fc0608cfd831fcfbbaa676ebdfef0ed963eeda",
+      "license": "Apache-2.0",
+      "provider": "UC Berkeley Gorilla LLM project (Sky Computing Lab)",
+      "description": "A live leaderboard/benchmark dataset evaluating LLMs' ability to call functions/tools across simple, parallel, multiple, multi-turn and multi-language (Java, JavaScript, REST, SQL) scenarios.",
+      "size": "27 dataset files spanning simple/parallel/multi-turn/live function-calling categories",
+      "reference": {
+        "type": "dataset_card",
+        "title": "gorilla-llm/Berkeley-Function-Calling-Leaderboard dataset card",
+        "uri": "https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard",
+        "revision": "61fc0608cfd831fcfbbaa676ebdfef0ed963eeda"
+      }
+    },
+    "slug:gorilla-api-bench": {
+      "name": "APIBench (Gorilla)",
+      "hf_id": "gorilla-llm/APIBench",
+      "uri": "https://huggingface.co/datasets/gorilla-llm/APIBench",
+      "version": "ac21e1892e634dfa25f8ad75f16cbdbfb0a5736d",
+      "license": "Apache-2.0",
+      "provider": "UC Berkeley (Shishir G. Patil, Tianjun Zhang, Xin Wang, Joseph E. Gonzalez - Gorilla project)",
+      "description": "Training/evaluation data of 1,600+ API calls (HuggingFace, TensorFlow Hub, TorchHub) used to benchmark LLMs invoking APIs accurately while minimizing hallucination.",
+      "size": "1,600+ API entries across HuggingFace/TensorFlow/TorchHub frameworks",
+      "reference": {
+        "type": "dataset_card",
+        "title": "gorilla-llm/APIBench dataset card",
+        "uri": "https://huggingface.co/datasets/gorilla-llm/APIBench",
+        "revision": "ac21e1892e634dfa25f8ad75f16cbdbfb0a5736d"
+      }
+    },
+    "slug:nexus": {
+      "name": "Nexus Function Calling Benchmark (NexusRaven API evaluation)",
+      "hf_id": "Nexusflow/NexusRaven_API_evaluation",
+      "uri": "https://huggingface.co/datasets/Nexusflow/NexusRaven_API_evaluation",
+      "version": "85c7c326fcfb9c6587daabd9582e7cfaddcc65bd",
+      "license": "CC-BY-NC-4.0",
+      "provider": "Nexusflow",
+      "description": "Evaluation dataset used for the NexusRaven function-calling benchmark, combining Nexusflow-curated real-world API queries (CVE/CPE, VirusTotal, etc.) with general-domain ToolLLM/ToolAlpaca samples.",
+      "size": "348 examples (outputs_in_toolllm_format), plus raw/standardized API list and query configs (65 APIs, 318-339 queries)",
+      "reference": {
+        "type": "repository",
+        "title": "nexusflowai/NexusRaven (evaluation code and data license notes)",
+        "uri": "https://github.com/nexusflowai/NexusRaven",
+        "revision": null
+      }
+    },
+    "slug:or-bench-80k": {
+      "name": "OR-Bench-80K",
+      "hf_id": "bench-llm/or-bench",
+      "uri": "https://huggingface.co/datasets/bench-llm/or-bench",
+      "version": "e36d8b80e81837c8a8f264bbb2a49f1b32c7e272",
+      "license": "CC-BY-4.0",
+      "provider": "OR-Bench paper authors (Cui et al.)",
+      "description": "80,000 seemingly-toxic but actually benign prompts across 10 common rejection categories, used to measure LLM over-refusal behavior; part of the larger OR-Bench collection (also includes OR-Bench-Hard-1K and OR-Bench-Toxic configs).",
+      "size": "80,000 prompts (or-bench-80k.csv config)",
+      "reference": {
+        "type": "paper",
+        "title": "OR-Bench: An Over-Refusal Benchmark for Large Language Models",
+        "uri": "https://arxiv.org/abs/2405.20947",
+        "revision": "v2"
+      }
+    },
+    "slug:cleaned-alpaca": {
+      "name": "Alpaca-Cleaned",
+      "hf_id": "yahma/alpaca-cleaned",
+      "uri": "https://huggingface.co/datasets/yahma/alpaca-cleaned",
+      "version": "12567cabf869d7c92e573c7c783905fc160e9639",
+      "license": "CC-BY-4.0",
+      "provider": "yahma (community curation of Stanford Alpaca data)",
+      "description": "A cleaned version of the original Stanford Alpaca instruction-following dataset, with hallucinations, merged instructions, and formatting errors fixed.",
+      "size": "~51,760 instruction-input-output examples (10K-100K range per dataset card)",
+      "reference": {
+        "type": "dataset_card",
+        "title": "yahma/alpaca-cleaned dataset card",
+        "uri": "https://huggingface.co/datasets/yahma/alpaca-cleaned",
+        "revision": "12567cabf869d7c92e573c7c783905fc160e9639"
+      }
+    },
+    "slug:synthetic_alpaca": {
+      "name": "Synthetic Alpaca DPO preference data (Meta SecAlign)",
+      "hf_id": null,
+      "uri": "https://github.com/facebookresearch/Meta_SecAlign/blob/main/secalign_plus_plus.py",
+      "version": "2031502bdf5a046b437ec835c6b05ff468aa0699",
+      "license": null,
+      "provider": "Meta FAIR (facebookresearch/Meta_SecAlign - SecAlign++/Meta SecAlign authors)",
+      "description": "Not a standalone released dataset: a DPO preference dataset locally generated by the Meta_SecAlign training pipeline (generate_preference_dataset in utils.py) by injecting prompts into yahma/alpaca-cleaned instructions and pairing self-generated ('synthetic') vs. injected responses; file name pattern preference_<model>_dpo_NaiveCompletion_synthetic_alpaca.json.",
+      "size": null,
+      "reference": {
+        "type": "repository",
+        "title": "facebookresearch/Meta_SecAlign - secalign_plus_plus.py / utils.py (generate_preference_dataset, instruct_dataset='alpaca', self_generated_response=True)",
+        "uri": "https://github.com/facebookresearch/Meta_SecAlign/blob/main/utils.py",
+        "revision": "2031502bdf5a046b437ec835c6b05ff468aa0699"
+      }
+    }
+  }
+}

@@ -1,0 +1,94 @@
+{
+ "model_id": "mlx-community/Qwen2.5-7B-Instruct-bf16",
+ "model": {
+  "release_date": "2024-09-18",
+  "architecture_family": "decoder-only Transformer (dense, Qwen2 architecture, unchanged by conversion)",
+  "architecture_details": {
+   "layers": 28,
+   "hidden_size": 3584,
+   "ffn_size": 18944,
+   "attention_heads": 28,
+   "kv_heads": 4,
+   "activation": "SwiGLU (silu)",
+   "position_embedding": "RoPE",
+   "rope_theta": 1000000,
+   "normalization": "RMSNorm",
+   "attention": "grouped-query attention with QKV bias",
+   "sliding_window": 131072,
+   "use_sliding_window": false,
+   "torch_dtype": "bfloat16"
+  },
+  "parameter_count": 7615616512,
+  "context_length": 32768,
+  "tokenizer": "Qwen2 byte-level BPE (Qwen2Tokenizer)",
+  "vocab_size": 152064,
+  "modality_input": ["text"],
+  "modality_output": ["text"],
+  "languages": ["en"],
+  "knowledge_cutoff": null,
+  "intended_use": "MLX-format repackaging of Qwen2.5-7B-Instruct (BF16 weights) for local inference on Apple silicon via mlx-lm; same general-assistant / instruction-following use case as the source model.",
+  "capabilities": ["instruction following (inherited)", "long-form generation and structured/JSON output (inherited)", "multilingual interaction across 29+ languages per source model (inherited)"],
+  "limitations": ["inherits all base-model limitations and biases (no new training)", "no independent safety evaluation of the converted artifact", "shipped config.json caps native context at 32,768 tokens; the source model's full 131,072-token context requires enabling YaRN RoPE scaling, which is not set in this repo's config.json", "requires mlx-lm / Apple silicon runtime to load"]
+ },
+ "references": [
+  {"key": "hf_card", "type": "model_card", "title": "mlx-community/Qwen2.5-7B-Instruct-bf16", "uri": "https://huggingface.co/mlx-community/Qwen2.5-7B-Instruct-bf16", "revision": "349a12f0e5f131c3914e3a66e78a3db71e9f9527"},
+  {"key": "hf_api", "type": "api_metadata", "title": "HF Hub API model metadata", "uri": "https://huggingface.co/api/models/mlx-community/Qwen2.5-7B-Instruct-bf16", "revision": "349a12f0e5f131c3914e3a66e78a3db71e9f9527"},
+  {"key": "hf_tree", "type": "api_metadata", "title": "HF Hub repo file tree (sizes)", "uri": "https://huggingface.co/api/models/mlx-community/Qwen2.5-7B-Instruct-bf16/tree/main", "revision": "349a12f0e5f131c3914e3a66e78a3db71e9f9527"},
+  {"key": "hf_config", "type": "config_file", "title": "config.json (mlx-community repo)", "uri": "https://huggingface.co/mlx-community/Qwen2.5-7B-Instruct-bf16/raw/main/config.json", "revision": "349a12f0e5f131c3914e3a66e78a3db71e9f9527"},
+  {"key": "source_card", "type": "model_card", "title": "Qwen/Qwen2.5-7B-Instruct", "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct", "revision": "a09a35458c702b33eeacc393d103063234e8bc28"},
+  {"key": "source_config", "type": "config_file", "title": "config.json (Qwen/Qwen2.5-7B-Instruct)", "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/raw/main/config.json", "revision": "a09a35458c702b33eeacc393d103063234e8bc28"},
+  {"key": "official_blog", "type": "blog", "title": "Qwen2.5: A Party of Foundation Models!", "uri": "https://qwenlm.github.io/blog/qwen2.5/", "revision": null},
+  {"key": "tech_report", "type": "technical_report", "title": "Qwen2 Technical Report", "uri": "https://arxiv.org/abs/2407.10671", "revision": null},
+  {"key": "license_page", "type": "license", "title": "Qwen2.5-7B-Instruct LICENSE (Apache-2.0)", "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/blob/main/LICENSE", "revision": "a09a35458c702b33eeacc393d103063234e8bc28"}
+ ],
+ "provenance": {
+  "origin": "Qwen2.5",
+  "provider": "mlx-community",
+  "relation": "converted_from",
+  "disclosure_status": "disclosed",
+  "notes": "The mlx-community card states this repo was converted to MLX format from Qwen/Qwen2.5-7B-Instruct using mlx-lm version 0.18.1. Weights are kept at BF16 precision; no additional training, fine-tuning, or dataset use is reported. Repo created 2024-09-18, immediately after the Qwen2.5 release (2024-09-19).",
+  "evidence": ["hf_card"]
+ },
+ "transformation": {
+  "methods": ["format conversion (MLX)"],
+  "objective": "Repackage the BF16 safetensors weights of Qwen/Qwen2.5-7B-Instruct into Apple's MLX array/model format so the model can be loaded and run locally with mlx-lm on Apple silicon.",
+  "hyperparameters": {},
+  "adapter_config": {},
+  "performed_at": "2024-09-18",
+  "notes": "Conversion tool: mlx-lm 0.18.1 (per model card). No training data was used; this is a lossless-precision format/runtime conversion (BF16 -> BF16 MLX arrays), not a quantization or fine-tune. Exact conversion command/flags and numerical-equivalence tests are not published.",
+  "inputs": [
+   {"model_id": "Qwen/Qwen2.5-7B-Instruct", "external_model_name": null, "role": "base"}
+  ],
+  "datasets": [],
+  "evidence": ["hf_card"]
+ },
+ "datasets": [],
+ "evaluations": [],
+ "safety": {
+  "risk_level": "Inherited from Qwen2.5-7B-Instruct; the MLX conversion reports no independent safety evaluation or new risk-mitigation work.",
+  "items": [
+   {"type": "risk", "description": "As a format conversion, this artifact carries the same general LLM risks as the source model (hallucination, bias, unsafe or inaccurate outputs) with no additional mitigation applied during conversion.", "reference_key": "hf_card"}
+  ]
+ },
+ "licenses": [
+  {
+   "license_key": "apache-2.0",
+   "name": "Apache License 2.0",
+   "spdx_id": "Apache-2.0",
+   "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/blob/main/LICENSE",
+   "usage_policy_name": null,
+   "usage_policy_uri": null,
+   "commercial_use": "allowed",
+   "restrictions": [],
+   "kind": "declared",
+   "scope_note": "Inherited from the source model Qwen/Qwen2.5-7B-Instruct; both the mlx-community card's HF metadata and the source model declare license 'apache-2.0', and no separate license is issued for the MLX conversion."
+  }
+ ],
+ "unknowns": [
+  "Exact mlx-lm conversion command and flags used",
+  "Numerical-equivalence testing between the original and MLX weights",
+  "Explicit knowledge cutoff date for Qwen2.5 pretraining data (not disclosed in the model card)",
+  "Precise pretraining dataset inventory (inherited from source, not re-disclosed in the MLX card)",
+  "Whether YaRN rope scaling is intended to be user-enabled for this MLX repo the way it is documented for the source Transformers repo"
+ ]
+}

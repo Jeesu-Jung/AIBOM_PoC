@@ -1,0 +1,127 @@
+{
+ "model_id": "meta-llama/Llama-3.1-8B",
+ "model": {
+  "release_date": "2024-07-23",
+  "architecture_family": "decoder-only Transformer",
+  "architecture_details": {
+   "layers": 32,
+   "hidden_size": 4096,
+   "ffn_size": 14336,
+   "attention_heads": 32,
+   "kv_heads": 8,
+   "activation": "SwiGLU",
+   "position_embedding": "RoPE",
+   "rope_theta": 500000,
+   "attention_type": "grouped-query attention",
+   "head_dim": 128,
+   "rope_scaling": {"rope_type": "llama3", "factor": 8.0, "high_freq_factor": 4.0, "low_freq_factor": 1.0, "original_max_position_embeddings": 8192}
+  },
+  "parameter_count": 8030261248,
+  "context_length": 131072,
+  "tokenizer": "tiktoken-based BPE (Llama 3 tokenizer)",
+  "vocab_size": 128256,
+  "modality_input": ["text"],
+  "modality_output": ["text"],
+  "languages": ["en", "de", "fr", "it", "pt", "hi", "es", "th"],
+  "knowledge_cutoff": "2023-12",
+  "intended_use": "Pretrained generative text model intended as a base for commercial and research use in English and other supported languages; developers can build assistant-like chat applications, natural language generation tasks, or further fine-tune it for other purposes.",
+  "capabilities": ["general-purpose text generation", "few-shot in-context learning", "base for supervised fine-tuning", "long-context (131072 tokens) modeling"],
+  "limitations": ["not instruction-tuned out of the box", "may produce inaccurate, biased, or objectionable outputs", "primarily trained and tested in English; performance in other supported languages may vary", "knowledge limited to pretraining data cutoff (Dec 2023)"]
+ },
+ "references": [
+  {"key": "hf_api_base", "type": "model_card", "title": "HF API record for meta-llama/Llama-3.1-8B", "uri": "https://huggingface.co/api/models/meta-llama/Llama-3.1-8B", "revision": "d04e592bb4f6aa9cfee91e2e20afa771667e1d4b"},
+  {"key": "hf_card_instruct", "type": "model_card", "title": "meta-llama/Llama-3.1-8B-Instruct model card (contains base-model benchmark table and family documentation)", "uri": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct", "revision": "0e9e39f249a16976918f6564b8830bc894c89659"},
+  {"key": "official_model_card_md", "type": "model_card", "title": "Llama 3.1 official MODEL_CARD.md (meta-llama/llama-models repo)", "uri": "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama3_1/MODEL_CARD.md", "revision": "main"},
+  {"key": "unsloth_config", "type": "other", "title": "config.json mirror (unsloth/Meta-Llama-3.1-8B) used to verify architecture fields for the gated meta-llama repo", "uri": "https://huggingface.co/unsloth/Meta-Llama-3.1-8B/raw/main/config.json", "revision": null},
+  {"key": "arxiv_2407_21783", "type": "paper", "title": "The Llama 3 Herd of Models", "uri": "https://arxiv.org/abs/2407.21783", "revision": "v3"},
+  {"key": "llama31_license", "type": "license", "title": "Llama 3.1 Community License Agreement", "uri": "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama3_1/LICENSE", "revision": "main"},
+  {"key": "llama31_use_policy", "type": "policy", "title": "Llama 3.1 Acceptable Use Policy", "uri": "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/USE_POLICY.md", "revision": "main"}
+ ],
+ "provenance": {
+  "origin": "Meta Llama 3.1",
+  "provider": "Meta",
+  "relation": "pretrained",
+  "disclosure_status": "partially_disclosed",
+  "notes": "Meta discloses pretraining stages (initial pre-training, long-context continued pre-training, annealing) and high-level data-processing steps, corpus scale (~15T tokens), and cutoff (Dec 2023), but does not release an exact dataset inventory or mixture ratios.",
+  "evidence": ["official_model_card_md", "arxiv_2407_21783"]
+ },
+ "transformation": {
+  "methods": ["pretraining", "long-context continued pre-training", "annealing on selected high-quality data"],
+  "objective": "Train a dense decoder-only Transformer foundation model on a large multilingual/code/math text corpus for general-purpose next-token prediction, later extended to 128K context via continued pretraining.",
+  "hyperparameters": {},
+  "adapter_config": {},
+  "performed_at": "2024-07-23",
+  "notes": "Exact compute budget, optimizer settings, and full dataset mixture ratios are not disclosed in the model card or paper excerpt reviewed; the paper (arXiv 2407.21783) describes methodology at a high level (data curation, scaling laws, infrastructure) without a fully itemized dataset list.",
+  "inputs": [],
+  "datasets": [
+   {"dataset_key": "slug:llama-3.1-pretraining-mixture", "role": "pretraining"}
+  ],
+  "evidence": ["official_model_card_md", "arxiv_2407_21783"]
+ },
+ "datasets": [
+  {
+   "key": "slug:llama-3.1-pretraining-mixture",
+   "name": "Llama 3.1 pretraining data mixture",
+   "hf_id": null,
+   "version": null,
+   "description": "A new mix of publicly available online data (~15 trillion multilingual tokens), covering general web text, code, math, and multilingual content, processed through deduplication, HTML extraction/cleaning, quality filtering, PII- and unsafe/adult-domain filtering, and domain-specific code/math and multilingual processing.",
+   "size": "~15T tokens",
+   "modality": "text",
+   "provider": "Meta",
+   "license": null,
+   "disclosure_status": "undisclosed",
+   "processing": ["deduplication", "HTML extraction and cleaning", "quality filtering", "PII-heavy domain filtering", "unsafe/adult-domain filtering", "domain-specific code and math processing", "multilingual processing"],
+   "uri": null,
+   "parents": [],
+   "evidence": ["official_model_card_md", "arxiv_2407_21783"]
+  }
+ ],
+ "evaluations": [
+  {"benchmark": "MMLU", "dataset_key": "cais/mmlu", "metric": "macro_avg/acc_char", "value": 66.7, "value_text": null, "configuration": {"shots": 5, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "MMLU-Pro", "dataset_key": "TIGER-Lab/MMLU-Pro", "metric": "macro_avg/acc_char", "value": 37.1, "value_text": null, "configuration": {"shots": 5, "cot": true}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "AGIEval English", "dataset_key": "slug:agieval-english", "metric": "average/acc_char", "value": 47.8, "value_text": null, "configuration": {"shots": "3-5", "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "CommonSenseQA", "dataset_key": "slug:commonsenseqa", "metric": "acc_char", "value": 75.0, "value_text": null, "configuration": {"shots": 7, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "Winogrande", "dataset_key": "allenai/winogrande", "metric": "acc_char", "value": 60.5, "value_text": null, "configuration": {"shots": 5, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "BIG-Bench Hard", "dataset_key": "lukaemon/bbh", "metric": "average/em", "value": 64.2, "value_text": null, "configuration": {"shots": 3, "cot": true}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "ARC-Challenge", "dataset_key": "allenai/ai2_arc", "metric": "acc_char", "value": 79.7, "value_text": null, "configuration": {"shots": 25, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "TriviaQA-Wiki", "dataset_key": "slug:triviaqa-wiki", "metric": "em", "value": 77.6, "value_text": null, "configuration": {"shots": 5, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "SQuAD", "dataset_key": "slug:squad", "metric": "em", "value": 77.0, "value_text": null, "configuration": {"shots": 1, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "QuAC", "dataset_key": "slug:quac", "metric": "f1", "value": 44.9, "value_text": null, "configuration": {"shots": 1, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "BoolQ", "dataset_key": "slug:boolq", "metric": "acc_char", "value": 75.0, "value_text": null, "configuration": {"shots": 0, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "DROP", "dataset_key": "slug:drop", "metric": "f1", "value": 59.5, "value_text": null, "configuration": {"shots": 3, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"}
+ ],
+ "safety": {
+  "risk_level": "Meta describes a multi-faceted safety process (data curation, red-teaming for CBRNE/child-safety/cyber-risk, refusal-tone tuning) applied across the Llama 3.1 family; the base model itself carries a broad disclaimer of warranty and liability and is not safety fine-tuned (no RLHF/DPO alignment applied to this checkpoint).",
+  "items": [
+   {"type": "risk", "description": "As a pretrained-only checkpoint (no instruction/safety tuning), outputs may be inaccurate, biased, unsafe or objectionable if used directly in user-facing applications.", "reference_key": "official_model_card_md"},
+   {"type": "mitigation", "description": "Meta recommends deploying system-level safeguards (e.g., Llama Guard 3, Prompt Guard, Code Shield) around Llama Materials in production/agentic use.", "reference_key": "official_model_card_md"},
+   {"type": "prohibited_use", "description": "Use must comply with the Llama 3.1 Acceptable Use Policy, which prohibits illegal activity, generation of CSAM, weapons development (incl. CBRNE), and other listed disallowed uses.", "reference_key": "llama31_use_policy"}
+  ]
+ },
+ "licenses": [
+  {
+   "license_key": "llama3.1-community",
+   "name": "Llama 3.1 Community License Agreement",
+   "spdx_id": null,
+   "uri": "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama3_1/LICENSE",
+   "usage_policy_name": "Llama 3.1 Acceptable Use Policy",
+   "usage_policy_uri": "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/USE_POLICY.md",
+   "commercial_use": "restricted",
+   "restrictions": [
+    "Licensees (or affiliates) with >700 million monthly active users in the preceding calendar month must request a separate license from Meta",
+    "Must prominently display 'Built with Llama' on related website/UI/blogpost/about page/product documentation",
+    "Any derivative AI model distributed must include 'Llama' at the beginning of its name",
+    "Must retain a 'Notice' text file attribution: 'Llama 3.1 is licensed under the Llama 3.1 Community License, Copyright (c) Meta Platforms, Inc. All Rights Reserved.'",
+    "Must comply with the Acceptable Use Policy (prohibits illegal, CSAM, CBRNE-weapons-development, and other listed uses)"
+   ],
+   "kind": "declared",
+   "scope_note": null
+  }
+ ],
+ "unknowns": [
+  "Exact pretraining compute budget (GPU-hours/FLOPs) for the 8B checkpoint specifically",
+  "Full itemized list of pretraining data sources/mixture ratios (Meta discloses only high-level processing steps and aggregate token count)",
+  "Exact training hyperparameters (learning rate schedule, batch size, optimizer) for the 8B model",
+  "config.json for the gated meta-llama/Llama-3.1-8B repo could not be fetched directly (401 gated); architecture fields verified via the unsloth/Meta-Llama-3.1-8B mirror config.json, which matches the officially documented 8B specs (32 layers, hidden 4096, 32 heads/8 kv heads, ffn 14336, rope_theta 500000, 131072 context)"
+ ]
+}

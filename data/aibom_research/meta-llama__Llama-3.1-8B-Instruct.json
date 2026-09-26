@@ -1,0 +1,136 @@
+{
+ "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+ "model": {
+  "release_date": "2024-07-23",
+  "architecture_family": "decoder-only Transformer",
+  "architecture_details": {
+   "layers": 32,
+   "hidden_size": 4096,
+   "ffn_size": 14336,
+   "attention_heads": 32,
+   "kv_heads": 8,
+   "activation": "SwiGLU",
+   "position_embedding": "RoPE",
+   "rope_theta": 500000,
+   "attention_type": "grouped-query attention",
+   "head_dim": 128,
+   "rope_scaling": {"rope_type": "llama3", "factor": 8.0, "high_freq_factor": 4.0, "low_freq_factor": 1.0, "original_max_position_embeddings": 8192}
+  },
+  "parameter_count": 8030261248,
+  "context_length": 131072,
+  "tokenizer": "tiktoken-based BPE (Llama 3 tokenizer)",
+  "vocab_size": 128256,
+  "modality_input": ["text"],
+  "modality_output": ["text"],
+  "languages": ["en", "de", "fr", "it", "pt", "hi", "es", "th"],
+  "knowledge_cutoff": "2023-12",
+  "intended_use": "Instruction-tuned generative model optimized for multilingual dialogue, assistant-style chat, tool use, and agentic applications; outperforms many available open-source and closed chat models on common industry benchmarks.",
+  "capabilities": ["multi-turn dialogue / instruction following", "multilingual interaction (8 supported languages)", "tool use and function calling (API-Bank, BFCL, Gorilla, Nexus)", "code generation (HumanEval, MBPP, Multipl-E)", "mathematical reasoning (GSM8K, MATH)", "long-context use up to 128K tokens"],
+  "limitations": ["may produce inaccurate, biased, or unsafe outputs despite safety tuning", "primarily evaluated/tuned in English; other supported languages may show lower quality", "knowledge limited to pretraining cutoff (Dec 2023)", "not evaluated/certified for high-risk domains without additional safeguards"]
+ },
+ "references": [
+  {"key": "hf_card_instruct", "type": "model_card", "title": "meta-llama/Llama-3.1-8B-Instruct model card", "uri": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct", "revision": "0e9e39f249a16976918f6564b8830bc894c89659"},
+  {"key": "hf_api_instruct", "type": "model_card", "title": "HF API record for meta-llama/Llama-3.1-8B-Instruct", "uri": "https://huggingface.co/api/models/meta-llama/Llama-3.1-8B-Instruct", "revision": "0e9e39f249a16976918f6564b8830bc894c89659"},
+  {"key": "official_model_card_md", "type": "model_card", "title": "Llama 3.1 official MODEL_CARD.md (meta-llama/llama-models repo) - contains both pretrained and instruction-tuned benchmark tables", "uri": "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama3_1/MODEL_CARD.md", "revision": "main"},
+  {"key": "unsloth_config", "type": "other", "title": "config.json mirror (unsloth/Meta-Llama-3.1-8B) used to verify architecture fields shared with the base model", "uri": "https://huggingface.co/unsloth/Meta-Llama-3.1-8B/raw/main/config.json", "revision": null},
+  {"key": "arxiv_2407_21783", "type": "paper", "title": "The Llama 3 Herd of Models", "uri": "https://arxiv.org/abs/2407.21783", "revision": "v3"},
+  {"key": "llama31_license", "type": "license", "title": "Llama 3.1 Community License Agreement", "uri": "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama3_1/LICENSE", "revision": "main"},
+  {"key": "llama31_use_policy", "type": "policy", "title": "Llama 3.1 Acceptable Use Policy", "uri": "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/USE_POLICY.md", "revision": "main"}
+ ],
+ "provenance": {
+  "origin": "Meta Llama 3.1",
+  "provider": "Meta",
+  "relation": "instruction_tuned_from",
+  "disclosure_status": "partially_disclosed",
+  "notes": "HF metadata for meta-llama/Llama-3.1-8B-Instruct declares base_model: meta-llama/Llama-3.1-8B and base_model:finetune relation. Meta discloses the post-training pipeline (SFT -> rejection sampling -> DPO, iterated over multiple rounds, plus model averaging) but not exact hyperparameters or full data provenance for the 8B-specific run.",
+  "evidence": ["hf_api_instruct", "official_model_card_md"]
+ },
+ "transformation": {
+  "methods": ["supervised fine-tuning", "rejection sampling", "direct preference optimization", "model averaging"],
+  "objective": "Align the pretrained Llama 3.1 8B base model to follow instructions, hold multi-turn dialogue, use tools, and improve helpfulness/safety, producing a chat-ready assistant model.",
+  "hyperparameters": {},
+  "adapter_config": {},
+  "performed_at": "2024-07-23",
+  "notes": "Meta describes several rounds of SFT, rejection sampling, and DPO on top of human-annotated, rejection-sampled, and synthetic/model-generated data, with model averaging across checkpoints; exact hyperparameters, number of rounds, and full dataset provenance for the 8B-specific run are not disclosed in the sources reviewed.",
+  "inputs": [
+   {"model_id": "meta-llama/Llama-3.1-8B", "external_model_name": null, "role": "base"}
+  ],
+  "datasets": [
+   {"dataset_key": "slug:llama-3.1-post-training-data", "role": "finetuning"},
+   {"dataset_key": "slug:llama-3.1-post-training-data", "role": "preference"}
+  ],
+  "evidence": ["hf_api_instruct", "official_model_card_md"]
+ },
+ "datasets": [
+  {
+   "key": "slug:llama-3.1-post-training-data",
+   "name": "Llama 3.1 post-training data (SFT + preference data)",
+   "hf_id": null,
+   "version": null,
+   "description": "Multi-round instruction-tuning and alignment data combining human-annotated examples, rejection-sampled model responses, synthetic/model-generated data, and preference pairs used for DPO; also includes safety and borderline-case data.",
+   "size": null,
+   "modality": "text",
+   "provider": "Meta",
+   "license": null,
+   "disclosure_status": "undisclosed",
+   "processing": ["human annotation", "rejection sampling", "synthetic data generation", "preference pair construction", "safety/borderline data curation"],
+   "uri": null,
+   "parents": [],
+   "evidence": ["official_model_card_md"]
+  }
+ ],
+ "evaluations": [
+  {"benchmark": "MMLU", "dataset_key": "cais/mmlu", "metric": "macro_avg/acc", "value": 69.4, "value_text": null, "configuration": {"shots": 5, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "MMLU (CoT)", "dataset_key": "cais/mmlu", "metric": "macro_avg/acc", "value": 73.0, "value_text": null, "configuration": {"shots": 0, "cot": true}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "MMLU-Pro (CoT)", "dataset_key": "TIGER-Lab/MMLU-Pro", "metric": "macro_avg/acc", "value": 48.3, "value_text": null, "configuration": {"shots": 5, "cot": true}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "IFEval", "dataset_key": "google/IFEval", "metric": "score", "value": 80.4, "value_text": null, "configuration": {"shots": null, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "ARC-Challenge", "dataset_key": "allenai/ai2_arc", "metric": "acc", "value": 83.4, "value_text": null, "configuration": {"shots": 0, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "GPQA", "dataset_key": "Idavidrein/gpqa", "metric": "em", "value": 30.4, "value_text": null, "configuration": {"shots": 0, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "HumanEval", "dataset_key": "openai/openai_humaneval", "metric": "pass@1", "value": 72.6, "value_text": null, "configuration": {"shots": 0, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "MBPP++ base", "dataset_key": "google-research-datasets/mbpp", "metric": "pass@1", "value": 72.8, "value_text": null, "configuration": {"shots": 0, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "Multipl-E HumanEval", "dataset_key": "slug:multipl-e", "metric": "pass@1", "value": 50.8, "value_text": null, "configuration": {"shots": 0, "cot": false, "notes": "multilingual code generation variant of HumanEval"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "Multipl-E MBPP", "dataset_key": "slug:multipl-e", "metric": "pass@1", "value": 52.4, "value_text": null, "configuration": {"shots": 0, "cot": false, "notes": "multilingual code generation variant of MBPP"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "GSM8K (CoT)", "dataset_key": "openai/gsm8k", "metric": "em_maj1@1", "value": 84.5, "value_text": null, "configuration": {"shots": 8, "cot": true}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "MATH (CoT)", "dataset_key": "hendrycks/competition_math", "metric": "final_em", "value": 51.9, "value_text": null, "configuration": {"shots": 0, "cot": true}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "API-Bank", "dataset_key": "slug:api-bank", "metric": "acc", "value": 82.6, "value_text": null, "configuration": {"shots": 0, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "BFCL", "dataset_key": "slug:bfcl", "metric": "acc", "value": 76.1, "value_text": null, "configuration": {"shots": 0, "cot": false, "notes": "Berkeley Function-Calling Leaderboard"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "Gorilla Benchmark API Bench", "dataset_key": "slug:gorilla-api-bench", "metric": "acc", "value": 8.2, "value_text": null, "configuration": {"shots": 0, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "Nexus", "dataset_key": "slug:nexus", "metric": "macro_avg/acc", "value": 38.5, "value_text": null, "configuration": {"shots": 0, "cot": false}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"},
+  {"benchmark": "Multilingual MGSM (CoT)", "dataset_key": "slug:mgsm", "metric": "em", "value": 68.9, "value_text": null, "configuration": {"shots": 0, "cot": true}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "official_model_card_md"}
+ ],
+ "safety": {
+  "risk_level": "Meta applies a multi-faceted safety pipeline for the instruction-tuned models: data curation combining human-generated and synthetic safety data, LLM-based classifiers to select high-quality prompts/responses, refusal-tone tuning, and red-teaming by cybersecurity/adversarial-ML/responsible-AI/integrity experts, focused on CBRNE, child safety, and cyber-attack-enablement risks.",
+  "items": [
+   {"type": "risk", "description": "Model may still produce inaccurate, biased, or unsafe outputs; downstream deployers are responsible for additional testing and tuning before high-stakes or production use.", "reference_key": "official_model_card_md"},
+   {"type": "mitigation", "description": "Multi-round SFT + rejection sampling + DPO with refusal-tone and safety/borderline data; recommendation to layer system-level safeguards (Llama Guard 3, Prompt Guard, Code Shield) for agentic or user-facing deployments.", "reference_key": "official_model_card_md"},
+   {"type": "ethical_consideration", "description": "Red-teaming exercises specifically targeted critical risk areas: CBRNE (chemical, biological, radiological, nuclear, and high-yield explosives) materials, child safety, and cyber attack enablement.", "reference_key": "official_model_card_md"},
+   {"type": "prohibited_use", "description": "Use must comply with the Llama 3.1 Acceptable Use Policy, which prohibits illegal activity, CSAM generation, weapons/CBRNE development, and other listed disallowed uses.", "reference_key": "llama31_use_policy"}
+  ]
+ },
+ "licenses": [
+  {
+   "license_key": "llama3.1-community",
+   "name": "Llama 3.1 Community License Agreement",
+   "spdx_id": null,
+   "uri": "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama3_1/LICENSE",
+   "usage_policy_name": "Llama 3.1 Acceptable Use Policy",
+   "usage_policy_uri": "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/USE_POLICY.md",
+   "commercial_use": "restricted",
+   "restrictions": [
+    "Licensees (or affiliates) with >700 million monthly active users in the preceding calendar month must request a separate license from Meta",
+    "Must prominently display 'Built with Llama' on related website/UI/blogpost/about page/product documentation",
+    "Any derivative AI model distributed must include 'Llama' at the beginning of its name",
+    "Must retain a 'Notice' text file attribution: 'Llama 3.1 is licensed under the Llama 3.1 Community License, Copyright (c) Meta Platforms, Inc. All Rights Reserved.'",
+    "Must comply with the Acceptable Use Policy (prohibits illegal, CSAM, CBRNE-weapons-development, and other listed uses)"
+   ],
+   "kind": "declared",
+   "scope_note": "Inherited from and identical to the base model's license terms."
+  }
+ ],
+ "unknowns": [
+  "Exact number of SFT/rejection-sampling/DPO rounds and hyperparameters used for the 8B-specific post-training run",
+  "Full composition/size of the human-annotated, rejection-sampled, and synthetic post-training datasets",
+  "config.json for the gated meta-llama/Llama-3.1-8B-Instruct repo could not be fetched directly (401 gated); architecture fields assumed identical to the base model and verified via the unsloth mirror config.json plus HF API metadata",
+  "The current catalog entry lists this model as a 'root' node with no parent; per task instructions its transformation input is set to meta-llama/Llama-3.1-8B (role base), consistent with HF's own base_model / base_model:finetune tags on the Instruct repo"
+ ]
+}

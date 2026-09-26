@@ -1,0 +1,502 @@
+{
+  "model_id": "FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp",
+  "model": {
+    "release_date": "2026-03-02",
+    "architecture_family": "decoder-only Transformer (Llama 3.1 8B backbone + LoRA adapter)",
+    "architecture_details": {
+      "layers": 32,
+      "hidden_size": 4096,
+      "ffn_size": 14336,
+      "attention_heads": 32,
+      "kv_heads": 8,
+      "activation": "SwiGLU",
+      "position_embedding": "RoPE",
+      "rope_theta": 500000
+    },
+    "parameter_count": 8030261248,
+    "context_length": 131072,
+    "tokenizer": "tiktoken-based BPE (Llama 3 tokenizer, inherited from base model, unchanged by adapter)",
+    "vocab_size": 128256,
+    "modality_input": [
+      "text"
+    ],
+    "modality_output": [
+      "text"
+    ],
+    "languages": [
+      "en"
+    ],
+    "knowledge_cutoff": "2023-12",
+    "intended_use": "PEFT LoRA adapter that must be loaded on top of meta-llama/Llama-3.1-8B-Instruct to make it resistant to (indirect) prompt injection attacks embedded in untrusted input data, while preserving the base model's instruction-following utility, following the SecAlign++ training recipe from the Meta SecAlign paper.",
+    "capabilities": [
+      "resistance to indirect prompt injection in the new 'input' message role",
+      "preserves general instruction-following, tool-calling and agentic-workflow utility of the base model",
+      "test-time security/utility trade-off tuning via LoRA alpha scaling"
+    ],
+    "limitations": [
+      "does not defend against jailbreaks or direct prompt injection (malicious user, not malicious environment)",
+      "still vulnerable to strong adaptive/white-box attacks (e.g. GCG, embedding-based fake-delimiter attacks)",
+      "third-party reproduction of the SecAlign++ recipe, not the official facebook/Meta-SecAlign-8B release; uses LoRA rank 32 vs. rank 64 in the paper's official 8B recipe",
+      "must be used with the exact SecAlign++ chat template (added 'input' role) to be effective; misuse of the template negates the defense"
+    ]
+  },
+  "references": [
+    {
+      "key": "hf_card",
+      "type": "model_card",
+      "title": "FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp model card",
+      "uri": "https://huggingface.co/FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp",
+      "revision": "0424f26c1714fd488bad63c348c96070d46de30f"
+    },
+    {
+      "key": "adapter_config",
+      "type": "config_file",
+      "title": "adapter_config.json",
+      "uri": "https://huggingface.co/FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp/raw/main/adapter_config.json",
+      "revision": "0424f26c1714fd488bad63c348c96070d46de30f"
+    },
+    {
+      "key": "hf_api",
+      "type": "api_metadata",
+      "title": "HF API model metadata",
+      "uri": "https://huggingface.co/api/models/FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp",
+      "revision": "0424f26c1714fd488bad63c348c96070d46de30f"
+    },
+    {
+      "key": "secalign_paper",
+      "type": "paper",
+      "title": "SecAlign: Defending Against Prompt Injection with Preference Optimization",
+      "uri": "https://arxiv.org/abs/2410.05451",
+      "revision": "v3"
+    },
+    {
+      "key": "meta_secalign_paper",
+      "type": "paper",
+      "title": "Meta SecAlign: A Secure Foundation LLM Against Prompt Injection Attacks",
+      "uri": "https://arxiv.org/abs/2507.02735",
+      "revision": "v3"
+    },
+    {
+      "key": "meta_secalign_github",
+      "type": "github",
+      "title": "facebookresearch/Meta_SecAlign",
+      "uri": "https://github.com/facebookresearch/Meta_SecAlign",
+      "revision": null
+    },
+    {
+      "key": "llama31_report",
+      "type": "technical_report",
+      "title": "The Llama 3 Herd of Models",
+      "uri": "https://arxiv.org/pdf/2407.21783",
+      "revision": "v3"
+    }
+  ],
+  "provenance": {
+    "origin": "Meta Llama 3.1",
+    "provider": "FlorianJK (independent/community reproduction of the Meta SecAlign 'SecAlign++' training recipe)",
+    "relation": "adapter_trained_from",
+    "disclosure_status": "partially_disclosed",
+    "notes": "This LoRA adapter reproduces the SecAlign++ defensive fine-tuning recipe described in arXiv:2507.02735 (Meta SecAlign), applied to meta-llama/Llama-3.1-8B-Instruct. It is not the official Meta/FAIR checkpoint; the official releases are facebook/Meta-SecAlign-8B and facebook/Meta-SecAlign-70B. A companion 'SecUnalign-pp' adapter with inverted preferences is also referenced in the card for red-teaming purposes.",
+    "evidence": [
+      "hf_card",
+      "adapter_config",
+      "meta_secalign_paper",
+      "meta_secalign_github"
+    ]
+  },
+  "transformation": {
+    "methods": [
+      "instruction tuning (inherited base)",
+      "direct preference optimization (DPO) via the SecAlign++ recipe",
+      "LoRA adapter fine-tuning"
+    ],
+    "objective": "Teach the base instruction-tuned model to ignore prompt injections embedded in untrusted data (placed in a new 'input' chat-template role) while preserving instruction-following and agentic utility, using randomized injection position and self-generated preference responses (SecAlign++ improvements over the original SecAlign recipe).",
+    "hyperparameters": {
+      "epochs": 3,
+      "dpo_beta": 0.1,
+      "dpo_loss": "sigmoid",
+      "learning_rate": 0.00016,
+      "batch_size": 1,
+      "gradient_accumulation_steps": 16,
+      "lora_r": 32,
+      "lora_alpha": 8,
+      "lora_dropout": null,
+      "target_modules": [
+        "q_proj",
+        "v_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+      ]
+    },
+    "adapter_config": {
+      "peft_type": "LORA",
+      "r": 32,
+      "lora_alpha": 8,
+      "target_modules": [
+        "q_proj",
+        "v_proj",
+        "gate_proj",
+        "down_proj",
+        "up_proj"
+      ],
+      "base_model": "meta-llama/Llama-3.1-8B-Instruct",
+      "library": "peft",
+      "dtype": "bfloat16"
+    },
+    "performed_at": "2026-03-02",
+    "notes": "Card-reported hyperparameters (3 epochs, DPO beta=0.1, batch size 1, grad accumulation 16, lr=1.6e-4) match exactly the META-SECALIGN-8B recipe described in arXiv:2507.02735 Sec 4.1. However, that paper specifies LoRA r=64 for the official 8B model, while this adapter's adapter_config.json uses r=32 (the paper's 70B rank), and lora_dropout is not present in the adapter_config.json (paper recipe uses 0.1) — indicating this is an independent reproduction rather than a byte-identical copy of the official checkpoint.",
+    "inputs": [
+      {
+        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+        "external_model_name": null,
+        "role": "base"
+      },
+      {
+        "model_id": "meta-llama/Llama-3.1-8B-Instruct",
+        "external_model_name": null,
+        "role": "generator"
+      }
+    ],
+    "datasets": [
+      {
+        "dataset_key": "slug:synthetic_alpaca",
+        "role": "preference"
+      }
+    ],
+    "evidence": [
+      "hf_card",
+      "adapter_config",
+      "meta_secalign_paper"
+    ]
+  },
+  "datasets": [
+    {
+      "key": "slug:synthetic_alpaca",
+      "name": "synthetic_alpaca (SecAlign++ preference dataset)",
+      "hf_id": null,
+      "version": null,
+      "description": "DPO preference dataset built from the Cleaned-Alpaca instruction-tuning dataset: samples with a data part are augmented with simulated prompt injections (straightforward attacks randomly placed at the start or end of data in ~45%/45% of cases, completion attacks in ~10%), and desirable/undesirable responses are self-generated by the initialization model (rather than using the original dataset's low-quality TEXT_DAVINCI_003 labels), per the SecAlign++ recipe.",
+      "size": "19,157 samples",
+      "modality": "text",
+      "provider": "FAIR at Meta / UC Berkeley (SecAlign++ recipe authors), derived from gururise/AlpacaDataCleaned",
+      "license": null,
+      "disclosure_status": "partially_disclosed",
+      "processing": [
+        "random selection of injected instruction from another sample",
+        "randomized injection position (start/end/completion)",
+        "self-generated desirable response from benign prompt",
+        "self-generated undesirable response from injected instruction",
+        "recursive filtering of special delimiter tokens from untrusted data"
+      ],
+      "uri": null,
+      "parents": [
+        {
+          "dataset_key": "slug:cleaned-alpaca",
+          "relation": "generated_from"
+        }
+      ],
+      "evidence": [
+        "meta_secalign_paper",
+        "hf_card"
+      ]
+    },
+    {
+      "key": "slug:cleaned-alpaca",
+      "name": "Cleaned Alpaca Dataset",
+      "hf_id": null,
+      "version": null,
+      "description": "Deduplicated / quality-cleaned version of the original Stanford Alpaca instruction-tuning dataset, used as the base instruction pool for constructing synthetic_alpaca.",
+      "size": null,
+      "modality": "text",
+      "provider": "Gene Ruebsamen (community)",
+      "license": null,
+      "disclosure_status": "disclosed",
+      "processing": [],
+      "uri": "https://github.com/gururise/AlpacaDataCleaned",
+      "parents": [],
+      "evidence": [
+        "meta_secalign_paper"
+      ]
+    }
+  ],
+  "evaluations": [
+    {
+      "benchmark": "MMLU",
+      "dataset_key": null,
+      "metric": "acc",
+      "value": 71.7,
+      "value_text": null,
+      "configuration": {
+        "shots": 0,
+        "model_tested": "official META-SECALIGN-8B (SecAlign++ on Llama-3.1-8B-Instruct)"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 72.0,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "MMLU-Pro",
+      "dataset_key": null,
+      "metric": "acc",
+      "value": 46.7,
+      "value_text": null,
+      "configuration": {
+        "shots": 5,
+        "model_tested": "official META-SECALIGN-8B"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 46.5,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "IFEval",
+      "dataset_key": null,
+      "metric": "acc",
+      "value": 74.5,
+      "value_text": null,
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 79.1,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "BBH",
+      "dataset_key": null,
+      "metric": "acc",
+      "value": 70.9,
+      "value_text": null,
+      "configuration": {
+        "shots": 3,
+        "model_tested": "official META-SECALIGN-8B"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 71.9,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "GPQA Diamond",
+      "dataset_key": null,
+      "metric": "acc",
+      "value": 28.3,
+      "value_text": null,
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 31.3,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "AlpacaEval2",
+      "dataset_key": null,
+      "metric": "utility/win_rate_vs_GPT-4",
+      "value": 31.0,
+      "value_text": null,
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B",
+        "notes": "805 AlpacaFarm samples, judged by GPT-4o"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 31.2,
+      "evaluator_model": "gpt-4o-2024-05-13",
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "SEP",
+      "dataset_key": null,
+      "metric": "utility/win_rate_vs_Llama3-8B-Instruct",
+      "value": 48.8,
+      "value_text": null,
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 51.4,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "AlpacaFarm",
+      "dataset_key": null,
+      "metric": "ASR",
+      "value": 0.0,
+      "value_text": "0%",
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B",
+        "attack": "6 non-adaptive PI techniques (straightforward/ignore/completion)"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 68.3,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "AlpacaFarm",
+      "dataset_key": null,
+      "metric": "ASR_basic_adaptive",
+      "value": 0.5,
+      "value_text": null,
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B",
+        "attack": "adaptive fake-delimiter completion / completion-ignore attacks"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 89.4,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "AlpacaFarm",
+      "dataset_key": null,
+      "metric": "ASR_GCG_adaptive",
+      "value": 20.7,
+      "value_text": null,
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B",
+        "attack": "GCG white-box adaptive attack"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 87.0,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "SEP",
+      "dataset_key": null,
+      "metric": "ASR",
+      "value": 7.8,
+      "value_text": null,
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B",
+        "attack": "6 non-adaptive PI techniques, witness-word detection"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 98.1,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "SEP",
+      "dataset_key": null,
+      "metric": "ASR_basic_adaptive",
+      "value": 11.5,
+      "value_text": null,
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 97.1,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "TaskTracker",
+      "dataset_key": null,
+      "metric": "ASR",
+      "value": 0.2,
+      "value_text": null,
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B",
+        "notes": "31K samples, GPT-4o judge"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 12.4,
+      "evaluator_model": "gpt-4o",
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "CyberSecEval2",
+      "dataset_key": null,
+      "metric": "ASR",
+      "value": 7.3,
+      "value_text": null,
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B",
+        "notes": "55 indirect PI samples, GPT-4o judge"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 21.8,
+      "evaluator_model": "gpt-4o",
+      "reference_key": "meta_secalign_paper"
+    },
+    {
+      "benchmark": "InjecAgent",
+      "dataset_key": null,
+      "metric": "ASR_total_with_sandwich_defense",
+      "value": 0.0,
+      "value_text": "0%",
+      "configuration": {
+        "model_tested": "official META-SECALIGN-8B",
+        "notes": "1K API-calling samples, sandwich (repeat_user_prompt) defense applied"
+      },
+      "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+      "baseline_value": 15.1,
+      "evaluator_model": null,
+      "reference_key": "meta_secalign_paper"
+    }
+  ],
+  "safety": {
+    "risk_level": "Reduces attack success rate for indirect prompt injection on standard and several adaptive benchmarks by one to two orders of magnitude relative to the undefended base model, but remains vulnerable to strong adaptive attacks and does not address jailbreaks or direct prompt injection; independent evaluation of this specific third-party adapter (as opposed to the official Meta-SecAlign-8B checkpoint) is not published.",
+    "items": [
+      {
+        "type": "risk",
+        "description": "Still vulnerable to strong adaptive/white-box attacks (e.g. GCG suffix optimization, embedding-based fake-delimiter escape attacks), per Table 6 of the Meta SecAlign paper.",
+        "reference_key": "meta_secalign_paper"
+      },
+      {
+        "type": "risk",
+        "description": "This is a community reproduction of the SecAlign++ recipe rather than the official facebook/Meta-SecAlign-8B checkpoint; no independent security evaluation specific to this adapter (LoRA r=32) has been published.",
+        "reference_key": "hf_card"
+      },
+      {
+        "type": "prohibited_use",
+        "description": "Not designed to defend against jailbreaks (malicious user) or direct prompt injection; the threat model assumes a benign user/system and a malicious environment/data source only.",
+        "reference_key": "meta_secalign_paper"
+      },
+      {
+        "type": "mitigation",
+        "description": "Security/utility trade-off can be tuned at inference time by scaling the LoRA alpha parameter without retraining.",
+        "reference_key": "meta_secalign_paper"
+      },
+      {
+        "type": "mitigation",
+        "description": "Must be used with the exact SecAlign++ chat template (added 'input' message role, recursive delimiter filtering) for the defense to take effect.",
+        "reference_key": "meta_secalign_paper"
+      }
+    ]
+  },
+  "licenses": [
+    {
+      "license_key": "llama3.1-community",
+      "name": "Llama 3.1 Community License",
+      "spdx_id": null,
+      "uri": "https://www.llama.com/llama3_1/license/",
+      "usage_policy_name": "Llama 3.1 Acceptable Use Policy",
+      "usage_policy_uri": "https://www.llama.com/llama3_1/use-policy/",
+      "commercial_use": "restricted",
+      "restrictions": [
+        ">700M MAU requires a separate license from Meta",
+        "attribution 'Built with Llama' required",
+        "must comply with the Llama 3.1 Acceptable Use Policy"
+      ],
+      "kind": "declared",
+      "scope_note": "Adapter repo declares license tag 'llama3.1' (inherited from base model meta-llama/Llama-3.1-8B-Instruct); no separate license is stated for the adapter weights themselves."
+    }
+  ],
+  "unknowns": [
+    "Exact number of LoRA adapter trainable parameters (not stated in card or config)",
+    "Whether lora_dropout was used in training (adapter_config.json omits the field; the paper's SecAlign++ recipe default is 0.1)",
+    "Whether this adapter's own security/utility numbers match the official META-SECALIGN-8B numbers reported in arXiv:2507.02735, given the LoRA rank differs (32 here vs. 64 in the official 8B recipe) — no independent evaluation of this specific repo was found",
+    "AgentDojo and WASP (agentic workflow) ASR/utility numbers specifically for the 8B model (the paper only reports these benchmarks in detail for the 70B model)",
+    "Exact training date and hardware used for this specific adapter (only the HF repo creation/last-modified date, 2026-03-02, is available)",
+    "Whether the 'SecUnalign-pp' companion adapter mentioned in the card is by the same author or officially affiliated"
+  ]
+}

@@ -1,0 +1,158 @@
+{
+ "model_id": "Qwen/Qwen2.5-7B-Instruct-1M",
+ "model": {
+  "release_date": "2025-01-26",
+  "architecture_family": "dense decoder-only Transformer",
+  "architecture_details": {
+   "layers": 28,
+   "hidden_size": 3584,
+   "ffn_size": 18944,
+   "attention_heads": 28,
+   "kv_heads": 4,
+   "activation": "SwiGLU",
+   "position_embedding": "RoPE",
+   "rope_theta": 10000000,
+   "attention_bias_qkv": true,
+   "normalization": "RMSNorm",
+   "sliding_window": 32768,
+   "dual_chunk_attention_chunk_size": 262144,
+   "dual_chunk_attention_local_window": 8192
+  },
+  "parameter_count": 7610000000,
+  "context_length": 1010000,
+  "tokenizer": "Qwen2Tokenizer, BPE-based",
+  "vocab_size": 152064,
+  "modality_input": ["text"],
+  "modality_output": ["text"],
+  "languages": null,
+  "knowledge_cutoff": null,
+  "intended_use": "General-purpose instruction-following chat/text-generation model specialized for ultra-long-context tasks (up to ~1M tokens) while retaining short-context capability, using a custom vLLM deployment with sparse attention and length extrapolation for efficient long-sequence inference.",
+  "capabilities": [
+   "up to 1,010,000-token context handling",
+   "8192-token generation length",
+   "chat / instruction following",
+   "long-document retrieval and reasoning (RULER, LV-Eval, LongBench-Chat)",
+   "short-context general capability retained (MMLU-Pro, GSM8K, HumanEval, etc.)",
+   "3-7x inference speedup on long sequences via custom sparse-attention vLLM"
+  ],
+  "limitations": [
+   "requires >=120GB VRAM (multi-GPU, Ampere/Hopper) to process near-1M-token inputs",
+   "accuracy degradation may occur beyond 262,144 tokens when run with standard (non-sparse) attention frameworks",
+   "minor regressions vs 128K sibling on some short-context benchmarks (e.g. MMLU-Pro, MATH, MBPP, Arena-Hard, MTbench)"
+  ]
+ },
+ "references": [
+  {"key": "hf_card", "type": "model_card", "title": "Qwen/Qwen2.5-7B-Instruct-1M model card", "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-1M", "revision": "e28526f7bb80e2a9c8af03b831a9af3812f18fba"},
+  {"key": "hf_readme_raw", "type": "model_card", "title": "Qwen2.5-7B-Instruct-1M raw README (YAML front-matter)", "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-1M/raw/main/README.md", "revision": "e28526f7bb80e2a9c8af03b831a9af3812f18fba"},
+  {"key": "hf_config", "type": "model_card", "title": "Qwen2.5-7B-Instruct-1M config.json", "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-1M/raw/main/config.json", "revision": "e28526f7bb80e2a9c8af03b831a9af3812f18fba"},
+  {"key": "hf_api", "type": "model_card", "title": "HF API model metadata", "uri": "https://huggingface.co/api/models/Qwen/Qwen2.5-7B-Instruct-1M", "revision": "e28526f7bb80e2a9c8af03b831a9af3812f18fba"},
+  {"key": "tech_report", "type": "technical_report", "title": "Qwen2.5-1M Technical Report", "uri": "https://arxiv.org/abs/2501.15383", "revision": "v1 (arXiv:2501.15383)"},
+  {"key": "blog", "type": "official_blog", "title": "Qwen2.5-1M: Deploy Your Own Qwen with Context Length up to 1M Tokens", "uri": "https://qwenlm.github.io/blog/qwen2.5-1m/", "revision": null}
+ ],
+ "provenance": {
+  "origin": "Qwen2.5",
+  "provider": "Qwen Team (Alibaba Cloud)",
+  "relation": "context_extended_from",
+  "disclosure_status": "partially_disclosed",
+  "notes": "The HF card's base_model field declares Qwen/Qwen2.5-7B (the released 128K-context base checkpoint), but the Qwen2.5-1M Technical Report states the 1M-context series was actually built from 'an intermediate checkpoint of pre-trained Qwen2.5' that still had only a 4K-token context length, i.e. an internal, unreleased pretraining checkpoint predating the public Qwen2.5-7B release, not the released Qwen2.5-7B artifact itself. From that intermediate checkpoint the model underwent 5 stages of progressive long-context pretraining (4K->32K->65,536->131,072->262,144 tokens; RoPE base raised 10,000->10,000,000), then a 2-stage long-context SFT (short sequences up to 32K, then mixed short/long up to 262K), then offline reinforcement learning on short (<=8K token) samples. The exact identity/weights of that intermediate checkpoint were not released, so it cannot be cited as a separate HF model_id.",
+  "evidence": ["hf_readme_raw", "hf_api", "tech_report", "blog"]
+ },
+ "transformation": {
+  "methods": [
+   "progressive long-context pretraining (5 stages: 4K, 32K, 65536, 131072, 262144 tokens)",
+   "RoPE base frequency adjustment (10,000 -> 10,000,000)",
+   "long data synthesis (fill-in-the-middle, keyword/position-based retrieval, paragraph reordering)",
+   "two-stage long-context supervised fine-tuning (short sequences up to 32K, then mixed short/long up to 262K)",
+   "offline reinforcement learning on short (<=8K token) samples",
+   "custom sparse-attention (dual chunk attention) inference-time length extrapolation for deployment"
+  ],
+  "objective": "Extend Qwen2.5-7B(-Instruct) from a 128K-token context window to a ~1M-token context window while preserving short-context instruction-following quality, using progressive pretraining, synthesized long-context data, staged SFT and RL.",
+  "hyperparameters": {
+   "pretraining_stage_context_lengths": [4096, 32768, 65536, 131072, 262144],
+   "rope_theta_final": 10000000,
+   "sft_stage1_max_len": 32768,
+   "sft_stage2_max_len": 262144,
+   "rl_max_len": 8192
+  },
+  "adapter_config": {},
+  "performed_at": "2025-01-26",
+  "notes": "Long-context training data mix used ~75% sequences at the current stage's maximum length and ~25% shorter sequences at each pretraining stage, per the technical report.",
+  "inputs": [
+   {"model_id": "Qwen/Qwen2.5-7B", "external_model_name": null, "role": "base"}
+  ],
+  "datasets": [
+   {"dataset_key": "slug:qwen2.5-1m-long-context-synthesis", "role": "finetuning"}
+  ],
+  "evidence": ["tech_report", "blog", "hf_readme_raw"]
+ },
+ "datasets": [
+  {
+   "key": "slug:qwen2.5-1m-long-context-synthesis",
+   "name": "Qwen2.5-1M long-context synthetic training data",
+   "hf_id": null,
+   "version": null,
+   "description": "Synthesized long-document data for progressive context-length pretraining and long-context SFT, built via fill-in-the-middle tasks, keyword/position-based retrieval tasks, and paragraph reordering to teach long-range dependency modeling.",
+   "size": null,
+   "modality": "text",
+   "provider": "Qwen Team (Alibaba Cloud)",
+   "license": null,
+   "disclosure_status": "partially_disclosed",
+   "processing": ["fill-in-the-middle synthesis", "keyword/position-based retrieval synthesis", "paragraph reordering"],
+   "uri": null,
+   "parents": [],
+   "evidence": ["tech_report"]
+  }
+ ],
+ "evaluations": [
+  {"benchmark": "RULER", "dataset_key": null, "metric": "score @4K", "value": 91.8, "value_text": null, "configuration": {"length": "4K"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "RULER", "dataset_key": null, "metric": "score @8K", "value": 96.8, "value_text": null, "configuration": {"length": "8K"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "RULER", "dataset_key": null, "metric": "score @16K", "value": 95.3, "value_text": null, "configuration": {"length": "16K"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "RULER", "dataset_key": null, "metric": "score @32K", "value": 93.0, "value_text": null, "configuration": {"length": "32K"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "RULER", "dataset_key": null, "metric": "score @64K", "value": 91.1, "value_text": null, "configuration": {"length": "64K"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "RULER", "dataset_key": null, "metric": "score @128K", "value": 90.4, "value_text": null, "configuration": {"length": "128K"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "RULER", "dataset_key": null, "metric": "average score (across all tested lengths incl. beyond 128K, per report Table 4)", "value": 84.4, "value_text": null, "configuration": {"length": "avg", "notes": "Average is lower than any individually tabulated 4K-128K value, implying it also incorporates longer lengths (>128K) not individually shown in the report's table for this model"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "LV-Eval", "dataset_key": null, "metric": "score @16K", "value": 52.5, "value_text": null, "configuration": {"length": "16K"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "LV-Eval", "dataset_key": null, "metric": "score @32K", "value": 49.4, "value_text": null, "configuration": {"length": "32K"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "LV-Eval", "dataset_key": null, "metric": "score @64K", "value": 48.6, "value_text": null, "configuration": {"length": "64K"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "LV-Eval", "dataset_key": null, "metric": "score @128K", "value": 48.3, "value_text": null, "configuration": {"length": "128K"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "LV-Eval", "dataset_key": null, "metric": "score @256K", "value": 42.7, "value_text": null, "configuration": {"length": "256K"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "LongBench-Chat", "dataset_key": null, "metric": "GPT-4-judged score /10, pre-RL", "value": 7.32, "value_text": null, "configuration": {"stage": "before offline RL"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": "GPT-4", "reference_key": "tech_report"},
+  {"benchmark": "LongBench-Chat", "dataset_key": null, "metric": "GPT-4-judged score /10, post-RL", "value": 8.08, "value_text": null, "configuration": {"stage": "after offline RL", "delta": "+0.75"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": "GPT-4", "reference_key": "tech_report"},
+  {"benchmark": "MMLU-Pro", "dataset_key": "TIGER-Lab/MMLU-Pro", "metric": "acc", "value": 54.3, "value_text": null, "configuration": {}, "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct", "baseline_value": 56.3, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "MMLU-Redux", "dataset_key": null, "metric": "acc", "value": 74.8, "value_text": null, "configuration": {}, "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct", "baseline_value": 75.4, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "LiveBench 0831", "dataset_key": null, "metric": "score", "value": 35.2, "value_text": null, "configuration": {}, "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct", "baseline_value": 35.9, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "GPQA", "dataset_key": "Idavidrein/gpqa", "metric": "acc", "value": 41.4, "value_text": null, "configuration": {}, "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct", "baseline_value": 36.4, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "MATH", "dataset_key": "hendrycks/competition_math", "metric": "acc", "value": 72.9, "value_text": null, "configuration": {}, "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct", "baseline_value": 75.5, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "GSM8K", "dataset_key": "openai/gsm8k", "metric": "acc", "value": 91.7, "value_text": null, "configuration": {}, "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct", "baseline_value": 91.6, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "HumanEval", "dataset_key": "openai/openai_humaneval", "metric": "pass@1", "value": 86.0, "value_text": null, "configuration": {}, "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct", "baseline_value": 84.8, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "MBPP", "dataset_key": "google-research-datasets/mbpp", "metric": "pass@1", "value": 75.9, "value_text": null, "configuration": {}, "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct", "baseline_value": 79.2, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "IFEval", "dataset_key": "google/IFEval", "metric": "acc", "value": 73.0, "value_text": null, "configuration": {}, "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct", "baseline_value": 71.2, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "Arena-Hard", "dataset_key": null, "metric": "win rate", "value": 48.1, "value_text": null, "configuration": {}, "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct", "baseline_value": 52.0, "evaluator_model": null, "reference_key": "tech_report"},
+  {"benchmark": "MT-Bench", "dataset_key": null, "metric": "score /10", "value": 8.30, "value_text": null, "configuration": {}, "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct", "baseline_value": 8.75, "evaluator_model": null, "reference_key": "tech_report"}
+ ],
+ "safety": {
+  "risk_level": null,
+  "items": []
+ },
+ "licenses": [
+  {
+   "license_key": "apache-2.0",
+   "name": "Apache License 2.0",
+   "spdx_id": "Apache-2.0",
+   "uri": "https://www.apache.org/licenses/LICENSE-2.0",
+   "usage_policy_name": null,
+   "usage_policy_uri": null,
+   "commercial_use": "allowed",
+   "restrictions": [],
+   "kind": "declared",
+   "scope_note": "Declared directly on the Qwen2.5-7B-Instruct-1M model card and in the technical report's model table; consistent with Qwen2.5-7B lineage licensing."
+  }
+ ],
+ "unknowns": [
+  "Exact identity of the 'intermediate checkpoint of pre-trained Qwen2.5 (4K context)' used as the true starting point for long-context training; it is not a separately released HF model_id, so provenance.inputs cites the closest declared/public artifact (Qwen/Qwen2.5-7B) with a note explaining the discrepancy.",
+  "Knowledge cutoff date for Qwen2.5-7B-Instruct-1M (not stated on the model card or in the technical report excerpt reviewed).",
+  "Exact size (token/example count) of the long-context synthetic training data used in progressive pretraining and long-context SFT.",
+  "RULER scores for individual context lengths beyond 128K (256K, 512K, 1M) for the 7B model specifically; only the aggregate Avg (84.4) reflects them.",
+  "Whether languages beyond English are officially claimed for this specific 1M checkpoint (the model card's YAML lists English; broader Qwen2.5 family multilingual claims were not reverified against this specific model's card)."
+ ]
+}

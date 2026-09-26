@@ -1,0 +1,100 @@
+{
+  "datasets": {
+    "Rowan/hellaswag": {
+      "name": "HellaSwag",
+      "hf_id": "Rowan/hellaswag",
+      "uri": "https://huggingface.co/datasets/Rowan/hellaswag",
+      "version": "218ec52e09a7e7462a5400043bb9a69a41d06b76",
+      "license": null,
+      "provider": "Rowan Zellers / University of Washington & Allen Institute for AI",
+      "description": "A commonsense natural language inference benchmark of multiple-choice sentence-completion problems designed to be trivial for humans but hard for machines (ACL 2019).",
+      "size": "10,042 validation examples (39,905 train, 10,003 test with hidden labels)",
+      "reference": {
+        "type": "paper",
+        "title": "HellaSwag: Can a Machine Really Finish Your Sentence?",
+        "uri": "https://arxiv.org/abs/1905.07830",
+        "revision": null
+      }
+    },
+    "allenai/winogrande": {
+      "name": "Winogrande",
+      "hf_id": "allenai/winogrande",
+      "uri": "https://huggingface.co/datasets/allenai/winogrande",
+      "version": "01e74176c63542e6b0bcb004dcdea22d94fb67b5",
+      "license": "Apache-2.0",
+      "provider": "Allen Institute for AI (AI2)",
+      "description": "A large-scale collection of fill-in-the-blank commonsense reasoning problems adjusted from the Winograd Schema Challenge to reduce annotation artifacts and dataset-specific bias.",
+      "size": "1,267 validation examples (winogrande_xl: 40,398 train, 1,767 test with hidden labels)",
+      "reference": {
+        "type": "repository",
+        "title": "allenai/winogrande (GitHub, Apache-2.0 licensed)",
+        "uri": "https://github.com/allenai/winogrande",
+        "revision": null
+      }
+    },
+    "lukaemon/bbh": {
+      "name": "BIG-Bench Hard",
+      "hf_id": "lukaemon/bbh",
+      "uri": "https://huggingface.co/datasets/lukaemon/bbh",
+      "version": "982bb89fd79532a8ac676a61fc42eb1aeec63f99",
+      "license": "MIT",
+      "provider": "Suzgun et al. (Stanford University / Google Research authors)",
+      "description": "A curated suite of 23 challenging tasks from BIG-Bench where prior language models did not outperform average human raters, used to study chain-of-thought prompting.",
+      "size": "27 task configs, 250 test examples each for most tasks (6,511 examples total)",
+      "reference": {
+        "type": "paper",
+        "title": "Challenging BIG-Bench Tasks and Whether Chain-of-Thought Can Solve Them",
+        "uri": "https://arxiv.org/abs/2210.09261",
+        "revision": null
+      }
+    },
+    "slug:agieval-english": {
+      "name": "AGIEval (English subset)",
+      "hf_id": "lighteval/agi_eval_en",
+      "uri": "https://huggingface.co/datasets/lighteval/agi_eval_en",
+      "version": "8670dcc6a5aa2c5e177b14905ec892df983446cd",
+      "license": "MIT",
+      "provider": "Ruixiang Cui et al. (Microsoft Research / Westlake University)",
+      "description": "The English-language subtasks (e.g. AQuA-RAT, LogiQA-EN, LSAT-AR/LR/RC, SAT-EN, SAT-Math) of AGIEval, a human-centric benchmark built from real-world standardized admission and qualification exams.",
+      "size": "9 English-language exam subtasks (task sizes range from ~230 to ~1,000 examples each)",
+      "reference": {
+        "type": "repository",
+        "title": "ruixiangcui/AGIEval (official GitHub repo, MIT licensed)",
+        "uri": "https://github.com/ruixiangcui/AGIEval",
+        "revision": null
+      }
+    },
+    "slug:boolq": {
+      "name": "BoolQ",
+      "hf_id": "google/boolq",
+      "uri": "https://huggingface.co/datasets/google/boolq",
+      "version": "35b264d03638db9f4ce671b711558bf7ff0f80d5",
+      "license": "CC BY-SA 3.0",
+      "provider": "Google Research",
+      "description": "A question-answering dataset of naturally occurring yes/no questions paired with a supporting passage, used to study surprisingly hard inference over unconstrained real-world questions.",
+      "size": "3,270 validation examples (9,427 train)",
+      "reference": {
+        "type": "paper",
+        "title": "BoolQ: Exploring the Surprising Difficulty of Natural Yes/No Questions",
+        "uri": "https://arxiv.org/abs/1905.10044",
+        "revision": null
+      }
+    },
+    "slug:commonsenseqa": {
+      "name": "CommonsenseQA",
+      "hf_id": "tau/commonsense_qa",
+      "uri": "https://huggingface.co/datasets/tau/commonsense_qa",
+      "version": "94630fe30dad47192a8546eb75f094926d47e155",
+      "license": "MIT",
+      "provider": "Tel Aviv University / Allen Institute for AI",
+      "description": "A multiple-choice commonsense question answering dataset built from ConceptNet, where each question has one correct answer and four distractors requiring commonsense knowledge to resolve.",
+      "size": "1,221 validation examples (9,741 train, 1,140 test with hidden labels)",
+      "reference": {
+        "type": "paper",
+        "title": "CommonsenseQA: A Question Answering Challenge Targeting Commonsense Knowledge",
+        "uri": "https://arxiv.org/abs/1811.00937",
+        "revision": null
+      }
+    }
+  }
+}

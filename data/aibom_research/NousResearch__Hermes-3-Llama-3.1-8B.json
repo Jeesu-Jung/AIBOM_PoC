@@ -1,0 +1,224 @@
+{
+ "model_id": "NousResearch/Hermes-3-Llama-3.1-8B",
+ "model": {
+  "release_date": "2024-07-28",
+  "architecture_family": "decoder-only Transformer (Llama 3.1 architecture)",
+  "architecture_details": {
+   "layers": 32,
+   "hidden_size": 4096,
+   "ffn_size": 14336,
+   "attention_heads": 32,
+   "kv_heads": 8,
+   "activation": "SwiGLU",
+   "position_embedding": "RoPE",
+   "rope_theta": 500000.0,
+   "rope_scaling": {"rope_type": "llama3", "factor": 8.0, "low_freq_factor": 1.0, "high_freq_factor": 4.0, "original_max_position_embeddings": 8192}
+  },
+  "parameter_count": 8030261248,
+  "context_length": 131072,
+  "tokenizer": "PreTrainedTokenizerFast, tiktoken-based BPE (Llama 3.1 tokenizer) with additional Hermes/ChatML special tokens (e.g. <|im_start|>, <|im_end|>, <SCRATCHPAD>, <REASONING>, <INNER_MONOLOGUE>, <PLAN>, <EXECUTION>, <REFLECTION>, <THINKING>, <SOLUTION>, <EXPLANATION>, <UNIT_TEST>)",
+  "vocab_size": 128256,
+  "modality_input": ["text"],
+  "modality_output": ["text"],
+  "languages": ["en"],
+  "knowledge_cutoff": "end of 2023 (inherited from Llama 3.1 base pretraining)",
+  "intended_use": "A neutrally-aligned, highly steerable generalist instruct and tool-use assistant for reasoning, coding, roleplaying, agentic tool use, structured/JSON output, and multi-turn conversation, obedient to system-prompt persona and instructions.",
+  "capabilities": [
+   "instruction following",
+   "multi-turn conversation with 128K context coherence",
+   "function/tool calling via Hermes Function Calling standard",
+   "JSON mode / structured outputs",
+   "roleplaying and persona adoption",
+   "agentic planning with scratchpad/reasoning tags",
+   "retrieval-augmented generation with citation tags",
+   "code generation and explanation",
+   "LLM-as-judge style evaluation/reward modeling"
+  ],
+  "limitations": [
+   "highly sensitive to system prompt; behavior can diverge substantially depending on persona instructions",
+   "neutral alignment means the model will follow instructions with fewer built-in moral refusals, shifting responsibility for guardrails to the deploying system",
+   "inherits base-model knowledge cutoff and any biases/limitations of Llama 3.1 8B",
+   "DPO phase gave only moderate benchmark gains for the 8B size versus SFT alone"
+  ]
+ },
+ "references": [
+  {"key": "hf_card", "type": "model_card", "title": "NousResearch/Hermes-3-Llama-3.1-8B model card", "uri": "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B", "revision": "896ea440e5a9e6070e3d8a2774daf2b481ab425b"},
+  {"key": "hf_readme_raw", "type": "model_card", "title": "Raw README.md with YAML front-matter", "uri": "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B/raw/main/README.md", "revision": "896ea440e5a9e6070e3d8a2774daf2b481ab425b"},
+  {"key": "hf_config", "type": "config", "title": "config.json", "uri": "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B/raw/main/config.json", "revision": "896ea440e5a9e6070e3d8a2774daf2b481ab425b"},
+  {"key": "hf_api", "type": "api_metadata", "title": "HF Hub API model metadata", "uri": "https://huggingface.co/api/models/NousResearch/Hermes-3-Llama-3.1-8B", "revision": "896ea440e5a9e6070e3d8a2774daf2b481ab425b"},
+  {"key": "arxiv_2408_11857", "type": "technical_report", "title": "Hermes 3 Technical Report", "uri": "https://arxiv.org/abs/2408.11857", "revision": "v1"},
+  {"key": "meta_llama31_card", "type": "official_model_card", "title": "meta-llama/Llama-3.1-8B-Instruct model card (license terms)", "uri": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct", "revision": null},
+  {"key": "llama31_license", "type": "license", "title": "Llama 3.1 Community License Agreement", "uri": "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/LICENSE", "revision": null},
+  {"key": "open_llm_leaderboard_results", "type": "evaluation_results", "title": "Open LLM Leaderboard details for NousResearch/Hermes-3-Llama-3.1-8B", "uri": "https://huggingface.co/datasets/open-llm-leaderboard/details_NousResearch__Hermes-3-Llama-3.1-8B", "revision": null}
+ ],
+ "provenance": {
+  "origin": "Meta Llama 3.1",
+  "provider": "Nous Research",
+  "relation": "instruction_tuned_from",
+  "disclosure_status": "partially_disclosed",
+  "notes": "Hermes 3 8B is created by supervised fine-tuning followed by LoRA-based DPO on top of the Llama 3.1 8B base model (config.json base is meta-llama/Meta-Llama-3.1-8B / meta-llama/Llama-3.1-8B). Exact per-sample dataset inventory is not published; only category proportions and token counts are disclosed in the technical report.",
+  "evidence": ["hf_card", "hf_readme_raw", "arxiv_2408_11857"]
+ },
+ "transformation": {
+  "methods": ["supervised fine-tuning", "direct preference optimization (LoRA)"],
+  "objective": "Turn the Llama 3.1 8B base (pretrained) model into a neutrally-aligned, highly steerable generalist instruct and tool-use assistant with strong reasoning, roleplaying, agentic, and structured-output capabilities.",
+  "hyperparameters": {
+   "sft": {
+    "optimizer": "AdamW",
+    "weight_decay": 0.01,
+    "peak_learning_rate": 7e-6,
+    "lr_schedule": "cosine decay with 300-step warmup",
+    "epochs_trained": 4,
+    "selected_epoch": 4,
+    "target_sequence_length": 8192,
+    "packing_efficiency": "96% (4% padding tokens)",
+    "framework": "modified Axolotl (Flash Attention 2 variable-length packing) with PyTorch FSDP",
+    "compute": "48 GPUs (six HGX nodes of 8x H100 SXM5), batch size 48, 147 GPU-hours",
+    "loss_masking": "instruction and tool-output tokens set to ignore index (-100), loss computed only on response/tool-use tokens",
+    "selection_criterion": "epoch checkpoint chosen via min-max normalized average of GPT4All benchmarks (ARC-Easy/Challenge, BoolQ, HellaSwag, OpenBookQA, PIQA, WinoGrande), AGIEval, IFEval, and MT-Bench"
+   },
+   "dpo": {
+    "method": "LoRA adapter DPO (reference and policy model not both fully materialized)",
+    "lora_rank": 32,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05,
+    "lora_target_modules": "all linear layers",
+    "optimizer": "RMSProp",
+    "peak_learning_rate": 3e-6,
+    "lr_schedule": "linear decay after 9 warmup steps",
+    "neftune_alpha": 5,
+    "impact": "moderate but positive for the 8B model; SFT+DPO outscored SFT-only on GPT4All (72.30 vs 72.03), AGIEval (41.26 vs 40.17), TruthfulQA (58.69 vs 56.43), IFEval (66.70 vs 66.17), MT-Bench (8.27 vs 8.18), but slightly lower on Big Bench (43.04 vs 44.57)"
+   }
+  },
+  "adapter_config": {"dpo_phase": {"type": "LoRA", "rank": 32, "alpha": 16, "dropout": 0.05, "target_modules": "all linear layers"}},
+  "performed_at": "2024-07-28",
+  "notes": "Data curation for the Hermes 3 SFT mixture ran from March 2024 to August 2024. Training data construction combined existing sources (e.g. NousResearch/hermes-function-calling-v1) with domain-specific synthetic generation using Evol-Instruct-inspired schemes, followed by filtering (length thresholds, refusal removal, empty-turn removal, prioritizing strongest-model generations).",
+  "inputs": [
+   {"model_id": "meta-llama/Llama-3.1-8B", "external_model_name": null, "role": "base"}
+  ],
+  "datasets": [
+   {"dataset_key": "slug:hermes-3-sft-mixture", "role": "finetuning"},
+   {"dataset_key": "NousResearch/hermes-function-calling-v1", "role": "finetuning"},
+   {"dataset_key": "slug:hermes-3-dpo-preference-data", "role": "preference"}
+  ],
+  "evidence": ["arxiv_2408_11857", "hf_readme_raw"]
+ },
+ "datasets": [
+  {
+   "key": "slug:hermes-3-sft-mixture",
+   "name": "Hermes 3 SFT dataset mixture",
+   "hf_id": null,
+   "version": null,
+   "description": "Proprietary Nous Research instruction-tuning dataset spanning General Instructions, Domain Expert, Math, Roleplaying, Coding, Tool Use/Agentic/RAG, Content Generation, and Steering & Alignment categories; curated from existing sources plus Evol-Instruct-style synthetic generation, then filtered for length, refusals, empty turns, and generation quality.",
+   "size": "~390M tokens (270M output/response tokens, 120M input/instruction tokens)",
+   "modality": "text",
+   "provider": "Nous Research",
+   "license": null,
+   "disclosure_status": "partially_disclosed",
+   "processing": [
+    "token length thresholding",
+    "removal of refusals and improperly formatted responses",
+    "removal of conversations with missing/empty turns",
+    "prioritization of conversations generated by the strongest models",
+    "Evol-Instruct-style complexity augmentation for domain-specific data",
+    "sample packing (flash-attention variable-length, ~96% efficiency)"
+   ],
+   "uri": null,
+   "parents": [],
+   "evidence": ["arxiv_2408_11857"]
+  },
+  {
+   "key": "NousResearch/hermes-function-calling-v1",
+   "name": "Hermes Function Calling training set v1",
+   "hf_id": "NousResearch/hermes-function-calling-v1",
+   "version": null,
+   "description": "Existing Nous Research dataset used as one of the curated sources contributing to the General Instructions / tool-use portion of the Hermes 3 SFT mixture.",
+   "size": null,
+   "modality": "text",
+   "provider": "Nous Research",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1",
+   "parents": [],
+   "evidence": ["arxiv_2408_11857"]
+  },
+  {
+   "key": "slug:hermes-3-dpo-preference-data",
+   "name": "Hermes 3 DPO preference pairs",
+   "hf_id": null,
+   "version": null,
+   "description": "Chosen/rejected preference pairs used for the LoRA DPO alignment phase after SFT; exact composition and sourcing are not disclosed in the technical report.",
+   "size": null,
+   "modality": "text",
+   "provider": "Nous Research",
+   "license": null,
+   "disclosure_status": "undisclosed",
+   "processing": [],
+   "uri": null,
+   "parents": [],
+   "evidence": ["arxiv_2408_11857"]
+  }
+ ],
+ "evaluations": [
+  {"benchmark": "AGIEval", "dataset_key": null, "metric": "0-shot avg accuracy", "value": 41.26, "value_text": null, "configuration": {"shots": 0}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 40.49, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "ARC-Challenge", "dataset_key": "allenai/ai2_arc", "metric": "0-shot accuracy", "value": 58.11, "value_text": null, "configuration": {"shots": 0}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 55.12, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "ARC-Easy", "dataset_key": "allenai/ai2_arc", "metric": "0-shot accuracy", "value": 80.05, "value_text": null, "configuration": {"shots": 0}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 79.71, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "BoolQ", "dataset_key": null, "metric": "0-shot accuracy", "value": 84.95, "value_text": null, "configuration": {"shots": 0}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 84.01, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "BBH", "dataset_key": "lukaemon/bbh", "metric": "3-shot accuracy", "value": 52.94, "value_text": null, "configuration": {"shots": 3}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 48.83, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "GPQA", "dataset_key": "Idavidrein/gpqa", "metric": "0-shot accuracy", "value": 29.36, "value_text": null, "configuration": {"shots": 0}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 30.62, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "HellaSwag", "dataset_key": "Rowan/hellaswag", "metric": "10-shot accuracy", "value": 82.83, "value_text": null, "configuration": {"shots": 10}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 80.01, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "IFEval", "dataset_key": "google/IFEval", "metric": "strict accuracy", "value": 62.25, "value_text": null, "configuration": {"notes": "strict prompt-level accuracy"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 80.15, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "MATH", "dataset_key": "hendrycks/competition_math", "metric": "Lvl 5, 4-shot accuracy", "value": 7.48, "value_text": null, "configuration": {"shots": 4, "notes": "MATH Level 5 subset"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 8.91, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "MMLU", "dataset_key": "cais/mmlu", "metric": "5-shot accuracy", "value": 64.79, "value_text": null, "configuration": {"shots": 5}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 68.05, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "MMLU-Pro", "dataset_key": "TIGER-Lab/MMLU-Pro", "metric": "5-shot accuracy", "value": 32.08, "value_text": null, "configuration": {"shots": 5}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 35.77, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "MT-Bench", "dataset_key": null, "metric": "average score (1-10)", "value": 8.27, "value_text": null, "configuration": {"notes": "average of turn 1 and turn 2 scores"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 8.39, "evaluator_model": "GPT-4 (MT-Bench judge)", "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "MuSR", "dataset_key": null, "metric": "0-shot accuracy", "value": 43.52, "value_text": null, "configuration": {"shots": 0}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 38.23, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "OpenBookQA", "dataset_key": null, "metric": "0-shot accuracy", "value": 47.80, "value_text": null, "configuration": {"shots": 0}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 43.20, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "PIQA", "dataset_key": null, "metric": "0-shot accuracy", "value": 80.25, "value_text": null, "configuration": {"shots": 0}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 81.01, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "TruthfulQA", "dataset_key": "truthfulqa/truthful_qa", "metric": "MC2, 0-shot", "value": 58.69, "value_text": null, "configuration": {"shots": 0, "notes": "MC2 variant"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 53.99, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "Winogrande", "dataset_key": "allenai/winogrande", "metric": "5-shot accuracy", "value": 77.74, "value_text": null, "configuration": {"shots": 5}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 77.90, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "GPT4All (avg)", "dataset_key": null, "metric": "min-max normalized average", "value": null, "value_text": "SFT: 72.03; SFT+DPO: 72.30 (composite of ARC-E/C, BoolQ, HellaSwag, OpenBookQA, PIQA, WinoGrande)", "configuration": {"notes": "ablation table comparing SFT vs SFT+DPO for the 8B model, not the same GPT4All numbers as the final downstream table"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "arxiv_2408_11857"},
+  {"benchmark": "Open LLM Leaderboard (avg)", "dataset_key": null, "metric": "leaderboard average", "value": 23.49, "value_text": null, "configuration": {"notes": "Open LLM Leaderboard v2 harness average across IFEval, BBH, MATH Lvl 5, GPQA, MuSR, MMLU-Pro"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "hf_readme_raw"},
+  {"benchmark": "IFEval (leaderboard)", "dataset_key": "google/IFEval", "metric": "0-shot", "value": 61.70, "value_text": null, "configuration": {"shots": 0, "notes": "Open LLM Leaderboard v2 result, differs from Table 5 (62.25 strict, in-paper eval harness)"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "hf_readme_raw"},
+  {"benchmark": "BBH (leaderboard)", "dataset_key": "lukaemon/bbh", "metric": "3-shot", "value": 30.72, "value_text": null, "configuration": {"shots": 3, "notes": "Open LLM Leaderboard v2 result, differs from Table 5 (52.94, in-paper eval harness)"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "hf_readme_raw"},
+  {"benchmark": "MATH Lvl 5 (leaderboard)", "dataset_key": "hendrycks/competition_math", "metric": "4-shot", "value": 4.76, "value_text": null, "configuration": {"shots": 4, "notes": "Open LLM Leaderboard v2 result, differs from Table 5 (7.48)"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "hf_readme_raw"},
+  {"benchmark": "GPQA (leaderboard)", "dataset_key": "Idavidrein/gpqa", "metric": "0-shot", "value": 6.38, "value_text": null, "configuration": {"shots": 0, "notes": "Open LLM Leaderboard v2 result, differs from Table 5 (29.36)"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "hf_readme_raw"},
+  {"benchmark": "MuSR (leaderboard)", "dataset_key": null, "metric": "0-shot", "value": 13.62, "value_text": null, "configuration": {"shots": 0, "notes": "Open LLM Leaderboard v2 result, differs from Table 5 (43.52)"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "hf_readme_raw"},
+  {"benchmark": "MMLU-Pro (leaderboard)", "dataset_key": "TIGER-Lab/MMLU-Pro", "metric": "5-shot", "value": 23.77, "value_text": null, "configuration": {"shots": 5, "notes": "Open LLM Leaderboard v2 result, differs from Table 5 (32.08)"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "hf_readme_raw"}
+ ],
+ "safety": {
+  "risk_level": "Neutrally-aligned model: fewer built-in moral refusals by design, with the paper explicitly stating guardrails are intended to be implemented at the system/application level rather than in the model itself.",
+  "items": [
+   {"type": "ethical_consideration", "description": "Hermes is designed to follow system and instruction prompts 'exactly and neutrally' and is distinguished from closed models that refuse instructions on moral grounds; the authors state 'there is no such thing as latent thoughtcrime' for Hermes.", "reference_key": "arxiv_2408_11857"},
+   {"type": "mitigation", "description": "The authors argue appropriate guardrails and active intervention should be implemented at the surrounding system/application level rather than baked into the model.", "reference_key": "arxiv_2408_11857"},
+   {"type": "prohibited_use", "description": "Use is subject to the inherited Llama 3.1 Acceptable Use Policy, which prohibits illegal activity, child sexual exploitation material, weapons development (CBRNE), and other listed harmful uses.", "reference_key": "llama31_license"},
+   {"type": "risk", "description": "High system-prompt sensitivity means safety behavior can vary substantially depending on how a deployer configures the persona/system prompt.", "reference_key": "arxiv_2408_11857"}
+  ]
+ },
+ "licenses": [
+  {
+   "license_key": "llama3.1-community",
+   "name": "Llama 3.1 Community License Agreement",
+   "spdx_id": null,
+   "uri": "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/LICENSE",
+   "usage_policy_name": "Llama 3.1 Acceptable Use Policy",
+   "usage_policy_uri": "https://llama.meta.com/llama3_1/use-policy",
+   "commercial_use": "restricted",
+   "restrictions": [
+    "Licensees (or their affiliates) with >700 million monthly active users in the preceding calendar month must request a separate license from Meta",
+    "Must comply with the Llama 3.1 Acceptable Use Policy (prohibits illegal use, CSAM, CBRNE weapons development, and other listed misuses)",
+    "Derivative model names must begin with 'Llama' per the Llama 3.1 license, and attribution/notice requirements apply"
+   ],
+   "kind": "declared",
+   "scope_note": "Inherited from the Llama 3.1 8B base model; HF card declares license identifier 'llama3' (Hermes 3 itself adds no separate license terms, it is fine-tuned weights distributed under the base model's community license)."
+  }
+ ],
+ "unknowns": [
+  "Exact per-sample inventory / mixture ratios of the Hermes 3 SFT dataset beyond the 8 disclosed category proportions and token counts",
+  "Composition and size of the DPO preference dataset (only the LoRA/optimizer hyperparameters and aggregate benchmark impact are disclosed)",
+  "Exact repository creation vs public release date distinction (HF createdAt 2024-07-28 used as release_date; paper published 2024-08-15)",
+  "Whether any additional model averaging/merging was applied to the released 8B artifact (model averaging is listed in prior catalog notes but not confirmed in the technical report text for the 8B specifically)",
+  "Full context on why the model card's own model-index metadata field is populated with 'Hermes-3-Llama-3.1-70B' instead of the 8B model"
+ ]
+}

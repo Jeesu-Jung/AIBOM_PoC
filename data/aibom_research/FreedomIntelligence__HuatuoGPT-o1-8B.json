@@ -1,0 +1,187 @@
+{
+ "model_id": "FreedomIntelligence/HuatuoGPT-o1-8B",
+ "model": {
+  "release_date": "2024-12-27",
+  "architecture_family": "decoder-only Transformer (Llama 3.1 architecture)",
+  "architecture_details": {
+   "layers": 32,
+   "hidden_size": 4096,
+   "ffn_size": 14336,
+   "attention_heads": 32,
+   "kv_heads": 8,
+   "activation": "SwiGLU (silu)",
+   "position_embedding": "RoPE",
+   "rope_theta": 500000,
+   "attention_type": "grouped-query attention",
+   "head_dim": 128,
+   "rope_scaling": {"rope_type": "llama3", "factor": 8.0, "high_freq_factor": 4.0, "low_freq_factor": 1.0, "original_max_position_embeddings": 8192}
+  },
+  "parameter_count": 8030261248,
+  "context_length": 131072,
+  "tokenizer": "tiktoken-based BPE (Llama 3 tokenizer), PreTrainedTokenizerFast",
+  "vocab_size": 128256,
+  "modality_input": ["text"],
+  "modality_output": ["text"],
+  "languages": ["en"],
+  "knowledge_cutoff": null,
+  "intended_use": "A medical LLM fine-tuned from Llama-3.1-8B-Instruct for advanced medical reasoning: it generates a complex 'Thinking' trace (reflecting, backtracking, and correcting itself) before producing a 'Final Response' to medical questions.",
+  "capabilities": ["complex multi-step medical reasoning", "self-reflection and correction of reasoning trajectories (thinks-before-it-answers)", "structured '## Thinking' / '## Final Response' output format", "medical exam question answering (USMLE-style)"],
+  "limitations": ["not suitable for real-world clinical or industry applications where inaccuracies could cause harm (per paper's ethical statement)", "may still produce hallucinated or inaccurate medical content", "trained/evaluated only on English medical benchmarks (this 8B checkpoint)", "verifier (GPT-4o) used to build training data is itself imperfect (~94.5-96.5% measured accuracy), so some training signal may be noisy"]
+ },
+ "references": [
+  {"key": "hf_card", "type": "model_card", "title": "FreedomIntelligence/HuatuoGPT-o1-8B model card (README.md)", "uri": "https://huggingface.co/FreedomIntelligence/HuatuoGPT-o1-8B", "revision": "afc8b260e5b3dee9233863cf2de3080f3094442a"},
+  {"key": "hf_api", "type": "model_card", "title": "HF API record for FreedomIntelligence/HuatuoGPT-o1-8B", "uri": "https://huggingface.co/api/models/FreedomIntelligence/HuatuoGPT-o1-8B", "revision": "afc8b260e5b3dee9233863cf2de3080f3094442a"},
+  {"key": "hf_config", "type": "other", "title": "config.json for FreedomIntelligence/HuatuoGPT-o1-8B", "uri": "https://huggingface.co/FreedomIntelligence/HuatuoGPT-o1-8B/resolve/main/config.json", "revision": "afc8b260e5b3dee9233863cf2de3080f3094442a"},
+  {"key": "arxiv_2412_18925", "type": "paper", "title": "HuatuoGPT-o1, Towards Medical Complex Reasoning with LLMs", "uri": "https://arxiv.org/abs/2412.18925", "revision": "v1"},
+  {"key": "ds_verifiable_problem", "type": "dataset_card", "title": "FreedomIntelligence/medical-o1-verifiable-problem dataset card", "uri": "https://huggingface.co/datasets/FreedomIntelligence/medical-o1-verifiable-problem", "revision": "46d5175eb74fdef3516d51d52e8c40db04bbdf35"},
+  {"key": "ds_reasoning_sft", "type": "dataset_card", "title": "FreedomIntelligence/medical-o1-reasoning-SFT dataset card", "uri": "https://huggingface.co/datasets/FreedomIntelligence/medical-o1-reasoning-SFT", "revision": "fc2c9e8a37b38f38da6d449564a8c350b244aef4"},
+  {"key": "github_repo", "type": "other", "title": "FreedomIntelligence/HuatuoGPT-o1 GitHub repository", "uri": "https://github.com/FreedomIntelligence/HuatuoGPT-o1", "revision": null}
+ ],
+ "provenance": {
+  "origin": "Meta Llama 3.1",
+  "provider": "FreedomIntelligence",
+  "relation": "fine_tuned_from",
+  "disclosure_status": "partially_disclosed",
+  "notes": "HF cardData declares base_model: meta-llama/Llama-3.1-8B-Instruct with a base_model:finetune relation tag. The paper fully discloses the two-stage training method (SFT then PPO-based RL) and the data-construction pipeline, but does not disclose exact code/infra, full compute budget, or the released checkpoint's exact commit-level training log.",
+  "evidence": ["hf_api", "arxiv_2412_18925"]
+ },
+ "transformation": {
+  "methods": ["supervised fine-tuning on synthesized complex chain-of-thought trajectories", "reinforcement learning with PPO using verifier-based sparse rewards"],
+  "objective": "Adapt the general-purpose instruction-tuned Llama-3.1-8B-Instruct model into a medical reasoning model that searches for and reflects on complex reasoning paths (Stage 1: SFT) and further improves that reasoning via reward-guided reinforcement learning against a verifiable-answer signal (Stage 2: RL).",
+  "hyperparameters": {
+   "stage1_sft": {"epochs": 3, "learning_rate": 5e-6, "batch_size": 128, "data_size": "20K SFT examples (question, complex CoT, formal response)"},
+   "stage2_ppo": {"learning_rate": 5e-7, "batch_size": 128, "kl_coefficient_beta": 0.03, "ppo_epochs": 3, "discount_factor": 1.0, "value_coefficient": 1.0, "clip_range": 0.2, "reward": "1 for verified-correct final answer, 0.1 for incorrect, 0 for missing reasoning structure", "data_size": "20K problems reserved for RL"}
+  },
+  "adapter_config": {},
+  "performed_at": "2024-12-25",
+  "notes": "Per the paper, GPT-4o is used both as the generator that synthesizes initial CoT/answers and iteratively applies search strategies (Backtracking, Exploring New Paths, Verification, Correction) to build 'complex CoT' reasoning trajectories, and as the verifier that gives binary True/False feedback comparing a candidate answer against the ground-truth answer (measured verifier accuracy: 96.5% in Stage 1, 94.5% in Stage 2, on 200 manually annotated samples). Three small open models (Gemma2-9B, Llama-3.1-8B, Qwen2.5-7B) were used earlier in the pipeline purely to filter out multiple-choice questions that were 'too easy' (all three answered correctly), not as generator/verifier for the released training data.",
+  "inputs": [
+   {"model_id": "meta-llama/Llama-3.1-8B-Instruct", "external_model_name": null, "role": "base"},
+   {"model_id": null, "external_model_name": "GPT-4o", "role": "generator"},
+   {"model_id": null, "external_model_name": "GPT-4o", "role": "verifier"}
+  ],
+  "datasets": [
+   {"dataset_key": "GBaker/MedQA-USMLE-4-options", "role": "distillation"},
+   {"dataset_key": "openlifescienceai/medmcqa", "role": "distillation"},
+   {"dataset_key": "FreedomIntelligence/medical-o1-verifiable-problem", "role": "distillation"},
+   {"dataset_key": "FreedomIntelligence/medical-o1-reasoning-SFT", "role": "finetuning"},
+   {"dataset_key": "FreedomIntelligence/medical-o1-verifiable-problem", "role": "preference"}
+  ],
+  "evidence": ["arxiv_2412_18925", "hf_card"]
+ },
+ "datasets": [
+  {
+   "key": "GBaker/MedQA-USMLE-4-options",
+   "name": "MedQA-USMLE (training set)",
+   "hf_id": "GBaker/MedQA-USMLE-4-options",
+   "version": null,
+   "description": "USMLE-style multiple-choice medical exam questions; its training split was one of the two source pools of closed-set questions transformed into HuatuoGPT-o1's verifiable medical problems.",
+   "size": null,
+   "modality": "text",
+   "provider": "Original MedQA authors (Jin et al.); training set reused by FreedomIntelligence",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": ["difficulty filtering (removed questions 3 small LLMs all answered correctly)", "removal of short/unambiguous questions"],
+   "uri": "https://huggingface.co/datasets/GBaker/MedQA-USMLE-4-options",
+   "parents": [],
+   "evidence": ["arxiv_2412_18925"]
+  },
+  {
+   "key": "openlifescienceai/medmcqa",
+   "name": "MedMCQA (training set)",
+   "hf_id": "openlifescienceai/medmcqa",
+   "version": null,
+   "description": "Indian medical entrance exam multiple-choice questions; its training split was the second source pool of closed-set questions transformed into HuatuoGPT-o1's verifiable medical problems.",
+   "size": null,
+   "modality": "text",
+   "provider": "Original MedMCQA authors; training set reused by FreedomIntelligence",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": ["difficulty filtering (removed questions 3 small LLMs all answered correctly)", "removal of short/unambiguous questions"],
+   "uri": "https://huggingface.co/datasets/openlifescienceai/medmcqa",
+   "parents": [],
+   "evidence": ["arxiv_2412_18925"]
+  },
+  {
+   "key": "FreedomIntelligence/medical-o1-verifiable-problem",
+   "name": "Medical-o1 Verifiable Problem",
+   "hf_id": "FreedomIntelligence/medical-o1-verifiable-problem",
+   "version": "46d5175eb74fdef3516d51d52e8c40db04bbdf35",
+   "description": "40K open-ended medical problems with unique ground-truth answers, converted from a pool of 192K MedQA-USMLE/MedMCQA multiple-choice training questions. 20K used for SFT (stage 1) and 20K reserved for RL (stage 2); paper also mentions 4K unconverted closed-set questions and 5K general (non-medical) verification questions from MMLU-Pro added for domain-compatibility experiments (not part of the released HF dataset).",
+   "size": "40K verifiable medical problems (from a 192K multiple-choice source pool)",
+   "modality": "text",
+   "provider": "FreedomIntelligence",
+   "license": "apache-2.0",
+   "disclosure_status": "disclosed",
+   "processing": ["difficulty filtering via 3 small LLMs (Gemma2-9B, Llama-3.1-8B, Qwen2.5-7B)", "removal of 'incorrect option' / multiple-correct-answer questions", "GPT-4o ambiguity filtering", "GPT-4o reformatting from multiple-choice to open-ended question + ground-truth answer", "decontamination screening against evaluation benchmarks"],
+   "uri": "https://huggingface.co/datasets/FreedomIntelligence/medical-o1-verifiable-problem",
+   "parents": [
+    {"dataset_key": "GBaker/MedQA-USMLE-4-options", "relation": "derived_from"},
+    {"dataset_key": "openlifescienceai/medmcqa", "relation": "derived_from"}
+   ],
+   "evidence": ["ds_verifiable_problem", "arxiv_2412_18925"]
+  },
+  {
+   "key": "FreedomIntelligence/medical-o1-reasoning-SFT",
+   "name": "Medical-o1 Reasoning SFT",
+   "hf_id": "FreedomIntelligence/medical-o1-reasoning-SFT",
+   "version": "fc2c9e8a37b38f38da6d449564a8c350b244aef4",
+   "description": "20K SFT examples of (question, complex chain-of-thought, formal response) synthesized with GPT-4o by searching for correct reasoning trajectories over the verifiable medical problems, validated via the GPT-4o verifier. Note: the currently distributed HF dataset revision has been split (2025-04-22) to keep only the medical-only SFT file plus a medical+general mix file; the English medical-only file corresponds to the ~20K examples described in the paper.",
+   "size": "20K SFT examples (English)",
+   "modality": "text",
+   "provider": "FreedomIntelligence",
+   "license": "apache-2.0",
+   "disclosure_status": "disclosed",
+   "processing": ["GPT-4o-guided search for correct CoT trajectories (Backtracking, Exploring New Paths, Verification, Correction)", "GPT-4o verifier validation of final answers"],
+   "uri": "https://huggingface.co/datasets/FreedomIntelligence/medical-o1-reasoning-SFT",
+   "parents": [
+    {"dataset_key": "FreedomIntelligence/medical-o1-verifiable-problem", "relation": "generated_from"}
+   ],
+   "evidence": ["ds_reasoning_sft", "arxiv_2412_18925"]
+  }
+ ],
+ "evaluations": [
+  {"benchmark": "MedQA", "dataset_key": "GBaker/MedQA-USMLE-4-options", "metric": "acc", "value": 72.6, "value_text": null, "configuration": {"notes": "USMLE test set"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 58.7, "evaluator_model": null, "reference_key": "arxiv_2412_18925"},
+  {"benchmark": "MedMCQA", "dataset_key": "openlifescienceai/medmcqa", "metric": "acc", "value": 60.4, "value_text": null, "configuration": {"notes": "validation set"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 56.0, "evaluator_model": null, "reference_key": "arxiv_2412_18925"},
+  {"benchmark": "PubMedQA", "dataset_key": "qiaojin/PubMedQA", "metric": "acc", "value": 79.2, "value_text": null, "configuration": {"notes": "test set"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 75.2, "evaluator_model": null, "reference_key": "arxiv_2412_18925"},
+  {"benchmark": "MMLU-Pro (Health track)", "dataset_key": "TIGER-Lab/MMLU-Pro", "metric": "acc", "value": 58.7, "value_text": null, "configuration": {"notes": "health track only"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 52.7, "evaluator_model": null, "reference_key": "arxiv_2412_18925"},
+  {"benchmark": "MMLU-Pro (Biology track)", "dataset_key": "TIGER-Lab/MMLU-Pro", "metric": "acc", "value": 68.2, "value_text": null, "configuration": {"notes": "biology track only"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 64.6, "evaluator_model": null, "reference_key": "arxiv_2412_18925"},
+  {"benchmark": "GPQA (Genetics track)", "dataset_key": "Idavidrein/gpqa", "metric": "acc", "value": 48.8, "value_text": null, "configuration": {"notes": "genetics track only; evaluated 5 times and averaged due to limited question count"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 33.8, "evaluator_model": null, "reference_key": "arxiv_2412_18925"},
+  {"benchmark": "GPQA (Molecular Biology track)", "dataset_key": "Idavidrein/gpqa", "metric": "acc", "value": 59.7, "value_text": null, "configuration": {"notes": "molecular biology track only; evaluated 5 times and averaged due to limited question count"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 46.8, "evaluator_model": null, "reference_key": "arxiv_2412_18925"},
+  {"benchmark": "Average (MedQA/MedMCQA/PubMedQA/MMLU-Pro Health+Bio/GPQA Genetics+MolBio)", "dataset_key": null, "metric": "macro_avg/acc", "value": 63.9, "value_text": null, "configuration": {"notes": "paper's own unweighted average across the 7 columns of Table 1"}, "baseline_model_id": "meta-llama/Llama-3.1-8B-Instruct", "baseline_value": 55.4, "evaluator_model": null, "reference_key": "arxiv_2412_18925"},
+  {"benchmark": "MedQA (ablation: w/o Stage 2 RL)", "dataset_key": "GBaker/MedQA-USMLE-4-options", "metric": "acc", "value": 69.0, "value_text": null, "configuration": {"notes": "SFT-only checkpoint, before PPO RL stage"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "arxiv_2412_18925"},
+  {"benchmark": "MedMCQA (ablation: w/o Stage 2 RL)", "dataset_key": "openlifescienceai/medmcqa", "metric": "acc", "value": 57.9, "value_text": null, "configuration": {"notes": "SFT-only checkpoint, before PPO RL stage"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "arxiv_2412_18925"},
+  {"benchmark": "PubMedQA (ablation: w/o Stage 2 RL)", "dataset_key": "qiaojin/PubMedQA", "metric": "acc", "value": 77.7, "value_text": null, "configuration": {"notes": "SFT-only checkpoint, before PPO RL stage"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "arxiv_2412_18925"},
+  {"benchmark": "Average (ablation: w/o Stage 2 RL)", "dataset_key": null, "metric": "macro_avg/acc", "value": 59.8, "value_text": null, "configuration": {"notes": "SFT-only checkpoint average across Table 1 columns"}, "baseline_model_id": null, "baseline_value": null, "evaluator_model": null, "reference_key": "arxiv_2412_18925"}
+ ],
+ "safety": {
+  "risk_level": "Paper's own Ethical Statement: the model may still produce hallucinations or inaccuracies and is explicitly not permitted for use in clinical or other industry applications where such inaccuracies could lead to unintended consequences.",
+  "items": [
+   {"type": "risk", "description": "Model may produce hallucinated or medically inaccurate content despite its reasoning/self-correction design.", "reference_key": "arxiv_2412_18925"},
+   {"type": "prohibited_use", "description": "Not permitted for use in clinical or other industry applications where inaccuracies could lead to unintended consequences; authors state the model 'is not suitable for real-world applications'.", "reference_key": "arxiv_2412_18925"},
+   {"type": "ethical_consideration", "description": "Users are asked to adhere to usage restrictions to safeguard the safety and integrity of downstream applications.", "reference_key": "arxiv_2412_18925"},
+   {"type": "mitigation", "description": "Training data verifier (GPT-4o) reliability was manually audited on 200 sampled scoring instances, showing 96.5% accuracy in Stage 1 and 94.5% in Stage 2, to bound noise introduced by automated verification.", "reference_key": "arxiv_2412_18925"}
+  ]
+ },
+ "licenses": [
+  {
+   "license_key": "apache-2.0",
+   "name": "Apache License 2.0",
+   "spdx_id": "Apache-2.0",
+   "uri": "https://www.apache.org/licenses/LICENSE-2.0",
+   "usage_policy_name": null,
+   "usage_policy_uri": null,
+   "commercial_use": "allowed",
+   "restrictions": [],
+   "kind": "declared",
+   "scope_note": "Declared in HF cardData/config as the license for this fine-tuned checkpoint and both training datasets; note the underlying base model (meta-llama/Llama-3.1-8B-Instruct) remains subject to the separate Llama 3.1 Community License, which is not overridden by this Apache-2.0 declaration for the base weights."
+  }
+ ],
+ "unknowns": [
+  "Exact training/compute infrastructure, total GPU-hours, and full hyperparameter set beyond the stage-level SFT/PPO values disclosed in the paper",
+  "Exact revision/commit-level provenance tying the released HF checkpoint to a specific training run",
+  "Precise size (row count) of the currently distributed medical-o1-reasoning-SFT dataset revision after its 2025-04-22 split into medical-only vs. mixed files; paper describes 20K SFT examples but the live dataset card does not restate an exact count",
+  "Model's exact knowledge cutoff date (inherits from Llama-3.1-8B-Instruct pretraining cutoff of late 2023, but not independently restated for this model)",
+  "Whether any additional safety/red-teaming evaluation specific to this checkpoint was performed beyond the verifier-reliability check described in the paper"
+ ]
+}

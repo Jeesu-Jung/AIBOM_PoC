@@ -1,0 +1,100 @@
+{
+  "datasets": {
+    "slug:drop": {
+      "name": "DROP",
+      "hf_id": "ucinlp/drop",
+      "uri": "https://huggingface.co/datasets/ucinlp/drop",
+      "version": "95cda593fae71b60b5b19f82de3fcf3298c1239c",
+      "license": "CC BY-SA 4.0",
+      "provider": "University of California, Irvine (UCI NLP)",
+      "description": "A crowdsourced, adversarially-created reading comprehension benchmark of ~96k questions requiring discrete reasoning (addition, counting, sorting) over paragraphs.",
+      "size": "9,535 validation examples (77,400 train)",
+      "reference": {
+        "type": "paper",
+        "title": "DROP: A Reading Comprehension Benchmark Requiring Discrete Reasoning Over Paragraphs",
+        "uri": "https://arxiv.org/abs/1903.00161",
+        "revision": null
+      }
+    },
+    "slug:mgsm": {
+      "name": "MGSM (Multilingual Grade School Math)",
+      "hf_id": "juletxara/mgsm",
+      "uri": "https://huggingface.co/datasets/juletxara/mgsm",
+      "version": "b2f13d426afe3be8d69a7e739b36724db8b66bbc",
+      "license": "CC BY-SA 4.0",
+      "provider": "Google Research",
+      "description": "The same 250 GSM8K grade-school math problems professionally translated into 10 languages (plus English) for evaluating multilingual chain-of-thought reasoning.",
+      "size": "250 test examples per language across 11 languages (2,750 total)",
+      "reference": {
+        "type": "paper",
+        "title": "Language Models are Multilingual Chain-of-Thought Reasoners",
+        "uri": "https://arxiv.org/abs/2210.03057",
+        "revision": null
+      }
+    },
+    "slug:multipl-e": {
+      "name": "MultiPL-E",
+      "hf_id": "nuprl/MultiPL-E",
+      "uri": "https://huggingface.co/datasets/nuprl/MultiPL-E",
+      "version": "28441b6024e71d4a1c1c0f6bf171c935cd5a43f2",
+      "license": "MIT",
+      "provider": "Northeastern University Programming Research Lab (nuprl)",
+      "description": "A dataset for evaluating code generation LLMs that translates the OpenAI HumanEval and MBPP benchmarks into 22 programming languages using automated compiler-based translation.",
+      "size": "Varies by language/config (e.g. humaneval-adb: 157 test examples); 22 languages total across HumanEval and MBPP source sets",
+      "reference": {
+        "type": "paper",
+        "title": "MultiPL-E: A Scalable and Extensible Approach to Benchmarking Neural Code Generation",
+        "uri": "https://arxiv.org/abs/2208.08227",
+        "revision": null
+      }
+    },
+    "slug:quac": {
+      "name": "QuAC (Question Answering in Context)",
+      "hf_id": "allenai/quac",
+      "uri": "https://huggingface.co/datasets/allenai/quac",
+      "version": "2c1b73f07a629a338127b6a9761c64bf3e969179",
+      "license": "MIT",
+      "provider": "Allen Institute for AI (AI2)",
+      "description": "A dataset for question answering in context containing information-seeking dialogs between a student and teacher over hidden Wikipedia text, with ~100K questions total across 14K dialogs.",
+      "size": "11,567 train / 1,000 validation dialogs (~100,000 questions total)",
+      "reference": {
+        "type": "paper",
+        "title": "QuAC: Question Answering in Context",
+        "uri": "https://arxiv.org/abs/1808.07036",
+        "revision": null
+      }
+    },
+    "slug:squad": {
+      "name": "SQuAD (Stanford Question Answering Dataset)",
+      "hf_id": "rajpurkar/squad",
+      "uri": "https://huggingface.co/datasets/rajpurkar/squad",
+      "version": "7b6d24c440a36b6815f21b70d25016731768db1f",
+      "license": "CC BY-SA 4.0",
+      "provider": "Stanford University",
+      "description": "A reading comprehension dataset of questions posed by crowdworkers on Wikipedia articles, where the answer is a span of text from the corresponding passage.",
+      "size": "10,570 validation examples (87,599 train)",
+      "reference": {
+        "type": "paper",
+        "title": "SQuAD: 100,000+ Questions for Machine Comprehension of Text",
+        "uri": "https://arxiv.org/abs/1606.05250",
+        "revision": null
+      }
+    },
+    "slug:triviaqa-wiki": {
+      "name": "TriviaQA (Wikipedia subset)",
+      "hf_id": "mandarjoshi/trivia_qa",
+      "uri": "https://huggingface.co/datasets/mandarjoshi/trivia_qa",
+      "version": "0f7faf33a3908546c6fd5b73a660e0f8ff173c2f",
+      "license": "Apache-2.0",
+      "provider": "University of Washington",
+      "description": "A reading comprehension dataset of trivia question-answer pairs with distantly supervised evidence documents; the 'wikipedia' config restricts evidence to Wikipedia pages.",
+      "size": "61,888 train / 7,993 validation examples (rc.wikipedia config)",
+      "reference": {
+        "type": "repository",
+        "title": "TriviaQA: A Large Scale Distantly Supervised Challenge Dataset for Reading Comprehension",
+        "uri": "https://github.com/mandarjoshi90/triviaqa",
+        "revision": null
+      }
+    }
+  }
+}

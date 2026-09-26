@@ -1,0 +1,298 @@
+{
+ "model_id": "HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO",
+ "model": {
+  "release_date": "2025-02-18",
+  "architecture_family": "decoder-only Transformer (Qwen2ForCausalLM)",
+  "architecture_details": {
+   "layers": 28,
+   "hidden_size": 3584,
+   "ffn_size": 18944,
+   "attention_heads": 28,
+   "kv_heads": 4,
+   "activation": "SwiGLU",
+   "position_embedding": "RoPE",
+   "rope_theta": 1000000,
+   "normalization": "RMSNorm",
+   "attention_type": "grouped-query attention with QKV bias"
+  },
+  "parameter_count": 7615616512,
+  "context_length": 32768,
+  "tokenizer": "Qwen2Tokenizer (BPE)",
+  "vocab_size": 152064,
+  "modality_input": ["text"],
+  "modality_output": ["text"],
+  "languages": ["en"],
+  "knowledge_cutoff": null,
+  "intended_use": "Safety-hardened conversational assistant derived from Qwen2.5-7B-Instruct, DPO-tuned to be more resistant to jailbreaking/adversarial prompts while retaining general instruction-following ability; intended as a research artifact and drop-in safer replacement for the base instruct model.",
+  "capabilities": [
+   "general instruction following inherited from Qwen2.5-7B-Instruct",
+   "reduced attack success rate against tested jailbreak prompt sets",
+   "English-language safety-aligned dialogue"
+  ],
+  "limitations": [
+   "MMLU accuracy decreased versus the untuned baseline (0.331 -> 0.296 per the model card)",
+   "Refusal rate on OR-Bench 80K increased slightly (0.021 -> 0.029), i.e. modest over-refusal",
+   "Safety gains are benchmark-specific (Egida test, DELPHI, Alert-Base, Alert-Adv); robustness against unseen jailbreak styles is not established",
+   "Max context length in the released config.json is 32,768 tokens (no rope_scaling entry found), narrower than the 131,072-token long-context support documented for Qwen2.5-7B-Instruct"
+  ]
+ },
+ "references": [
+  {
+   "key": "hf_card",
+   "type": "model_card",
+   "title": "HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO (model card)",
+   "uri": "https://huggingface.co/HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO",
+   "revision": "ec470fd4ee3f1f927b3696144ffd7ce7c59a9c57"
+  },
+  {
+   "key": "hf_api",
+   "type": "model_card",
+   "title": "HF Hub API metadata for HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO",
+   "uri": "https://huggingface.co/api/models/HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO",
+   "revision": "ec470fd4ee3f1f927b3696144ffd7ce7c59a9c57"
+  },
+  {
+   "key": "config_json",
+   "type": "model_card",
+   "title": "config.json",
+   "uri": "https://huggingface.co/HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO/raw/main/config.json",
+   "revision": "ec470fd4ee3f1f927b3696144ffd7ce7c59a9c57"
+  },
+  {
+   "key": "egida_dataset_card",
+   "type": "dataset_card",
+   "title": "Dataset Card for Egida (HPAI-BSC/Egida)",
+   "uri": "https://huggingface.co/datasets/HPAI-BSC/Egida",
+   "revision": "fe1ad5283b8f80d7d5bc1c705688fe38444062e1"
+  },
+  {
+   "key": "paper",
+   "type": "paper",
+   "title": "Efficient Safety Retrofitting Against Jailbreaking for LLMs",
+   "uri": "https://arxiv.org/abs/2502.13603",
+   "revision": "v2"
+  },
+  {
+   "key": "base_model_card",
+   "type": "model_card",
+   "title": "Qwen/Qwen2.5-7B-Instruct (model card)",
+   "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct",
+   "revision": null
+  }
+ ],
+ "provenance": {
+  "origin": "Qwen2.5",
+  "provider": "HPAI-BSC (Barcelona Supercomputing Center, High Performance Artificial Intelligence group)",
+  "relation": "preference_optimized_from",
+  "disclosure_status": "disclosed",
+  "notes": "Model card declares base_model Qwen/Qwen2.5-7B-Instruct and dataset HPAI-BSC/Egida; both the safety-retrofitting method and dataset construction are described in the accompanying paper (arXiv:2502.13603).",
+  "evidence": ["hf_card", "hf_api", "paper"]
+ },
+ "transformation": {
+  "methods": ["Direct Preference Optimization (DPO) safety retrofitting"],
+  "objective": "Reduce the jailbreak attack success rate (ASR) of Qwen2.5-7B-Instruct against adversarial/jailbreak prompts while preserving general instruction-following capability, using an efficient, low-compute DPO recipe.",
+  "hyperparameters": {
+   "method": "DPO",
+   "framework": "OpenRLHF v0.3.2",
+   "batch_size": 8,
+   "learning_rate": 1e-7,
+   "hardware": "4x NVIDIA H100 64GB GPUs (1 node), small-model training tier",
+   "training_time": "1.59 hours (reported as single-H100-equivalent compute time; small-model tier ranges 7.57 minutes-1.59 hours across models)",
+   "epochs": null,
+   "beta": null
+  },
+  "adapter_config": {},
+  "performed_at": "2025-02-18",
+  "notes": "Paper states small models (including Qwen2.5-7B-Instruct) were trained on 4 GPUs at batch size 8 and lr=1e-7, versus large models (64 GPUs, batch size 64, lr=1e-6). DPO beta value, epoch count, and whether full-parameter or PEFT tuning was used are not stated; released safetensors total 7.6B parameters matching a full fine-tune of the base model size.",
+  "inputs": [
+   {"model_id": "Qwen/Qwen2.5-7B-Instruct", "external_model_name": null, "role": "base"}
+  ],
+  "datasets": [
+   {"dataset_key": "slug:egida-dpo-qwen2.5-7b-instruct", "role": "preference"}
+  ],
+  "evidence": ["hf_card", "paper"]
+ },
+ "datasets": [
+  {
+   "key": "HPAI-BSC/Egida",
+   "name": "Egida",
+   "hf_id": "HPAI-BSC/Egida",
+   "version": "config 'Egida' (splits: full/train/test), commit fe1ad52",
+   "description": "Collection of 2,949 manually curated unsafe/jailbreak-eliciting requests gathered from nine public sources, deduplicated via MinHash, manually multi-labeled across 27 fine-grained safety topics, and expanded with 18 distinct jailbreaking attack techniques (incl. DAN, DeepInception, ReNeLLM, and Qwen-72B-Chat-generated past-tense/technical-report styles).",
+   "size": "61,830 total instances (config 'Egida', split 'full'); train split 22,390 rows; test split 10,940 rows; splits are constructed with non-overlapping topics and attack styles",
+   "modality": "text",
+   "provider": "HPAI-BSC",
+   "license": "apache-2.0",
+   "disclosure_status": "disclosed",
+   "processing": [
+    "manual curation and review from 9 public source datasets",
+    "MinHash deduplication",
+    "manual multi-label topic classification (27 topics)",
+    "18 jailbreak-attack augmentations applied to each seed prompt",
+    "topic/attack-style-disjoint train/test split to avoid contamination"
+   ],
+   "uri": "https://huggingface.co/datasets/HPAI-BSC/Egida",
+   "parents": [],
+   "evidence": ["egida_dataset_card", "paper"]
+  },
+  {
+   "key": "slug:egida-s",
+   "name": "Egida-S",
+   "hf_id": "HPAI-BSC/Egida",
+   "version": "config 'Egida-S', split 'train'",
+   "description": "Egida unsafe prompts paired with safe reference responses generated by Mistral-7B-v0.3 and Phi-3-Small-8k, used as the 'chosen' side of DPO preference pairs.",
+   "size": "61,830 rows",
+   "modality": "text",
+   "provider": "HPAI-BSC",
+   "license": "apache-2.0",
+   "disclosure_status": "disclosed",
+   "processing": ["safe-response generation via Mistral-7B-v0.3 and Phi-3-Small-8k"],
+   "uri": "https://huggingface.co/datasets/HPAI-BSC/Egida",
+   "parents": [
+    {"dataset_key": "HPAI-BSC/Egida", "relation": "derived_from"}
+   ],
+   "evidence": ["egida_dataset_card"]
+  },
+  {
+   "key": "slug:egida-dpo-qwen2.5-7b-instruct",
+   "name": "Egida-DPO-Qwen2.5-7B-Instruct",
+   "hf_id": "HPAI-BSC/Egida",
+   "version": "config 'Egida-DPO-Qwen2.5-7B-Instruct', split 'train'",
+   "description": "Model-specific DPO preference dataset built by running inference with Qwen2.5-7B-Instruct on Egida prompts: unsafe model generations are kept as 'rejected' responses and paired with Egida-S safe responses as 'chosen', for direct preference optimization targeting this specific model.",
+   "size": "6,410 preference pairs",
+   "modality": "text",
+   "provider": "HPAI-BSC",
+   "license": "apache-2.0",
+   "disclosure_status": "disclosed",
+   "processing": [
+    "inference of Qwen2.5-7B-Instruct on Egida prompts to obtain candidate unsafe completions",
+    "pairing of unsafe completions ('rejected') with Egida-S safe completions ('chosen')"
+   ],
+   "uri": "https://huggingface.co/datasets/HPAI-BSC/Egida",
+   "parents": [
+    {"dataset_key": "HPAI-BSC/Egida", "relation": "derived_from"},
+    {"dataset_key": "slug:egida-s", "relation": "generated_from"}
+   ],
+   "evidence": ["egida_dataset_card", "hf_card", "paper"]
+  }
+ ],
+ "evaluations": [
+  {
+   "benchmark": "Egida (test)",
+   "dataset_key": "HPAI-BSC/Egida",
+   "metric": "ASR",
+   "value": 0.322,
+   "value_text": null,
+   "configuration": {"notes": "Attack Success Ratio on the Egida held-out test split; lower is better"},
+   "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct",
+   "baseline_value": 0.471,
+   "evaluator_model": null,
+   "reference_key": "hf_card"
+  },
+  {
+   "benchmark": "DELPHI",
+   "dataset_key": null,
+   "metric": "ASR",
+   "value": 0.118,
+   "value_text": null,
+   "configuration": {"notes": "External jailbreak/safety benchmark referenced by the paper (arXiv:2404.03411); lower is better"},
+   "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct",
+   "baseline_value": 0.138,
+   "evaluator_model": null,
+   "reference_key": "hf_card"
+  },
+  {
+   "benchmark": "Alert-Base",
+   "dataset_key": null,
+   "metric": "ASR",
+   "value": 0.410,
+   "value_text": null,
+   "configuration": {"notes": "ALERT safety benchmark, base (non-adversarial) subset; lower is better"},
+   "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct",
+   "baseline_value": 0.544,
+   "evaluator_model": null,
+   "reference_key": "hf_card"
+  },
+  {
+   "benchmark": "Alert-Adv",
+   "dataset_key": null,
+   "metric": "ASR",
+   "value": 0.045,
+   "value_text": null,
+   "configuration": {"notes": "ALERT safety benchmark, adversarial subset; lower is better"},
+   "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct",
+   "baseline_value": 0.080,
+   "evaluator_model": null,
+   "reference_key": "hf_card"
+  },
+  {
+   "benchmark": "MMLU",
+   "dataset_key": "cais/mmlu",
+   "metric": "acc",
+   "value": 0.296,
+   "value_text": null,
+   "configuration": {"notes": "As reported in the OpenLLM-style general-capability comparison on the model card"},
+   "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct",
+   "baseline_value": 0.331,
+   "evaluator_model": null,
+   "reference_key": "hf_card"
+  },
+  {
+   "benchmark": "OpenLLM average",
+   "dataset_key": null,
+   "metric": "avg",
+   "value": 0.488,
+   "value_text": "Card states general capability 'remained stable' versus baseline at this OpenLLM average; only the post-tuning value is given numerically",
+   "configuration": {"notes": "Aggregate of an unspecified Open LLM Leaderboard-style benchmark suite"},
+   "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct",
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "hf_card"
+  },
+  {
+   "benchmark": "OR-Bench 80K (refusal rate)",
+   "dataset_key": "slug:or-bench-80k",
+   "metric": "refusal_rate",
+   "value": 0.029,
+   "value_text": null,
+   "configuration": {"notes": "Rate of refusing benign requests; higher indicates more over-refusal"},
+   "baseline_model_id": "Qwen/Qwen2.5-7B-Instruct",
+   "baseline_value": 0.021,
+   "evaluator_model": null,
+   "reference_key": "hf_card"
+  }
+ ],
+ "safety": {
+  "risk_level": "DPO safety retrofitting reduces measured jailbreak Attack Success Ratio versus the Qwen2.5-7B-Instruct baseline across four benchmarks (roughly 10-45% relative reduction), while general capability (OpenLLM average) is reported stable; a small MMLU regression and a modest increase in benign-prompt refusal rate are observed trade-offs.",
+  "items": [
+   {"type": "risk", "description": "MMLU accuracy decreased from 0.331 (baseline Qwen2.5-7B-Instruct) to 0.296 after DPO safety tuning.", "reference_key": "hf_card"},
+   {"type": "risk", "description": "Refusal rate on OR-Bench 80K increased from 0.021 to 0.029, i.e. a modest rise in over-refusal of benign prompts.", "reference_key": "hf_card"},
+   {"type": "mitigation", "description": "DPO training on the Egida-DPO-Qwen2.5-7B-Instruct preference dataset lowers ASR on the Egida test split, DELPHI, Alert-Base, and Alert-Adv jailbreak benchmarks relative to the untuned base model.", "reference_key": "hf_card"},
+   {"type": "ethical_consideration", "description": "The underlying Egida dataset contains real unsafe/jailbreak-eliciting prompts (and, in Egida-HSafe, human-annotated unsafe completions), collected and released specifically for safety research and retrofitting rather than misuse.", "reference_key": "egida_dataset_card"},
+   {"type": "prohibited_use", "description": "Paper explicitly frames the method and released artifacts as being for defensive safety research (reducing jailbreak susceptibility), not for producing or amplifying jailbreaks.", "reference_key": "paper"}
+  ]
+ },
+ "licenses": [
+  {
+   "license_key": "apache-2.0",
+   "name": "Apache License 2.0",
+   "spdx_id": "Apache-2.0",
+   "uri": "https://www.apache.org/licenses/LICENSE-2.0",
+   "usage_policy_name": null,
+   "usage_policy_uri": null,
+   "commercial_use": "allowed",
+   "restrictions": [],
+   "kind": "declared",
+   "scope_note": "Declared directly on the HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO model card (license: apache-2.0); consistent with the Apache-2.0 license of the base Qwen/Qwen2.5-7B-Instruct model and the HPAI-BSC/Egida dataset."
+  }
+ ],
+ "unknowns": [
+  "Exact DPO beta value and number of training epochs are not disclosed on the model card or in the paper text retrieved.",
+  "Whether full-parameter fine-tuning or a PEFT/LoRA method was used for the DPO run is not explicitly stated (released safetensors total 7.615B parameters, consistent with a full fine-tune of the base model).",
+  "Baseline (pre-tuning) OpenLLM average score is not given numerically, only that it 'remained stable' near the reported 0.488 post-tuning value.",
+  "Knowledge cutoff of the underlying Qwen2.5-7B-Instruct base model is not restated on this derived model's card.",
+  "config.json for this repo shows max_position_embeddings=32768 with no rope_scaling field, so it is unverified whether the 131,072-token long-context behavior documented for Qwen2.5-7B-Instruct (via YaRN) is retained after DPO tuning.",
+  "Exact HF dataset ids for the DELPHI and ALERT (Alert-Base/Alert-Adv) external benchmarks could not be independently verified from the sources opened, so evaluations[].dataset_key is left null for those rows.",
+  "Precise identity/HF id of the 'OR-Bench 80K' benchmark subset could not be independently verified; dataset_key uses a provisional slug."
+ ]
+}

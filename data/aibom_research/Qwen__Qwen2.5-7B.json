@@ -1,0 +1,650 @@
+{
+ "model_id": "Qwen/Qwen2.5-7B",
+ "model": {
+  "release_date": "2024-09-19",
+  "architecture_family": "decoder-only Transformer (Qwen2 architecture)",
+  "architecture_details": {
+   "layers": 28,
+   "hidden_size": 3584,
+   "ffn_size": 18944,
+   "attention_heads": 28,
+   "kv_heads": 4,
+   "activation": "SwiGLU",
+   "position_embedding": "RoPE",
+   "rope_theta": 1000000,
+   "normalization": "RMSNorm",
+   "attention_bias": "QKV bias",
+   "attention_type": "grouped-query attention"
+  },
+  "parameter_count": 7615616512,
+  "context_length": 131072,
+  "tokenizer": "Qwen2Tokenizer, byte-level BPE (tiktoken-derived)",
+  "vocab_size": 152064,
+  "modality_input": [
+   "text"
+  ],
+  "modality_output": [
+   "text"
+  ],
+  "languages": [
+   "en",
+   "zh",
+   "fr",
+   "es",
+   "pt",
+   "de",
+   "it",
+   "ru",
+   "ja",
+   "ko",
+   "vi",
+   "th",
+   "ar"
+  ],
+  "knowledge_cutoff": null,
+  "intended_use": "Base causal language model intended as a foundation for further post-training (SFT, RLHF/DPO, continued pretraining) rather than direct conversational use.",
+  "capabilities": [
+   "long-context modeling up to 131,072 tokens",
+   "multilingual text generation (29+ languages)",
+   "strong performance on coding and mathematics benchmarks relative to prior Qwen2 generation"
+  ],
+  "limitations": [
+   "not recommended for direct conversational/instruction-following use without further post-training",
+   "non-embedding parameter count (6.53B) differs from total (7.61B) due to the large 152K-token vocabulary embedding table"
+  ]
+ },
+ "references": [
+  {
+   "key": "hf_card",
+   "type": "model_card",
+   "title": "Qwen/Qwen2.5-7B (model card)",
+   "uri": "https://huggingface.co/Qwen/Qwen2.5-7B",
+   "revision": "d149729398750b98c0af14eb82c78cfe92750796"
+  },
+  {
+   "key": "hf_config",
+   "type": "config",
+   "title": "Qwen/Qwen2.5-7B config.json",
+   "uri": "https://huggingface.co/Qwen/Qwen2.5-7B/raw/main/config.json",
+   "revision": "d149729398750b98c0af14eb82c78cfe92750796"
+  },
+  {
+   "key": "hf_api",
+   "type": "api_metadata",
+   "title": "HF Hub API metadata for Qwen/Qwen2.5-7B",
+   "uri": "https://huggingface.co/api/models/Qwen/Qwen2.5-7B",
+   "revision": "d149729398750b98c0af14eb82c78cfe92750796"
+  },
+  {
+   "key": "blog",
+   "type": "official_blog",
+   "title": "Qwen2.5: A Party of Foundation Models!",
+   "uri": "https://qwenlm.github.io/blog/qwen2.5/",
+   "revision": null
+  },
+  {
+   "key": "tech_report",
+   "type": "paper",
+   "title": "Qwen2.5 Technical Report",
+   "uri": "https://arxiv.org/abs/2412.15115",
+   "revision": "v2 (2025-01-03)"
+  }
+ ],
+ "provenance": {
+  "origin": "Qwen2.5",
+  "provider": "Qwen Team (Alibaba Cloud)",
+  "relation": "pretrained",
+  "disclosure_status": "partially_disclosed",
+  "notes": "HF model card and config.json disclose architecture and parameter counts; the technical report discloses aggregate pretraining token count (up to 18T tokens) and high-level data composition (general text, code, math, multilingual) but not the exact source/dataset inventory.",
+  "evidence": [
+   "hf_card",
+   "hf_config",
+   "tech_report",
+   "blog"
+  ]
+ },
+ "transformation": {
+  "methods": [
+   "pretraining"
+  ],
+  "objective": "Train a dense decoder-only Transformer via autoregressive next-token prediction on a large-scale multilingual, code, and math corpus to serve as the foundation checkpoint for the Qwen2.5-7B lineage.",
+  "hyperparameters": {},
+  "adapter_config": {},
+  "performed_at": "2024-09-19",
+  "notes": "Exact optimizer settings, learning-rate schedule, and batch size are not disclosed in the model card, blog, or technical report abstract/tables reviewed.",
+  "inputs": [],
+  "datasets": [
+   {
+    "dataset_key": "slug:qwen2.5-pretraining-corpus",
+    "role": "pretraining"
+   }
+  ],
+  "evidence": [
+   "hf_card",
+   "tech_report",
+   "blog"
+  ]
+ },
+ "datasets": [
+  {
+   "key": "slug:qwen2.5-pretraining-corpus",
+   "name": "Qwen2.5 pretraining corpus",
+   "hf_id": null,
+   "version": null,
+   "description": "Large-scale multilingual (29+ languages) pretraining corpus covering general web text, code, and mathematics; the technical report states specialized expert models were used to generate additional high-quality coding and math data, but the exact dataset inventory, sourcing, and filtering/dedup pipeline are not publicly disclosed.",
+   "size": "up to 18T tokens",
+   "modality": "text",
+   "provider": "Qwen Team (Alibaba Cloud)",
+   "license": null,
+   "disclosure_status": "undisclosed",
+   "processing": [],
+   "uri": null,
+   "parents": [],
+   "evidence": [
+    "tech_report",
+    "blog"
+   ]
+  },
+  {
+   "key": "cais/mmlu",
+   "name": "MMLU",
+   "hf_id": "cais/mmlu",
+   "version": null,
+   "description": "Massive Multitask Language Understanding: 57-subject multiple-choice knowledge benchmark.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/cais/mmlu",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "TIGER-Lab/MMLU-Pro",
+   "name": "MMLU-Pro",
+   "hf_id": "TIGER-Lab/MMLU-Pro",
+   "version": null,
+   "description": "Harder, 10-option version of MMLU with more reasoning-focused questions.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/TIGER-Lab/MMLU-Pro",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "openai/gsm8k",
+   "name": "GSM8K",
+   "hf_id": "openai/gsm8k",
+   "version": null,
+   "description": "Grade-school math word problems benchmark.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/openai/gsm8k",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "hendrycks/competition_math",
+   "name": "MATH",
+   "hf_id": "hendrycks/competition_math",
+   "version": null,
+   "description": "Competition mathematics problem benchmark.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/hendrycks/competition_math",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "openai/openai_humaneval",
+   "name": "HumanEval",
+   "hf_id": "openai/openai_humaneval",
+   "version": null,
+   "description": "Hand-written Python programming problems with unit tests.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/openai/openai_humaneval",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "google-research-datasets/mbpp",
+   "name": "MBPP",
+   "hf_id": "google-research-datasets/mbpp",
+   "version": null,
+   "description": "Mostly Basic Python Problems code generation benchmark.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/google-research-datasets/mbpp",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "Idavidrein/gpqa",
+   "name": "GPQA",
+   "hf_id": "Idavidrein/gpqa",
+   "version": null,
+   "description": "Graduate-level Google-proof Q&A science benchmark.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/Idavidrein/gpqa",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "allenai/ai2_arc",
+   "name": "ARC-Challenge",
+   "hf_id": "allenai/ai2_arc",
+   "version": null,
+   "description": "AI2 Reasoning Challenge, grade-school science questions (Challenge split).",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/allenai/ai2_arc",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "Rowan/hellaswag",
+   "name": "HellaSwag",
+   "hf_id": "Rowan/hellaswag",
+   "version": null,
+   "description": "Commonsense sentence-completion benchmark.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/Rowan/hellaswag",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "truthfulqa/truthful_qa",
+   "name": "TruthfulQA",
+   "hf_id": "truthfulqa/truthful_qa",
+   "version": null,
+   "description": "Benchmark measuring truthful answers to questions humans often get wrong.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/truthfulqa/truthful_qa",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "allenai/winogrande",
+   "name": "Winogrande",
+   "hf_id": "allenai/winogrande",
+   "version": null,
+   "description": "Large-scale Winograd-schema commonsense reasoning benchmark.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/allenai/winogrande",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "lukaemon/bbh",
+   "name": "BBH",
+   "hf_id": "lukaemon/bbh",
+   "version": null,
+   "description": "BIG-Bench Hard, 23 challenging reasoning tasks.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/lukaemon/bbh",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  }
+ ],
+ "evaluations": [
+  {
+   "benchmark": "MMLU",
+   "dataset_key": "cais/mmlu",
+   "metric": "acc",
+   "value": 74.2,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4, Qwen2.5-7B base model comparison"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MMLU-Pro",
+   "dataset_key": "TIGER-Lab/MMLU-Pro",
+   "metric": "acc",
+   "value": 45.0,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MMLU-redux",
+   "dataset_key": null,
+   "metric": "acc",
+   "value": 71.1,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "BBH",
+   "dataset_key": "lukaemon/bbh",
+   "metric": "acc",
+   "value": 70.4,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "ARC-Challenge",
+   "dataset_key": "allenai/ai2_arc",
+   "metric": "acc",
+   "value": 63.7,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4, reported as ARC-C"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "TruthfulQA",
+   "dataset_key": "truthfulqa/truthful_qa",
+   "metric": "acc",
+   "value": 56.4,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "Winogrande",
+   "dataset_key": "allenai/winogrande",
+   "metric": "acc",
+   "value": 75.9,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "HellaSwag",
+   "dataset_key": "Rowan/hellaswag",
+   "metric": "acc",
+   "value": 80.2,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "GPQA",
+   "dataset_key": "Idavidrein/gpqa",
+   "metric": "acc",
+   "value": 36.4,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "TheoremQA",
+   "dataset_key": null,
+   "metric": "acc",
+   "value": 36.0,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MATH",
+   "dataset_key": "hendrycks/competition_math",
+   "metric": "acc",
+   "value": 49.8,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MMLU-STEM",
+   "dataset_key": null,
+   "metric": "acc",
+   "value": 72.3,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "GSM8K",
+   "dataset_key": "openai/gsm8k",
+   "metric": "acc",
+   "value": 85.4,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "HumanEval",
+   "dataset_key": "openai/openai_humaneval",
+   "metric": "pass@1",
+   "value": 57.9,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "HumanEval+",
+   "dataset_key": null,
+   "metric": "pass@1",
+   "value": 50.6,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MBPP",
+   "dataset_key": "google-research-datasets/mbpp",
+   "metric": "pass@1",
+   "value": 74.9,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MBPP+",
+   "dataset_key": null,
+   "metric": "pass@1",
+   "value": 62.9,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MultiPL-E",
+   "dataset_key": null,
+   "metric": "pass@1",
+   "value": 50.3,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 4"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  }
+ ],
+ "safety": {
+  "risk_level": null,
+  "items": [
+   {
+    "type": "limitation",
+    "description": "Base (non-instruction-tuned) models are not recommended for direct conversational use; the model card recommends applying SFT, RLHF, or continued pretraining before deployment as an assistant.",
+    "reference_key": "hf_card"
+   }
+  ]
+ },
+ "licenses": [
+  {
+   "license_key": "apache-2.0",
+   "name": "Apache License 2.0",
+   "spdx_id": "Apache-2.0",
+   "uri": "https://huggingface.co/Qwen/Qwen2.5-7B/blob/main/LICENSE",
+   "usage_policy_name": null,
+   "usage_policy_uri": null,
+   "commercial_use": "allowed",
+   "restrictions": [],
+   "kind": "declared",
+   "scope_note": null
+  }
+ ],
+ "unknowns": [
+  "Exact pretraining dataset inventory/sources (only aggregate 18T-token figure disclosed)",
+  "Knowledge cutoff date is not stated in the HF card, blog, or technical report abstract/tables reviewed",
+  "Exact data processing/filtering/dedup pipeline for the pretraining corpus",
+  "Pretraining hyperparameters (learning rate schedule, batch size, optimizer, hardware)",
+  "MMLU-redux, TheoremQA, MMLU-STEM, HumanEval+, MBPP+, MultiPL-E have no canonical HF dataset id in the fixed convention list, so dataset_key is null for these evaluation rows even though the benchmarks are well known"
+ ]
+}

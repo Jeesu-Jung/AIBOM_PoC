@@ -1,0 +1,939 @@
+{
+  "generated_at": "2026-09-26T14:45:12+00:00",
+  "references": {
+    "https://huggingface.co/FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp": {
+      "uri": "https://huggingface.co/FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "3d7753b7d1f61e7a6a845b711aeae4ca662821f37ba565d6985080bf9ea29e9c",
+      "published_at": "2026-03-02",
+      "resolved_revision": "0424f26c1714fd488bad63c348c96070d46de30f"
+    },
+    "https://huggingface.co/FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp/raw/main/adapter_config.json": {
+      "uri": "https://huggingface.co/FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp/raw/main/adapter_config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "2d77379bb8458c8fc83127ee9efcc9cd5075ec119ebbc500724c81d0e40197e5",
+      "published_at": "2026-03-02",
+      "resolved_revision": "0424f26c1714fd488bad63c348c96070d46de30f"
+    },
+    "https://huggingface.co/api/models/FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp": {
+      "uri": "https://huggingface.co/api/models/FlorianJK/Meta-Llama-3.1-8B-SecAlign-pp",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "29943bda56031513b4f7a8a211aa8afc45fd4574c2c72b62292a632a193b3b52",
+      "published_at": "2026-03-02",
+      "resolved_revision": "0424f26c1714fd488bad63c348c96070d46de30f"
+    },
+    "https://arxiv.org/abs/2410.05451": {
+      "uri": "https://arxiv.org/abs/2410.05451",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "24c714076ff3e946d83f9aedb4ba86365b82d70aeaee2a539c745759d62a7ba8",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2025-07-03",
+      "resolved_revision": "v3"
+    },
+    "https://arxiv.org/abs/2507.02735": {
+      "uri": "https://arxiv.org/abs/2507.02735",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "139aba8779c8e18971094bf392d8fa11a374290717779c3d4273bfc7bc5cc439",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2026-02-06",
+      "resolved_revision": "v3"
+    },
+    "https://github.com/facebookresearch/Meta_SecAlign": {
+      "uri": "https://github.com/facebookresearch/Meta_SecAlign",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "15a7c40caa6fddd1bcb697918050267dca9c3b998acf5c0915460e0ee0b83aff",
+      "published_at": "2026-02-25",
+      "resolved_revision": "2031502bdf5a046b437ec835c6b05ff468aa0699"
+    },
+    "https://arxiv.org/pdf/2407.21783": {
+      "uri": "https://arxiv.org/pdf/2407.21783",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "481f1599468f95a07d05e97fafe55bbe786dc1624c6f881bcb4c7d14c933d083",
+      "last_modified_header": "2024-11-26",
+      "published_at": "2024-11-23",
+      "resolved_revision": "v3"
+    },
+    "https://huggingface.co/FreedomIntelligence/HuatuoGPT-o1-8B": {
+      "uri": "https://huggingface.co/FreedomIntelligence/HuatuoGPT-o1-8B",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "49042ea84d6db18bf490379628a23841882f3c700836aadb5b3e5bdac5c8c678",
+      "published_at": "2024-12-30",
+      "resolved_revision": "afc8b260e5b3dee9233863cf2de3080f3094442a"
+    },
+    "https://huggingface.co/api/models/FreedomIntelligence/HuatuoGPT-o1-8B": {
+      "uri": "https://huggingface.co/api/models/FreedomIntelligence/HuatuoGPT-o1-8B",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "93394e18200d1668d55f1d4d5084e554be4cc89b4294de92ddf7b59220fe80f4",
+      "published_at": "2024-12-30",
+      "resolved_revision": "afc8b260e5b3dee9233863cf2de3080f3094442a"
+    },
+    "https://huggingface.co/FreedomIntelligence/HuatuoGPT-o1-8B/resolve/main/config.json": {
+      "uri": "https://huggingface.co/FreedomIntelligence/HuatuoGPT-o1-8B/resolve/main/config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "2c0f840a9431158ee67c9090c6eaca9bd2f4c299946755cb65fb61c311558f75",
+      "published_at": "2024-12-30",
+      "resolved_revision": "afc8b260e5b3dee9233863cf2de3080f3094442a"
+    },
+    "https://arxiv.org/abs/2412.18925": {
+      "uri": "https://arxiv.org/abs/2412.18925",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "220486709d8145f5f98888d40145e8ac2a6ad7df19b9ae50e0fb1e2b0c9a9c23",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2024-12-25",
+      "resolved_revision": "v1"
+    },
+    "https://huggingface.co/datasets/FreedomIntelligence/medical-o1-verifiable-problem": {
+      "uri": "https://huggingface.co/datasets/FreedomIntelligence/medical-o1-verifiable-problem",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "b288de2e6bf189d074b84d0cd5070a833133a719da0bc7a6c708722a2fef504a",
+      "published_at": "2024-12-30",
+      "resolved_revision": "46d5175eb74fdef3516d51d52e8c40db04bbdf35"
+    },
+    "https://huggingface.co/datasets/FreedomIntelligence/medical-o1-reasoning-SFT": {
+      "uri": "https://huggingface.co/datasets/FreedomIntelligence/medical-o1-reasoning-SFT",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "4db35f1d484421d1f06e9dfdd542ad5a8c7391b9baf47cfde5512169196b3a04",
+      "published_at": "2025-04-22",
+      "resolved_revision": "fc2c9e8a37b38f38da6d449564a8c350b244aef4"
+    },
+    "https://github.com/FreedomIntelligence/HuatuoGPT-o1": {
+      "uri": "https://github.com/FreedomIntelligence/HuatuoGPT-o1",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "c08c958ee2db4d9c78daf43a05dad211ff65563dfa345bce1d67f921d90e1ec2",
+      "published_at": "2025-01-20",
+      "resolved_revision": "2c8d7fcaadaad44000eb1765cbe36a09968a0164"
+    },
+    "https://huggingface.co/HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge": {
+      "uri": "https://huggingface.co/HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "222097fa29b2e7d4b9d4172b6c8d812ef93ade674beefbb4cb6beac13b0b9e28",
+      "published_at": "2025-05-27",
+      "resolved_revision": "68a7dee9fe59d2dc64766066f1a3a1a73050fde3"
+    },
+    "https://huggingface.co/HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge/raw/main/config.json": {
+      "uri": "https://huggingface.co/HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge/raw/main/config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "2da1f3f572a1e2dc3f68c6746c2d6e9509442b197e42cdf52070c713b035b6db",
+      "published_at": "2025-05-27",
+      "resolved_revision": "68a7dee9fe59d2dc64766066f1a3a1a73050fde3"
+    },
+    "https://huggingface.co/api/models/HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge": {
+      "uri": "https://huggingface.co/api/models/HiTZ/Llama-3.1-8B-Instruct-multi-truth-judge",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "8d6f6448fc76e29bd191f98895665f2c752516725b9ebce1aadafcccb8127f49",
+      "published_at": "2025-05-27",
+      "resolved_revision": "68a7dee9fe59d2dc64766066f1a3a1a73050fde3"
+    },
+    "https://huggingface.co/datasets/HiTZ/truthful_judge": {
+      "uri": "https://huggingface.co/datasets/HiTZ/truthful_judge",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "36537be4c1c979e97904f1c5b426aa1d10cd963f29e224cf9e4b507ba90033fc",
+      "published_at": "2025-05-22",
+      "resolved_revision": "cb0bbf9dfa62ba1eda8fdad44a557e24e072426c"
+    },
+    "https://arxiv.org/abs/2502.09387": {
+      "uri": "https://arxiv.org/abs/2502.09387",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "6b2ac262afa42faec3283966d9145765fd9660be5962eb12056689e590d6078e",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2025-06-16",
+      "resolved_revision": "v3"
+    },
+    "https://github.com/hitz-zentroa/truthfulqa-multi": {
+      "uri": "https://github.com/hitz-zentroa/truthfulqa-multi",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "cd23c069aeae5f4baf09319b6e37e0c81b06a402d00089ae9e7bcbb0ec1e74fd",
+      "published_at": "2025-05-27",
+      "resolved_revision": "11fe747386ff73f332c16fb7e05a924283212c0d"
+    },
+    "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct": {
+      "uri": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "1ce4554497c54fa17f2fa373f945d41d731c87b43242260f31394cdaf0bd05c3",
+      "published_at": "2024-09-25",
+      "resolved_revision": "0e9e39f249a16976918f6564b8830bc894c89659"
+    },
+    "https://aclanthology.org/2022.acl-long.229": {
+      "uri": "https://aclanthology.org/2022.acl-long.229",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "d9d29f70608aac335fe85a0517ce27dd95e49cdb36051e766436c2cd2b484926",
+      "last_modified_header": "2026-09-22",
+      "published_at": "2026-09-22",
+      "resolved_revision": null
+    },
+    "https://huggingface.co/HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO": {
+      "uri": "https://huggingface.co/HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "338134b94b6807cb2c21264bae3354a0209cdc852a6499f4c3b48baf20d1b8ee",
+      "published_at": "2025-04-01",
+      "resolved_revision": "ec470fd4ee3f1f927b3696144ffd7ce7c59a9c57"
+    },
+    "https://huggingface.co/api/models/HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO": {
+      "uri": "https://huggingface.co/api/models/HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "22851d055eb82ebc38fd1472959d33747e37326f07cfb7d0cd24a6bcc859d240",
+      "published_at": "2025-04-01",
+      "resolved_revision": "ec470fd4ee3f1f927b3696144ffd7ce7c59a9c57"
+    },
+    "https://huggingface.co/HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO/raw/main/config.json": {
+      "uri": "https://huggingface.co/HPAI-BSC/Qwen2.5-7B-Instruct-Egida-DPO/raw/main/config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "f120366df77b219a75e1e99a97c4ff0734734fdeaaeabfb1e4d7dfed5cfdf4bd",
+      "published_at": "2025-04-01",
+      "resolved_revision": "ec470fd4ee3f1f927b3696144ffd7ce7c59a9c57"
+    },
+    "https://huggingface.co/datasets/HPAI-BSC/Egida": {
+      "uri": "https://huggingface.co/datasets/HPAI-BSC/Egida",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "1f3b58dc2de231316971ab840c1b14bba0f7a277e5650b072a6c7f9e2bbd47c7",
+      "published_at": "2025-08-22",
+      "resolved_revision": "fe1ad5283b8f80d7d5bc1c705688fe38444062e1"
+    },
+    "https://arxiv.org/abs/2502.13603": {
+      "uri": "https://arxiv.org/abs/2502.13603",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "82fa808a6840190480ffad47a5d7467823a1607c8f896d9ea8aaf9ecf32da444",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2025-02-25",
+      "resolved_revision": "v2"
+    },
+    "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct": {
+      "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "a8124e85996bd994964c515b8e6a3592784c2594b350ed84b309adfbce09e6fb",
+      "published_at": "2025-01-12",
+      "resolved_revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+    },
+    "https://huggingface.co/mellee030/MedQwen-7B-LoRA": {
+      "uri": "https://huggingface.co/mellee030/MedQwen-7B-LoRA",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "cafc010998727928314f189e7150a8b6f5684426655154580af4812301721c46",
+      "published_at": "2026-04-18",
+      "resolved_revision": "240ea2f26040208aaa7a8125f8e84ae74a4df09f"
+    },
+    "https://huggingface.co/mellee030/MedQwen-7B-LoRA/raw/main/adapter_config.json": {
+      "uri": "https://huggingface.co/mellee030/MedQwen-7B-LoRA/raw/main/adapter_config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "f697fd741fef9d848ce1985ff065fe3014ad794895f12e2b97ddf25b715abeba",
+      "published_at": "2026-04-18",
+      "resolved_revision": "240ea2f26040208aaa7a8125f8e84ae74a4df09f"
+    },
+    "https://huggingface.co/api/models/mellee030/MedQwen-7B-LoRA": {
+      "uri": "https://huggingface.co/api/models/mellee030/MedQwen-7B-LoRA",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "f44784346c33093fb0bb29c224062ce7a6e81b9265b7e0fc072c61c05aabcd93",
+      "published_at": "2026-04-18",
+      "resolved_revision": "240ea2f26040208aaa7a8125f8e84ae74a4df09f"
+    },
+    "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/raw/main/config.json": {
+      "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/raw/main/config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "7463bb0ea78315365e6c6b74de4e73bbcc8359dfb0c5a737584e077d42c0b03c",
+      "published_at": "2025-01-12",
+      "resolved_revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+    },
+    "https://github.com/melc030/MedQwen": {
+      "uri": "https://github.com/melc030/MedQwen",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "e9aafe0b1bbf023253c639e5fc66b73719122fbd9b1a7eed8c1605b8c54a1a69",
+      "published_at": "2026-08-14",
+      "resolved_revision": "0a70be778ae47e5fca73f813423c7b20d6e4637e"
+    },
+    "https://huggingface.co/api/models/meta-llama/Llama-3.1-8B-Instruct": {
+      "uri": "https://huggingface.co/api/models/meta-llama/Llama-3.1-8B-Instruct",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "e76dd6e764567601c8abdc95204595a4b7c0d51e7e0c7acf3acc5a207cffe615",
+      "published_at": "2024-09-25",
+      "resolved_revision": "0e9e39f249a16976918f6564b8830bc894c89659"
+    },
+    "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama3_1/MODEL_CARD.md": {
+      "uri": "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama3_1/MODEL_CARD.md",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "a37da4be5eb00d97ee0017cadf54c55e8aca84c715fa7d0981d3f2bc13b763ef",
+      "published_at": "2024-09-30",
+      "resolved_revision": "e2e67cd8b0feca839666b7082dcc1c4fc0ae11e2"
+    },
+    "https://huggingface.co/unsloth/Meta-Llama-3.1-8B/raw/main/config.json": {
+      "uri": "https://huggingface.co/unsloth/Meta-Llama-3.1-8B/raw/main/config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "0ea2186ccf686654fea498aae830b9de201334432b24b07f031d80b76dd928f0",
+      "published_at": "2025-02-15",
+      "resolved_revision": "e9a141a2091ea561b96483212645a2a05e6f99fc"
+    },
+    "https://arxiv.org/abs/2407.21783": {
+      "uri": "https://arxiv.org/abs/2407.21783",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "f8727697d2a3c676bd75b69327f6acc75a4bf0b6cc4f4d0936f2096b1ff78b64",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2024-11-23",
+      "resolved_revision": "v3"
+    },
+    "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama3_1/LICENSE": {
+      "uri": "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama3_1/LICENSE",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "bf2eac60b81e5c5f779fc3b4849d3bfacfd63f97f3eb68b44e9c6868c5801712",
+      "published_at": "2024-07-23",
+      "resolved_revision": "1f0feb795a4130697ced243fb53051670d591653"
+    },
+    "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/USE_POLICY.md": {
+      "uri": "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/USE_POLICY.md",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "68dd7e407dc0d6f53167e6f0972955cbc48f6027786bd26aac18ea1f95733cb6",
+      "published_at": "2025-10-10",
+      "resolved_revision": "0e0b8c519242d5833d8c11bffc1232b77ad7f301"
+    },
+    "https://huggingface.co/api/models/meta-llama/Llama-3.1-8B": {
+      "uri": "https://huggingface.co/api/models/meta-llama/Llama-3.1-8B",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "4ce4385046d6900ac8d0e3eff842b77cf47bd49363a81b348d23b6f496a601f2",
+      "published_at": "2024-10-16",
+      "resolved_revision": "d04e592bb4f6aa9cfee91e2e20afa771667e1d4b"
+    },
+    "https://huggingface.co/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16": {
+      "uri": "https://huggingface.co/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "41988937ac079f00dcab5367ef34c5c69352fa759a52f3aa665406495261e363",
+      "published_at": "2024-10-19",
+      "resolved_revision": "f8311090f9ee47782b6f094984a20c856eb841d6"
+    },
+    "https://huggingface.co/api/models/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16": {
+      "uri": "https://huggingface.co/api/models/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "1779cba9e775d0e15bbd6cf4140130419a02165300f53afce728f1879f5fa3ba",
+      "published_at": "2024-10-19",
+      "resolved_revision": "f8311090f9ee47782b6f094984a20c856eb841d6"
+    },
+    "https://huggingface.co/api/models/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16/tree/main": {
+      "uri": "https://huggingface.co/api/models/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16/tree/main",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "2093bfb2ba242700aed30b49ccbb9cdedd7728c2a49df294a286f2ce1f5e4ecc",
+      "published_at": "2024-10-19",
+      "resolved_revision": "f8311090f9ee47782b6f094984a20c856eb841d6"
+    },
+    "https://huggingface.co/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16/raw/main/config.json": {
+      "uri": "https://huggingface.co/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16/raw/main/config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "cc4b961ba4da639c74e00e59956dadbca2471bee85bccabecf9373bfcb5a47b3",
+      "published_at": "2024-10-19",
+      "resolved_revision": "f8311090f9ee47782b6f094984a20c856eb841d6"
+    },
+    "https://www.llama.com/llama3_1/license/": {
+      "uri": "https://www.llama.com/llama3_1/license/",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "fa31363560f46d0d80a6636d1c0034ed619d1e0e73b9dc2feebff505c5e159d7",
+      "published_at": null,
+      "resolved_revision": null
+    },
+    "https://www.llama.com/llama3_1/use-policy/": {
+      "uri": "https://www.llama.com/llama3_1/use-policy/",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "f4c0d86ee07caf0f7742e7e6d9b58bbbe5d6ac6d27764b3039d1f31acb1b0d74",
+      "published_at": null,
+      "resolved_revision": null
+    },
+    "https://huggingface.co/mlx-community/Qwen2.5-7B-Instruct-bf16": {
+      "uri": "https://huggingface.co/mlx-community/Qwen2.5-7B-Instruct-bf16",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "8eba3f01996cb44346a6cf7f6fc871d015600d76a47144442723e1729ad08ce2",
+      "published_at": "2024-09-18",
+      "resolved_revision": "349a12f0e5f131c3914e3a66e78a3db71e9f9527"
+    },
+    "https://huggingface.co/api/models/mlx-community/Qwen2.5-7B-Instruct-bf16": {
+      "uri": "https://huggingface.co/api/models/mlx-community/Qwen2.5-7B-Instruct-bf16",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "444fb5994a061935c80b38fd2e614c4a3f29d24f79143cf60c1db6baf337ad4e",
+      "published_at": "2024-09-18",
+      "resolved_revision": "349a12f0e5f131c3914e3a66e78a3db71e9f9527"
+    },
+    "https://huggingface.co/api/models/mlx-community/Qwen2.5-7B-Instruct-bf16/tree/main": {
+      "uri": "https://huggingface.co/api/models/mlx-community/Qwen2.5-7B-Instruct-bf16/tree/main",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "66903a2bbaf08955e3a67b7dc82c44ce9d3b64a3958b5365aa86ace822fb5f31",
+      "published_at": "2024-09-18",
+      "resolved_revision": "349a12f0e5f131c3914e3a66e78a3db71e9f9527"
+    },
+    "https://huggingface.co/mlx-community/Qwen2.5-7B-Instruct-bf16/raw/main/config.json": {
+      "uri": "https://huggingface.co/mlx-community/Qwen2.5-7B-Instruct-bf16/raw/main/config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "81c86165bd3b4784fb3a48ada27ed3a3e2f53e4b6e42d201268dd1104ab36634",
+      "published_at": "2024-09-18",
+      "resolved_revision": "349a12f0e5f131c3914e3a66e78a3db71e9f9527"
+    },
+    "https://qwenlm.github.io/blog/qwen2.5/": {
+      "uri": "https://qwenlm.github.io/blog/qwen2.5/",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "feca9bb5e0bcbd95b4030c9b490ba26ebe4576d7899cc633814a42e0c2c52bcf",
+      "last_modified_header": "2026-01-21",
+      "published_at": "2026-01-21",
+      "resolved_revision": null
+    },
+    "https://arxiv.org/abs/2407.10671": {
+      "uri": "https://arxiv.org/abs/2407.10671",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "f35e1ac307dc0743c9e4b4eb38956826cf1ef5d639d9072ed802110eb062ce8b",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2024-09-10",
+      "resolved_revision": "v4"
+    },
+    "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/blob/main/LICENSE": {
+      "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/blob/main/LICENSE",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "441797acb56718290d7ec19cddc40726ea7da512cb0d8e7a74e10b9124ef098d",
+      "published_at": "2025-01-12",
+      "resolved_revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+    },
+    "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B": {
+      "uri": "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "ac0b726dc0c5718d003e0c7b7253933b266834641c77c4da7ea493eec983275d",
+      "published_at": "2024-09-08",
+      "resolved_revision": "896ea440e5a9e6070e3d8a2774daf2b481ab425b"
+    },
+    "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B/raw/main/README.md": {
+      "uri": "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B/raw/main/README.md",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "94b552416e196fb6089b17bf2d3ed524b0f347ade19b53d05041840c49e2e46b",
+      "published_at": "2024-09-08",
+      "resolved_revision": "896ea440e5a9e6070e3d8a2774daf2b481ab425b"
+    },
+    "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B/raw/main/config.json": {
+      "uri": "https://huggingface.co/NousResearch/Hermes-3-Llama-3.1-8B/raw/main/config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "7e189a0da074da6a878d5a276336caf3d62c57138f461bc6239402639f1bc6f5",
+      "published_at": "2024-09-08",
+      "resolved_revision": "896ea440e5a9e6070e3d8a2774daf2b481ab425b"
+    },
+    "https://huggingface.co/api/models/NousResearch/Hermes-3-Llama-3.1-8B": {
+      "uri": "https://huggingface.co/api/models/NousResearch/Hermes-3-Llama-3.1-8B",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "1a6ccbda7272b3bc599800656e1007ccb6ac3c584ea0e6cc8e2160a4d95b17df",
+      "published_at": "2024-09-08",
+      "resolved_revision": "896ea440e5a9e6070e3d8a2774daf2b481ab425b"
+    },
+    "https://arxiv.org/abs/2408.11857": {
+      "uri": "https://arxiv.org/abs/2408.11857",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "9132274e53c7cf92710165889ff92a20f408aeff9f6a5e28debd6e19ed4317df",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2024-08-15",
+      "resolved_revision": "v1"
+    },
+    "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/LICENSE": {
+      "uri": "https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/LICENSE",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "dfe6336c72c08aaf4cb4d254ee84c9e6941a21eb319ea9ff4dddee835b1c5e62",
+      "published_at": "2025-10-10",
+      "resolved_revision": "0e0b8c519242d5833d8c11bffc1232b77ad7f301"
+    },
+    "https://huggingface.co/datasets/open-llm-leaderboard/details_NousResearch__Hermes-3-Llama-3.1-8B": {
+      "uri": "https://huggingface.co/datasets/open-llm-leaderboard/details_NousResearch__Hermes-3-Llama-3.1-8B",
+      "fetched_at": "2026-09-26",
+      "http_status": 401,
+      "published_at": null,
+      "resolved_revision": null
+    },
+    "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-1M": {
+      "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-1M",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "7758995932e1fae6524101daba6d394cf7e99a96646f747ead4576a7c9394f99",
+      "published_at": "2025-01-29",
+      "resolved_revision": "e28526f7bb80e2a9c8af03b831a9af3812f18fba"
+    },
+    "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-1M/raw/main/README.md": {
+      "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-1M/raw/main/README.md",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "926c67523a033cc14b0db4f487ef67babbc6eb4c02d2cacd6d487f249f3c8bdd",
+      "published_at": "2025-01-29",
+      "resolved_revision": "e28526f7bb80e2a9c8af03b831a9af3812f18fba"
+    },
+    "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-1M/raw/main/config.json": {
+      "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-1M/raw/main/config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "3836d4f7ef434824ffbe23d3a7eefbdd1a40f4db9809f9a69a3f9d26d3f2152e",
+      "published_at": "2025-01-29",
+      "resolved_revision": "e28526f7bb80e2a9c8af03b831a9af3812f18fba"
+    },
+    "https://huggingface.co/api/models/Qwen/Qwen2.5-7B-Instruct-1M": {
+      "uri": "https://huggingface.co/api/models/Qwen/Qwen2.5-7B-Instruct-1M",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "e8e19d4c33353ccee3bc90cddb3bb788bf74fb98a4434585961c7da92c2aa02b",
+      "published_at": "2025-01-29",
+      "resolved_revision": "e28526f7bb80e2a9c8af03b831a9af3812f18fba"
+    },
+    "https://arxiv.org/abs/2501.15383": {
+      "uri": "https://arxiv.org/abs/2501.15383",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "da1d3280cecb4577a71612ec85b5702433fa3d0556d23ab2e92af055ecd604ea",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2025-01-26",
+      "resolved_revision": "v1"
+    },
+    "https://qwenlm.github.io/blog/qwen2.5-1m/": {
+      "uri": "https://qwenlm.github.io/blog/qwen2.5-1m/",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "d1e1ca52b61430df8b2fab3a5e6981f5a17796a949165f0faee85fe93e777042",
+      "last_modified_header": "2026-01-21",
+      "published_at": "2026-01-21",
+      "resolved_revision": null
+    },
+    "https://huggingface.co/api/models/Qwen/Qwen2.5-7B-Instruct": {
+      "uri": "https://huggingface.co/api/models/Qwen/Qwen2.5-7B-Instruct",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "6ba6d96ed957b28c64bdc44c619a1eb2f66ef9a114b119b3abdbe28e123d3549",
+      "published_at": "2025-01-12",
+      "resolved_revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+    },
+    "https://arxiv.org/abs/2309.00071": {
+      "uri": "https://arxiv.org/abs/2309.00071",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "8a212c8dfc47dfe2943dd889fd9c7c752022b7cc90a561cb08f5d85d32020fdd",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2026-02-06",
+      "resolved_revision": "v3"
+    },
+    "https://arxiv.org/abs/2412.15115": {
+      "uri": "https://arxiv.org/abs/2412.15115",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "0f8c331e73817eefeb222aa5be49c515aed4c3ab74829555f8e0b2cde03c5be1",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2025-01-03",
+      "resolved_revision": "v2"
+    },
+    "https://huggingface.co/Qwen/Qwen2.5-7B": {
+      "uri": "https://huggingface.co/Qwen/Qwen2.5-7B",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "5f176462ed85e498bbe10b44c662b5d916daa5d40da9aa8f0168b419e02cee58",
+      "published_at": "2024-09-25",
+      "resolved_revision": "d149729398750b98c0af14eb82c78cfe92750796"
+    },
+    "https://huggingface.co/Qwen/Qwen2.5-7B/raw/main/config.json": {
+      "uri": "https://huggingface.co/Qwen/Qwen2.5-7B/raw/main/config.json",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "267ce68584c5f24c3b267d934db2de68dd21d1ca677fb78ed809eb60067f7642",
+      "published_at": "2024-09-25",
+      "resolved_revision": "d149729398750b98c0af14eb82c78cfe92750796"
+    },
+    "https://huggingface.co/api/models/Qwen/Qwen2.5-7B": {
+      "uri": "https://huggingface.co/api/models/Qwen/Qwen2.5-7B",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "87c9d85a162b9be8eabc088c13f4083802690d43c5722d06d8a47ac906d7ecdb",
+      "published_at": "2024-09-25",
+      "resolved_revision": "d149729398750b98c0af14eb82c78cfe92750796"
+    },
+    "https://arxiv.org/abs/1905.07830": {
+      "uri": "https://arxiv.org/abs/1905.07830",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "d50ed1959d84966b243712b79d23e9afc3d60e6b73193426d9726e8529a7ca98",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2019-05-19",
+      "resolved_revision": "v1"
+    },
+    "https://github.com/allenai/winogrande": {
+      "uri": "https://github.com/allenai/winogrande",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "3e443c67e61054bc7af8192a316a34b6e13fef59a879aeff5238afb2cfd4aea3",
+      "published_at": "2020-03-13",
+      "resolved_revision": "727e837f77521ef38bcc56df3b275c8da43f45af"
+    },
+    "https://arxiv.org/abs/2210.09261": {
+      "uri": "https://arxiv.org/abs/2210.09261",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "dd2b69520f279659f64785f4d9b3b8de16e282be156e7e2e582a9583d007bc61",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2022-10-17",
+      "resolved_revision": "v1"
+    },
+    "https://github.com/ruixiangcui/AGIEval": {
+      "uri": "https://github.com/ruixiangcui/AGIEval",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "242007e49b9bc84ef88bf9c0c1d924c662a8c38a3bbaccfa343102b4c556e3b5",
+      "published_at": "2024-06-13",
+      "resolved_revision": "84ab72d94318290aad2e4ec820d535a95a1f7552"
+    },
+    "https://arxiv.org/abs/1905.10044": {
+      "uri": "https://arxiv.org/abs/1905.10044",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "4cb14c1118ac4b37e5ffd7f4ab6bdd06a7c1cff43c05b4ba4b4385c86daa8f6e",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2019-05-24",
+      "resolved_revision": "v1"
+    },
+    "https://arxiv.org/abs/1811.00937": {
+      "uri": "https://arxiv.org/abs/1811.00937",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "e287c6dad5775eb70021ee2b2cbb6e53a074aec0126b6316510f417841b51744",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2019-03-15",
+      "resolved_revision": "v2"
+    },
+    "https://arxiv.org/abs/1903.00161": {
+      "uri": "https://arxiv.org/abs/1903.00161",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "2b202ccf48e425addcbfd54eccaa84e0989b48767f93ec76d3ae7af46ac84985",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2019-04-16",
+      "resolved_revision": "v2"
+    },
+    "https://arxiv.org/abs/2210.03057": {
+      "uri": "https://arxiv.org/abs/2210.03057",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "dae0738a1f3d77cbeaa33402aa93c10dbd273a480b2c689c341a2f0e6cd3c335",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2022-10-06",
+      "resolved_revision": "v1"
+    },
+    "https://arxiv.org/abs/2208.08227": {
+      "uri": "https://arxiv.org/abs/2208.08227",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "a7e2be2b11831fee8345d9e130c0a6031857cbbc72fcd44a6f9ead8b62021e80",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2022-12-19",
+      "resolved_revision": "v4"
+    },
+    "https://arxiv.org/abs/1808.07036": {
+      "uri": "https://arxiv.org/abs/1808.07036",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "babc5dd6e82e8659addb1898101039c7fe13c435e251e690464f877d2ec57ba1",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2018-08-28",
+      "resolved_revision": "v3"
+    },
+    "https://arxiv.org/abs/1606.05250": {
+      "uri": "https://arxiv.org/abs/1606.05250",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "a852b1b05d377df49252bb0f401cca72b1af52e583a886eea14f15989f73b03e",
+      "last_modified_header": "2016-10-12",
+      "published_at": "2016-10-11",
+      "resolved_revision": "v3"
+    },
+    "https://github.com/mandarjoshi90/triviaqa": {
+      "uri": "https://github.com/mandarjoshi90/triviaqa",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "f6d311dbf49ba71609180ce3a8d3047ce2d37e2562302273ef6dd7e25e5523f4",
+      "published_at": "2023-11-13",
+      "resolved_revision": "ca43b5820b107f3970cf4b7d67f7db7a98117b79"
+    },
+    "https://huggingface.co/datasets/liminghao1630/API-Bank": {
+      "uri": "https://huggingface.co/datasets/liminghao1630/API-Bank",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "5bb862576e787efbd64c8c16e5c36ae5c58e799822e97e285deda25d6355a3a1",
+      "published_at": "2023-11-17",
+      "resolved_revision": "12e8158b7628c168f07e8f31fbbe3445e99f44cf"
+    },
+    "https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard": {
+      "uri": "https://huggingface.co/datasets/gorilla-llm/Berkeley-Function-Calling-Leaderboard",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "f022f733d2cefce78112f4c90be651dc8968642fdb29609551d29d240dfd4cb6",
+      "published_at": "2026-04-29",
+      "resolved_revision": "61fc0608cfd831fcfbbaa676ebdfef0ed963eeda"
+    },
+    "https://huggingface.co/datasets/gorilla-llm/APIBench": {
+      "uri": "https://huggingface.co/datasets/gorilla-llm/APIBench",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "efd000c47fcea35206be55ee2a6a7b8aec28318befff40f158665c41bceb52d1",
+      "published_at": "2023-05-29",
+      "resolved_revision": "ac21e1892e634dfa25f8ad75f16cbdbfb0a5736d"
+    },
+    "https://github.com/nexusflowai/NexusRaven": {
+      "uri": "https://github.com/nexusflowai/NexusRaven",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "7c99955c12c863ca033091ada990b932e28d3c6f591defba17cfd7f0f154cff6",
+      "published_at": "2023-09-29",
+      "resolved_revision": "f32882763bb3e220722883821919c14abdd3d156"
+    },
+    "https://arxiv.org/abs/2405.20947": {
+      "uri": "https://arxiv.org/abs/2405.20947",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "1d7758238be44f4468c9e008f52fd509eef79e21bc4a109ea9efd99fe2735425",
+      "last_modified_header": "2026-08-24",
+      "published_at": "2026-08-24",
+      "resolved_revision": "v2"
+    },
+    "https://huggingface.co/datasets/yahma/alpaca-cleaned": {
+      "uri": "https://huggingface.co/datasets/yahma/alpaca-cleaned",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "6d7e1522b61784416fcd06c14c04d24e8204be4107f11d13d1c1343566f89b34",
+      "published_at": "2023-04-10",
+      "resolved_revision": "12567cabf869d7c92e573c7c783905fc160e9639"
+    },
+    "https://github.com/facebookresearch/Meta_SecAlign/blob/main/utils.py": {
+      "uri": "https://github.com/facebookresearch/Meta_SecAlign/blob/main/utils.py",
+      "fetched_at": "2026-09-26",
+      "http_status": 200,
+      "sha256": "681c97640023ca291321d108698c6997c8191f63baf0113fd63a6fd99cb5c01b",
+      "published_at": "2026-02-25",
+      "resolved_revision": "2031502bdf5a046b437ec835c6b05ff468aa0699"
+    }
+  },
+  "datasets": {
+    "FreedomIntelligence/medical-o1-reasoning-SFT": {
+      "version": "fc2c9e8a37b38f38da6d449564a8c350b244aef4",
+      "license": "apache-2.0",
+      "last_modified": "2025-04-22"
+    },
+    "FreedomIntelligence/medical-o1-verifiable-problem": {
+      "version": "46d5175eb74fdef3516d51d52e8c40db04bbdf35",
+      "license": "apache-2.0",
+      "last_modified": "2024-12-30"
+    },
+    "GBaker/MedQA-USMLE-4-options": {
+      "version": "0fb93dd23a7339b6dcd27e241cb9b5eca62d4d18",
+      "license": "cc-by-4.0",
+      "last_modified": "2023-01-24"
+    },
+    "HPAI-BSC/Egida": {
+      "version": "fe1ad5283b8f80d7d5bc1c705688fe38444062e1",
+      "license": "apache-2.0",
+      "last_modified": "2025-08-22"
+    },
+    "HiTZ/truthful_judge": {
+      "version": "cb0bbf9dfa62ba1eda8fdad44a557e24e072426c",
+      "license": "apache-2.0",
+      "last_modified": "2025-05-22"
+    },
+    "Idavidrein/gpqa": {
+      "version": "83022cefff930aea54f654c0b282e74b9eeda5c6",
+      "license": "cc-by-4.0",
+      "last_modified": "2026-09-21"
+    },
+    "Nexusflow/NexusRaven_API_evaluation": {
+      "version": "85c7c326fcfb9c6587daabd9582e7cfaddcc65bd",
+      "license": null,
+      "last_modified": "2023-09-29"
+    },
+    "NousResearch/hermes-function-calling-v1": {
+      "version": "dae3e1d28cfbcf4b915c04ea1e072030529b4bda",
+      "license": "apache-2.0",
+      "last_modified": "2026-01-03"
+    },
+    "Rowan/hellaswag": {
+      "version": "218ec52e09a7e7462a5400043bb9a69a41d06b76",
+      "license": null,
+      "last_modified": "2025-07-10"
+    },
+    "TIGER-Lab/MMLU-Pro": {
+      "version": "b189ec765aa7ed75c8acfea42df31fdae71f97be",
+      "license": "mit",
+      "last_modified": "2026-05-02"
+    },
+    "allenai/ai2_arc": {
+      "version": "210d026faf9955653af8916fad021475a3f00453",
+      "license": "cc-by-sa-4.0",
+      "last_modified": "2023-12-21"
+    },
+    "allenai/quac": {
+      "version": "2c1b73f07a629a338127b6a9761c64bf3e969179",
+      "license": "mit",
+      "last_modified": "2024-01-18"
+    },
+    "allenai/winogrande": {
+      "version": "01e74176c63542e6b0bcb004dcdea22d94fb67b5",
+      "license": null,
+      "last_modified": "2025-07-11"
+    },
+    "bench-llm/or-bench": {
+      "version": "e36d8b80e81837c8a8f264bbb2a49f1b32c7e272",
+      "license": "cc-by-4.0",
+      "last_modified": "2024-12-19"
+    },
+    "cais/mmlu": {
+      "version": "c30699e8356da336a370243923dbaf21066bb9fe",
+      "license": "mit",
+      "last_modified": "2024-03-08"
+    },
+    "google-research-datasets/mbpp": {
+      "version": "4bb6404fdc6cacfda99d4ac4205087b89d32030c",
+      "license": "cc-by-4.0",
+      "last_modified": "2024-01-04"
+    },
+    "google/IFEval": {
+      "version": "966cd89545d6b6acfd7638bc708b98261ca58e84",
+      "license": "apache-2.0",
+      "last_modified": "2024-08-14"
+    },
+    "google/boolq": {
+      "version": "35b264d03638db9f4ce671b711558bf7ff0f80d5",
+      "license": "cc-by-sa-3.0",
+      "last_modified": "2024-01-22"
+    },
+    "gorilla-llm/APIBench": {
+      "version": "ac21e1892e634dfa25f8ad75f16cbdbfb0a5736d",
+      "license": "apache-2.0",
+      "last_modified": "2023-05-29"
+    },
+    "gorilla-llm/Berkeley-Function-Calling-Leaderboard": {
+      "version": "61fc0608cfd831fcfbbaa676ebdfef0ed963eeda",
+      "license": "apache-2.0",
+      "last_modified": "2026-04-29"
+    },
+    "hendrycks/competition_math": {
+      "version": "71b758ecc688b2822d07ffa7f8393299f1dc7cac",
+      "license": "mit",
+      "last_modified": "2023-06-08"
+    },
+    "juletxara/mgsm": {
+      "version": "b2f13d426afe3be8d69a7e739b36724db8b66bbc",
+      "license": "cc-by-sa-4.0",
+      "last_modified": "2026-05-04"
+    },
+    "lighteval/agi_eval_en": {
+      "version": "8670dcc6a5aa2c5e177b14905ec892df983446cd",
+      "license": null,
+      "last_modified": "2025-12-18"
+    },
+    "liminghao1630/API-Bank": {
+      "version": "12e8158b7628c168f07e8f31fbbe3445e99f44cf",
+      "license": "mit",
+      "last_modified": "2023-11-17"
+    },
+    "lukaemon/bbh": {
+      "version": "982bb89fd79532a8ac676a61fc42eb1aeec63f99",
+      "license": null,
+      "last_modified": "2025-07-11"
+    },
+    "mandarjoshi/trivia_qa": {
+      "version": "0f7faf33a3908546c6fd5b73a660e0f8ff173c2f",
+      "license": "unknown",
+      "last_modified": "2024-01-05"
+    },
+    "nuprl/MultiPL-E": {
+      "version": "28441b6024e71d4a1c1c0f6bf171c935cd5a43f2",
+      "license": "mit",
+      "last_modified": "2025-07-15"
+    },
+    "openai/gsm8k": {
+      "version": "740312add88f781978c0658806c59bc2815b9866",
+      "license": "mit",
+      "last_modified": "2026-03-23"
+    },
+    "openai/openai_humaneval": {
+      "version": "7dce6050a7d6d172f3cc5c32aa97f52fa1a2e544",
+      "license": "mit",
+      "last_modified": "2024-01-04"
+    },
+    "openlifescienceai/medmcqa": {
+      "version": "91c6572c454088bf71b679ad90aa8dffcd0d5868",
+      "license": "apache-2.0",
+      "last_modified": "2024-01-04"
+    },
+    "qiaojin/PubMedQA": {
+      "version": "9001f2853fb87cab8d220904e0de81ac6973b318",
+      "license": "mit",
+      "last_modified": "2024-03-06"
+    },
+    "rajpurkar/squad": {
+      "version": "7b6d24c440a36b6815f21b70d25016731768db1f",
+      "license": "cc-by-sa-4.0",
+      "last_modified": "2024-03-04"
+    },
+    "tau/commonsense_qa": {
+      "version": "94630fe30dad47192a8546eb75f094926d47e155",
+      "license": "mit",
+      "last_modified": "2024-01-04"
+    },
+    "truthfulqa/truthful_qa": {
+      "version": "741b8276f2d1982aa3d5b832d3ee81ed3b896490",
+      "license": "apache-2.0",
+      "last_modified": "2024-01-04"
+    },
+    "ucinlp/drop": {
+      "version": "95cda593fae71b60b5b19f82de3fcf3298c1239c",
+      "license": "cc-by-sa-4.0",
+      "last_modified": "2024-01-17"
+    },
+    "yahma/alpaca-cleaned": {
+      "version": "12567cabf869d7c92e573c7c783905fc160e9639",
+      "license": "cc-by-4.0",
+      "last_modified": "2023-04-10"
+    }
+  }
+}

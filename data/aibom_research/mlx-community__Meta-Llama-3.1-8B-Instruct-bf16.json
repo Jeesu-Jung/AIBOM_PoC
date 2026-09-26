@@ -1,0 +1,97 @@
+{
+ "model_id": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+ "model": {
+  "release_date": "2024-07-23",
+  "architecture_family": "decoder-only Transformer (dense, Llama 3 architecture, unchanged by conversion)",
+  "architecture_details": {
+   "layers": 32,
+   "hidden_size": 4096,
+   "ffn_size": 14336,
+   "attention_heads": 32,
+   "kv_heads": 8,
+   "activation": "SwiGLU (silu)",
+   "position_embedding": "RoPE",
+   "rope_theta": 500000,
+   "rope_scaling": {
+    "rope_type": "llama3",
+    "factor": 8.0,
+    "low_freq_factor": 1.0,
+    "high_freq_factor": 4.0,
+    "original_max_position_embeddings": 8192
+   },
+   "attention": "grouped-query attention",
+   "torch_dtype": "bfloat16"
+  },
+  "parameter_count": 8030261248,
+  "context_length": 131072,
+  "tokenizer": "tiktoken-based BPE (Llama 3 tokenizer), PreTrainedTokenizerFast",
+  "vocab_size": 128256,
+  "modality_input": ["text"],
+  "modality_output": ["text"],
+  "languages": ["en", "de", "fr", "it", "pt", "hi", "es", "th"],
+  "knowledge_cutoff": "2023-12",
+  "intended_use": "MLX-format repackaging of Llama 3.1 8B Instruct (BF16 weights) for local inference on Apple silicon via mlx-lm; same general-assistant / instruction-following use case as the source model.",
+  "capabilities": ["instruction following (inherited)", "multilingual dialogue in 8 languages (inherited)", "long-context (128K) inference (inherited)", "tool use / function calling (inherited)"],
+  "limitations": ["inherits all base-model limitations and biases (no new training)", "no independent safety evaluation of the converted artifact", "requires mlx-lm / Apple silicon runtime to load"]
+ },
+ "references": [
+  {"key": "hf_card", "type": "model_card", "title": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16", "uri": "https://huggingface.co/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16", "revision": "f8311090f9ee47782b6f094984a20c856eb841d6"},
+  {"key": "hf_api", "type": "api_metadata", "title": "HF Hub API model metadata", "uri": "https://huggingface.co/api/models/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16", "revision": "f8311090f9ee47782b6f094984a20c856eb841d6"},
+  {"key": "hf_tree", "type": "api_metadata", "title": "HF Hub repo file tree (sizes)", "uri": "https://huggingface.co/api/models/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16/tree/main", "revision": "f8311090f9ee47782b6f094984a20c856eb841d6"},
+  {"key": "hf_config", "type": "config_file", "title": "config.json (mlx-community repo)", "uri": "https://huggingface.co/mlx-community/Meta-Llama-3.1-8B-Instruct-bf16/raw/main/config.json", "revision": "f8311090f9ee47782b6f094984a20c856eb841d6"},
+  {"key": "source_card", "type": "model_card", "title": "meta-llama/Llama-3.1-8B-Instruct (source model, gated)", "uri": "https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct", "revision": "0e9e39f249a16976918f6564b8830bc894c89659"},
+  {"key": "tech_report", "type": "technical_report", "title": "The Llama 3 Herd of Models", "uri": "https://arxiv.org/abs/2407.21783", "revision": "v3"},
+  {"key": "license_page", "type": "license", "title": "Llama 3.1 Community License Agreement", "uri": "https://www.llama.com/llama3_1/license/", "revision": null},
+  {"key": "use_policy", "type": "policy", "title": "Llama 3.1 Acceptable Use Policy", "uri": "https://www.llama.com/llama3_1/use-policy/", "revision": null}
+ ],
+ "provenance": {
+  "origin": "Meta Llama 3.1",
+  "provider": "mlx-community",
+  "relation": "converted_from",
+  "disclosure_status": "disclosed",
+  "notes": "The mlx-community card states this repo was converted to MLX format from meta-llama/Llama-3.1-8B-Instruct using mlx-lm version 0.19.0. Weights are kept at BF16 precision; no additional training, fine-tuning, or dataset use is reported. Repo created 2024-07-23, same day as the Llama 3.1 release.",
+  "evidence": ["hf_card"]
+ },
+ "transformation": {
+  "methods": ["format conversion (MLX)"],
+  "objective": "Repackage the BF16 safetensors weights of meta-llama/Llama-3.1-8B-Instruct into Apple's MLX array/model format so the model can be loaded and run locally with mlx-lm on Apple silicon.",
+  "hyperparameters": {},
+  "adapter_config": {},
+  "performed_at": "2024-07-23",
+  "notes": "Conversion tool: mlx-lm 0.19.0 (per model card). No training data was used; this is a lossless-precision format/runtime conversion (BF16 -> BF16 MLX arrays), not a quantization or fine-tune. Exact conversion command/flags and numerical-equivalence tests are not published.",
+  "inputs": [
+   {"model_id": "meta-llama/Llama-3.1-8B-Instruct", "external_model_name": null, "role": "base"}
+  ],
+  "datasets": [],
+  "evidence": ["hf_card"]
+ },
+ "datasets": [],
+ "evaluations": [],
+ "safety": {
+  "risk_level": "Inherited from Llama 3.1 8B Instruct; the MLX conversion reports no independent safety evaluation or new risk-mitigation work.",
+  "items": [
+   {"type": "prohibited_use", "description": "Use is governed by the Llama 3.1 Acceptable Use Policy (inherited from the source model), which prohibits illegal activity, weapons/CBRNE development, generation of CSAM, disinformation, unauthorized professional advice, and other harmful uses.", "reference_key": "use_policy"},
+   {"type": "risk", "description": "As a format conversion, this artifact carries the same general LLM risks as the source model (hallucination, bias, unsafe or inaccurate outputs) with no additional mitigation applied during conversion.", "reference_key": "hf_card"}
+  ]
+ },
+ "licenses": [
+  {
+   "license_key": "llama3.1-community",
+   "name": "Llama 3.1 Community License",
+   "spdx_id": null,
+   "uri": "https://www.llama.com/llama3_1/license/",
+   "usage_policy_name": "Llama 3.1 Acceptable Use Policy",
+   "usage_policy_uri": "https://www.llama.com/llama3_1/use-policy/",
+   "commercial_use": "restricted",
+   "restrictions": [">700M MAU requires a separate license from Meta", "must display \"Built with Llama\"", "derivative model names must begin with \"Llama\"", "must comply with the Llama 3.1 Acceptable Use Policy"],
+   "kind": "declared",
+   "scope_note": "Inherited from the source model meta-llama/Llama-3.1-8B-Instruct; the mlx-community card's HF metadata declares license 'llama3.1' and no separate license is issued for the MLX conversion."
+  }
+ ],
+ "unknowns": [
+  "Exact mlx-lm conversion command and flags used",
+  "Numerical-equivalence testing between the original and MLX weights",
+  "Whether any of the source model's gated-access metadata (e.g. exact license acceptance text shown to convertor) differs from the standard Llama 3.1 Community License",
+  "Precise training/pretraining dataset inventory (inherited from source, not re-disclosed in the MLX card)"
+ ]
+}

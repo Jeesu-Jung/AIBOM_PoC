@@ -1,0 +1,528 @@
+{
+ "model_id": "Qwen/Qwen2.5-7B-Instruct",
+ "model": {
+  "release_date": "2024-09-19",
+  "architecture_family": "decoder-only Transformer (Qwen2 architecture)",
+  "architecture_details": {
+   "layers": 28,
+   "hidden_size": 3584,
+   "ffn_size": 18944,
+   "attention_heads": 28,
+   "kv_heads": 4,
+   "activation": "SwiGLU",
+   "position_embedding": "RoPE",
+   "rope_theta": 1000000,
+   "normalization": "RMSNorm",
+   "attention_bias": "QKV bias",
+   "attention_type": "grouped-query attention"
+  },
+  "parameter_count": 7615616512,
+  "context_length": 131072,
+  "tokenizer": "Qwen2Tokenizer, byte-level BPE (tiktoken-derived)",
+  "vocab_size": 152064,
+  "modality_input": [
+   "text"
+  ],
+  "modality_output": [
+   "text"
+  ],
+  "languages": [
+   "en",
+   "zh",
+   "fr",
+   "es",
+   "pt",
+   "de",
+   "it",
+   "ru",
+   "ja",
+   "ko",
+   "vi",
+   "th",
+   "ar"
+  ],
+  "knowledge_cutoff": null,
+  "intended_use": "General-purpose multilingual chat assistant supporting instruction following, long-form generation, structured/JSON output, and role-play, built for direct conversational and downstream-adaptation use.",
+  "capabilities": [
+   "instruction following",
+   "long-context understanding and generation (up to 131,072 tokens with YaRN scaling; 32,768-token native window in the shipped config.json)",
+   "structured data understanding and JSON generation",
+   "multilingual chat (29+ languages)",
+   "coding and mathematics assistance"
+  ],
+  "limitations": [
+   "shipped config.json defaults to a 32,768-token context window; extending to the full 131,072-token window requires manually enabling YaRN rope_scaling, which vLLM applies only statically and can reduce short-text performance",
+   "refusal ratio and safety behavior beyond the reported benchmarks are not independently characterized in the reviewed sources"
+  ]
+ },
+ "references": [
+  {
+   "key": "hf_card",
+   "type": "model_card",
+   "title": "Qwen/Qwen2.5-7B-Instruct (model card)",
+   "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct",
+   "revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+  },
+  {
+   "key": "hf_config",
+   "type": "config",
+   "title": "Qwen/Qwen2.5-7B-Instruct config.json",
+   "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/raw/main/config.json",
+   "revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+  },
+  {
+   "key": "hf_api",
+   "type": "api_metadata",
+   "title": "HF Hub API metadata for Qwen/Qwen2.5-7B-Instruct",
+   "uri": "https://huggingface.co/api/models/Qwen/Qwen2.5-7B-Instruct",
+   "revision": "a09a35458c702b33eeacc393d103063234e8bc28"
+  },
+  {
+   "key": "yarn_paper",
+   "type": "paper",
+   "title": "YaRN: Efficient Context Window Extension of Large Language Models",
+   "uri": "https://arxiv.org/abs/2309.00071",
+   "revision": null
+  },
+  {
+   "key": "blog",
+   "type": "official_blog",
+   "title": "Qwen2.5: A Party of Foundation Models!",
+   "uri": "https://qwenlm.github.io/blog/qwen2.5/",
+   "revision": null
+  },
+  {
+   "key": "tech_report",
+   "type": "paper",
+   "title": "Qwen2.5 Technical Report",
+   "uri": "https://arxiv.org/abs/2412.15115",
+   "revision": "v2 (2025-01-03)"
+  }
+ ],
+ "provenance": {
+  "origin": "Qwen2.5",
+  "provider": "Qwen Team (Alibaba Cloud)",
+  "relation": "instruction_tuned_from",
+  "disclosure_status": "partially_disclosed",
+  "notes": "HF model card YAML front-matter declares base_model: Qwen/Qwen2.5-7B. The technical report discloses that post-training used supervised fine-tuning with over 1M samples plus multistage reinforcement learning, but does not disclose the exact SFT/RL dataset composition.",
+  "evidence": [
+   "hf_card",
+   "tech_report",
+   "blog"
+  ]
+ },
+ "transformation": {
+  "methods": [
+   "supervised fine-tuning",
+   "multistage reinforcement learning (offline and online preference optimization)"
+  ],
+  "objective": "Turn the Qwen2.5-7B base checkpoint into an instruction-following, chat-capable assistant with improved long-text generation, structured/JSON output reliability, and robustness to diverse system prompts.",
+  "hyperparameters": {},
+  "adapter_config": {},
+  "performed_at": "2024-09-19",
+  "notes": "The technical report describes the post-training pipeline at a high level (>1M SFT samples, multistage RL) but does not disclose per-stage hyperparameters (learning rate, RL algorithm details, reward model) in the sections reviewed.",
+  "inputs": [
+   {
+    "model_id": "Qwen/Qwen2.5-7B",
+    "external_model_name": null,
+    "role": "base"
+   }
+  ],
+  "datasets": [
+   {
+    "dataset_key": "slug:qwen2.5-post-training-mixture",
+    "role": "finetuning"
+   }
+  ],
+  "evidence": [
+   "hf_card",
+   "tech_report",
+   "blog"
+  ]
+ },
+ "datasets": [
+  {
+   "key": "slug:qwen2.5-pretraining-corpus",
+   "name": "Qwen2.5 pretraining corpus",
+   "hf_id": null,
+   "version": null,
+   "description": "Large-scale multilingual (29+ languages) pretraining corpus covering general web text, code, and mathematics; the technical report states specialized expert models were used to generate additional high-quality coding and math data, but the exact dataset inventory, sourcing, and filtering/dedup pipeline are not publicly disclosed.",
+   "size": "up to 18T tokens",
+   "modality": "text",
+   "provider": "Qwen Team (Alibaba Cloud)",
+   "license": null,
+   "disclosure_status": "undisclosed",
+   "processing": [],
+   "uri": null,
+   "parents": [],
+   "evidence": [
+    "tech_report",
+    "blog"
+   ]
+  },
+  {
+   "key": "slug:qwen2.5-post-training-mixture",
+   "name": "Qwen2.5 post-training (SFT + RL) data mixture",
+   "hf_id": null,
+   "version": null,
+   "description": "Instruction-tuning and alignment data mixture used to turn the Qwen2.5-7B base checkpoint into Qwen2.5-7B-Instruct; the technical report states this stage used supervised fine-tuning with over 1 million samples plus multistage reinforcement learning (offline and online RL / DPO-style preference optimization), covering chat-format instructions, structured output (e.g. JSON) tasks, role-play, and long-text generation, but does not disclose the exact source composition.",
+   "size": ">1M SFT samples plus multistage RL preference data (exact composition undisclosed)",
+   "modality": "text",
+   "provider": "Qwen Team (Alibaba Cloud)",
+   "license": null,
+   "disclosure_status": "partially_disclosed",
+   "processing": [],
+   "uri": null,
+   "parents": [
+    {
+     "dataset_key": "slug:qwen2.5-pretraining-corpus",
+     "relation": "derived_from"
+    }
+   ],
+   "evidence": [
+    "tech_report",
+    "blog"
+   ]
+  },
+  {
+   "key": "TIGER-Lab/MMLU-Pro",
+   "name": "MMLU-Pro",
+   "hf_id": "TIGER-Lab/MMLU-Pro",
+   "version": null,
+   "description": "Harder, 10-option version of MMLU with more reasoning-focused questions.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/TIGER-Lab/MMLU-Pro",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "openai/gsm8k",
+   "name": "GSM8K",
+   "hf_id": "openai/gsm8k",
+   "version": null,
+   "description": "Grade-school math word problems benchmark.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/openai/gsm8k",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "hendrycks/competition_math",
+   "name": "MATH",
+   "hf_id": "hendrycks/competition_math",
+   "version": null,
+   "description": "Competition mathematics problem benchmark.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/hendrycks/competition_math",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "openai/openai_humaneval",
+   "name": "HumanEval",
+   "hf_id": "openai/openai_humaneval",
+   "version": null,
+   "description": "Hand-written Python programming problems with unit tests.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/openai/openai_humaneval",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "google-research-datasets/mbpp",
+   "name": "MBPP",
+   "hf_id": "google-research-datasets/mbpp",
+   "version": null,
+   "description": "Mostly Basic Python Problems code generation benchmark.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/google-research-datasets/mbpp",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "Idavidrein/gpqa",
+   "name": "GPQA",
+   "hf_id": "Idavidrein/gpqa",
+   "version": null,
+   "description": "Graduate-level Google-proof Q&A science benchmark.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/Idavidrein/gpqa",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  },
+  {
+   "key": "google/IFEval",
+   "name": "IFEval",
+   "hf_id": "google/IFEval",
+   "version": null,
+   "description": "Instruction-following evaluation with verifiable formatting constraints.",
+   "size": null,
+   "modality": "text",
+   "provider": "third-party academic benchmark authors",
+   "license": null,
+   "disclosure_status": "disclosed",
+   "processing": [],
+   "uri": "https://huggingface.co/datasets/google/IFEval",
+   "parents": [],
+   "evidence": [
+    "tech_report"
+   ]
+  }
+ ],
+ "evaluations": [
+  {
+   "benchmark": "MMLU-Pro",
+   "dataset_key": "TIGER-Lab/MMLU-Pro",
+   "metric": "acc",
+   "value": 56.3,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8, Qwen2.5-7B-Instruct comparison"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MMLU-redux",
+   "dataset_key": null,
+   "metric": "acc",
+   "value": 75.4,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "LiveBench-0831",
+   "dataset_key": null,
+   "metric": "score",
+   "value": 35.9,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8, 2024-08-31 LiveBench snapshot"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "GPQA",
+   "dataset_key": "Idavidrein/gpqa",
+   "metric": "acc",
+   "value": 36.4,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MATH",
+   "dataset_key": "hendrycks/competition_math",
+   "metric": "acc",
+   "value": 75.5,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "GSM8K",
+   "dataset_key": "openai/gsm8k",
+   "metric": "acc",
+   "value": 91.6,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "HumanEval",
+   "dataset_key": "openai/openai_humaneval",
+   "metric": "pass@1",
+   "value": 84.8,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MBPP",
+   "dataset_key": "google-research-datasets/mbpp",
+   "metric": "pass@1",
+   "value": 79.2,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MultiPL-E",
+   "dataset_key": null,
+   "metric": "pass@1",
+   "value": 70.4,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "LiveCodeBench",
+   "dataset_key": null,
+   "metric": "pass@1",
+   "value": 28.7,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8, 2024.09-2024.12 window as reported"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "IFEval",
+   "dataset_key": "google/IFEval",
+   "metric": "strict prompt-level acc",
+   "value": 71.2,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": null,
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "Arena-Hard",
+   "dataset_key": null,
+   "metric": "win-rate",
+   "value": 52.0,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": "GPT-4-based judge (Arena-Hard default judge)",
+   "reference_key": "tech_report"
+  },
+  {
+   "benchmark": "MT-Bench",
+   "dataset_key": null,
+   "metric": "score (0-10)",
+   "value": 8.75,
+   "value_text": null,
+   "configuration": {
+    "notes": "Table 8"
+   },
+   "baseline_model_id": null,
+   "baseline_value": null,
+   "evaluator_model": "GPT-4-based judge (MT-Bench default judge)",
+   "reference_key": "tech_report"
+  }
+ ],
+ "safety": {
+  "risk_level": null,
+  "items": [
+   {
+    "type": "limitation",
+    "description": "Long-context handling beyond the shipped 32,768-token config requires manually enabling YaRN rope_scaling; vLLM only supports static YaRN scaling, which can impact performance on shorter texts.",
+    "reference_key": "hf_card"
+   }
+  ]
+ },
+ "licenses": [
+  {
+   "license_key": "apache-2.0",
+   "name": "Apache License 2.0",
+   "spdx_id": "Apache-2.0",
+   "uri": "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct/blob/main/LICENSE",
+   "usage_policy_name": null,
+   "usage_policy_uri": null,
+   "commercial_use": "allowed",
+   "restrictions": [],
+   "kind": "declared",
+   "scope_note": null
+  }
+ ],
+ "unknowns": [
+  "Exact SFT/RL dataset composition and sizes beyond the aggregate '>1M SFT samples plus multistage RL' description",
+  "Knowledge cutoff date is not stated in the HF card, blog, or technical report abstract/tables reviewed",
+  "Per-stage post-training hyperparameters (learning rates, RL algorithm/reward model details)",
+  "MMLU-redux and LiveCodeBench/LiveBench have no canonical HF dataset id in the fixed convention list, so dataset_key is null for these evaluation rows"
+ ]
+}
