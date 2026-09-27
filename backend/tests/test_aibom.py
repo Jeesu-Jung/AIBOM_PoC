@@ -143,6 +143,37 @@ def test_dataset_role_is_cleared_when_last_user_is_removed() -> None:
     assert db.get(Dataset, "cais/mmlu").role is None
 
 
+def test_catalog_create_does_not_copy_pipeline_tag_into_intended_use() -> None:
+    db = session()
+    create_admin_model(db, catalog_payload("org/base", primaryPurpose="text-generation"))
+    assert load_model_aibom(db, "org/base")["model"]["intended_use"] is None
+
+
+def test_save_model_aibom_writes_dataset_provenance_and_resolves_model_evidence_uris() -> None:
+    db = session()
+    create_admin_model(db, catalog_payload("org/base"))
+    result = save_model_aibom(db, "org/base", AibomWrite.model_validate({
+        "model": {"extensions": {"evidence": ["https://example.test/config.json"]}},
+        "transformation": {"method": ["SFT"], "datasets": [{"dataset": "org/derived", "role": "finetuning"}]},
+        "dataset": [
+            {"identity": "org/source"},
+            {"identity": "org/derived", "provenance": {"provider": "Org", "parent": ["org/source"],
+                                                       "relation": "filtered_from", "evidence": ["https://example.test/ds"]}},
+        ],
+    }))
+
+    derived = next(d for d in result["dataset"] if d["identity"] == "org/derived")
+    assert derived["provenance"]["parent"] == ["dataset:org/source"]
+    assert derived["provenance"]["relation"] == "filtered_from"
+    assert isinstance(result["model"]["extensions"]["evidence"][0], int)
+    assert "https://example.test/config.json" in [r["uri"] for r in result["reference"]]
+
+    with pytest.raises(HTTPException) as error:
+        save_model_aibom(db, "org/base", AibomWrite.model_validate({
+            "dataset": [{"identity": "org/x", "provenance": {"parent": ["org/missing"]}}]}))
+    assert error.value.status_code == 422
+
+
 def test_admin_aibom_route_is_not_swallowed_by_model_path(monkeypatch) -> None:
     monkeypatch.setattr(main, "load_model_row", lambda _db, _model_id: object())
     monkeypatch.setattr(main, "load_model_aibom", lambda _db, model_id: {"model": {"identity": model_id}})

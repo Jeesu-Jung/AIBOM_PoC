@@ -177,8 +177,9 @@ paths:
       description: |
         `model_info` 와 `model_hierarchy` 레코드를 함께 생성합니다.
         AIBOM 영역도 함께 초기화합니다: `provenance`(subject, origin=familyName, provider=supplier, parent, relation),
-        부모가 있으면 `transformation`(input = 부모, role base), `model`(intended_use = primaryPurpose),
-        `familyLicenseName` 이 있으면 `license_policy`.
+        부모가 있으면 `transformation`(input = 부모, role base), 빈 `model` 행,
+        `familyLicenseName` 이 있으면 `license_policy`. AI 초안으로 등록할 때는 관리 화면이 이어서
+        `PUT /api/v1/admin/models/{modelId}/aibom` 으로 조사된 AIBOM을 저장합니다.
         - `parentModelId` 가 있으면 부모가 존재하고 동일 패밀리여야 하며, `hierarchyDepth` 는 부모 depth + 1 로 계산됩니다.
         - 루트 모델(`parentModelId: null`)은 `relationshipType` 을 가질 수 없고, 파생 모델은 반드시 가져야 합니다.
       operationId: adminCreateModel
@@ -1206,6 +1207,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FieldDecision'
+        aibomDraft:
+          type: object
+          description: 조사 모델이 반환한 원본 AIBOM 초안 (병합 단계의 입력). 필드 설명은 app/aibom_research.py `AibomDraft`.
+          additionalProperties: true
+        aibom:
+          $ref: '#/components/schemas/AibomWrite'
+        aibomSummary:
+          type: object
+          description: 영역별 개수 (transformation_inputs, method_steps, datasets, evaluations, safety_items, licenses, references)
+          additionalProperties: { type: integer }
+        areaDecisions:
+          type: array
+          description: AIBOM 영역별 병합 결정
+          items:
+            type: object
+            properties:
+              area: { type: string, enum: [model, provenance, transformation, datasets, evaluations, safety_ethics, license_policy, references] }
+              chosen: { type: string, enum: [huggingface, paper, combined, none] }
+              rationale: { type: string }
         parentCandidates:
           type: array
           items:
@@ -1250,6 +1270,16 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/FieldEvidence'
+        aibomDraft:
+          type: object
+          description: 조사 모델이 반환한 원본 AIBOM 초안 (병합 단계의 입력). 필드 설명은 app/aibom_research.py `AibomDraft`.
+          additionalProperties: true
+        aibom:
+          $ref: '#/components/schemas/AibomWrite'
+        aibomSummary:
+          type: object
+          description: 영역별 개수 (transformation_inputs, method_steps, datasets, evaluations, safety_items, licenses, references)
+          additionalProperties: { type: integer }
         sources:
           type: array
           description: OpenRouter `url_citation` 어노테이션에서 추출한 중복 제거된 출처

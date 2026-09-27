@@ -21,7 +21,7 @@ class Settings:
     openrouter_model: str = os.getenv("OPENROUTER_MODEL", "anthropic/claude-opus-5")
     openrouter_base_url: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     openrouter_http_referer: str = os.getenv("OPENROUTER_HTTP_REFERER", "http://localhost:5173")
-    openrouter_timeout_seconds: float = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "120"))
+    openrouter_timeout_seconds: float = float(os.getenv("OPENROUTER_TIMEOUT_SECONDS", "300"))
 
 
 settings = Settings()

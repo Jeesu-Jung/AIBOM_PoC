@@ -20,6 +20,57 @@ from app.research import (
 )
 
 
+def aibom_content() -> dict:
+    return {
+        "model": {
+            "architecture": {"family": "decoder-only Transformer", "parameter_count": 7000000000,
+                             "context_length": 32768, "layers": 28, "hidden_size": None, "attention_heads": None,
+                             "kv_heads": None, "activation": None, "position_embedding": "RoPE"},
+            "tokenizer": {"name": "BPE", "vocab_size": 151000},
+            "modality": {"input": ["text"], "output": ["text"], "languages": ["en"]},
+            "intended_use": "General-purpose chat assistant.",
+            "capabilities": ["chat"],
+            "limitations": ["may hallucinate"],
+            "knowledge_cutoff": None,
+            "release_date": "2026-01-02",
+            "evidence_urls": ["https://example.test/model"],
+        },
+        "provenance": {"origin": "Model Family", "provider": "Example Org", "relation": "instruction_tuned_from",
+                       "disclosure_status": "partially_disclosed", "notes": None,
+                       "evidence_urls": ["https://example.test/model"]},
+        "transformation": {
+            "inputs": [{"model": "org/model-base", "role": "base"}, {"model": "GPT-4o", "role": "verifier"}],
+            "method": ["SFT", "DPO"], "objective": "Instruction following.",
+            "hyperparameters": [{"name": "learning_rate", "value": "1e-5"}],
+            "datasets": [{"dataset": "org/sft-data", "role": "finetuning"},
+                         {"dataset": "missing/data", "role": "other"}],
+            "timestamp": None, "notes": None, "evidence_urls": ["https://arxiv.org/abs/2601.00001"],
+        },
+        "datasets": [
+            {"identity": "org/sft-data", "name": "SFT data", "version": None, "license": "MIT", "provider": "Example Org",
+             "description": "Chat pairs.", "size": "10K", "uri": None, "disclosure_status": "disclosed",
+             "processing": ["dedup"], "parents": [{"dataset": "cais/mmlu", "relation": "derived_from"}],
+             "evidence_urls": ["https://huggingface.co/datasets/org/sft-data"]},
+            {"identity": "cais/mmlu", "name": "MMLU", "version": None, "license": "MIT", "provider": None,
+             "description": None, "size": None, "uri": None, "disclosure_status": "disclosed", "processing": [],
+             "parents": [], "evidence_urls": []},
+        ],
+        "evaluations": [{"benchmark": "MMLU", "dataset": "cais/mmlu", "metric": "acc", "score": 70.5,
+                         "score_text": None, "shots": 5, "configuration_notes": None, "baseline_model": "org/model-base",
+                         "baseline_score": 65.0, "evaluator_model": None,
+                         "source_url": "https://example.test/model", "reported_at": "2026-01-02"}],
+        "safety_ethics": {"risk_summary": None,
+                          "safety_risk": [{"description": "May hallucinate.", "source_url": "https://example.test/model"}],
+                          "ethical_considerations": [], "prohibited_use": [], "mitigation": []},
+        "license_policy": [{"license": "Apache License 2.0", "spdx_id": "Apache-2.0", "license_uri": None,
+                            "usage_policy": None, "usage_policy_uri": None, "commercial_use": "allowed",
+                            "restrictions": [], "kind": "declared", "scope_note": None,
+                            "source_url": "https://example.test/model"}],
+        "references": [{"type": "model_card", "uri": "https://example.test/model", "title": "Card", "revision": "abc123"}],
+        "unknowns": ["exact training data mixture"],
+    }
+
+
 def research_content() -> dict:
     return {
         "status": "found",
@@ -52,6 +103,7 @@ def research_content() -> dict:
             "urls": ["https://example.test/model"],
             "note": None,
         }],
+        "aibom": aibom_content(),
         "warnings": [],
     }
 
@@ -62,7 +114,8 @@ def test_openrouter_payload_prioritizes_deep_bounded_search() -> None:
     assert payload["model"] == "anthropic/claude-opus-5"
     assert payload["tools"][0]["type"] == "openrouter:web_search"
     assert payload["tools"][0]["parameters"]["mode"] == "deep"
-    assert payload["tools"][0]["parameters"]["max_uses"] == 4
+    assert payload["tools"][0]["parameters"]["max_uses"] == 12
+    assert payload["max_tool_calls"] >= payload["tools"][0]["parameters"]["max_uses"]
     assert payload["response_format"]["type"] == "json_schema"
     assert payload["response_format"]["json_schema"]["strict"] is True
     assert "2026-09-12" in payload["messages"][1]["content"]
@@ -126,6 +179,7 @@ def test_openrouter_prompt_injects_catalog_context() -> None:
     assert "- llama31 | Llama 3.1 | Meta" in prompt
     assert "customTunedFrom, instructionTunedFrom" in prompt
     assert "- meta-llama/Llama-3.1-8B" in prompt
+    assert "instruction_tuned_from" in prompt
     assert prompt.index("<requested_model>") < prompt.index("Catalog context")
 
 
@@ -134,6 +188,70 @@ def test_openrouter_prompt_without_context_says_catalog_is_empty() -> None:
 
     assert "Existing families: none recorded yet." in prompt
     assert "convertedFrom" in prompt
+    assert "Existing AIBOM dataset identities: none recorded yet." in prompt
+
+
+def test_prompt_separates_catalog_roots_from_aibom_lineage() -> None:
+    payload = build_openrouter_payload("org/model", context=CatalogContext(datasets=(("cais/mmlu", "MMLU"),)))
+    system_prompt = payload["messages"][0]["content"]
+
+    assert "An official INSTRUCT checkpoint has its pretrained BASE checkpoint as the input" in system_prompt
+    assert "Do not copy leaderboard numbers or claims that are not needed" not in system_prompt
+    assert "- cais/mmlu | MMLU" in payload["messages"][1]["content"]
+    assert "aibom" in payload["response_format"]["json_schema"]["schema"]["properties"]
+
+
+def test_response_schemas_are_valid_for_strict_structured_outputs() -> None:
+    """OpenAI strict mode rejects `$ref` with sibling keywords and optional / open objects."""
+    problems: list[str] = []
+
+    def walk(node, path: str) -> None:
+        if isinstance(node, dict):
+            if "$ref" in node and len(node) > 1:
+                problems.append(f"{path}: $ref with {sorted(node)}")
+            if node.get("type") == "object" and "properties" in node:
+                if set(node.get("required", [])) != set(node["properties"]):
+                    problems.append(f"{path}: not every property is required")
+                if node.get("additionalProperties") is not False:
+                    problems.append(f"{path}: additionalProperties is not false")
+            for key, value in node.items():
+                walk(value, f"{path}/{key}")
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                walk(value, f"{path}[{index}]")
+
+    walk(build_openrouter_payload("org/model")["response_format"]["json_schema"]["schema"], "research")
+    walk(build_merge_payload("org/model", {})["response_format"]["json_schema"]["schema"], "merge")
+    assert problems == []
+
+
+def test_research_aibom_becomes_admin_aibom_payload() -> None:
+    from app.aibom import AibomWrite
+
+    upstream = {"choices": [{"message": {"content": json.dumps(research_content())}}]}
+    result = parse_openrouter_response(upstream)
+    aibom = result["aibom"]
+
+    AibomWrite.model_validate(aibom)
+    assert aibom["model"]["architecture"]["parameter_count"] == 7000000000
+    assert "hidden_size" not in aibom["model"]["architecture"]
+    assert aibom["model"]["extensions"]["evidence"][0] == "https://example.test/model"
+    assert set(aibom["model"]["extensions"]["evidence"]) == {r["uri"] for r in aibom["reference"]}
+    assert aibom["provenance"]["relation"] == "instruction_tuned_from"
+    assert [i["model"] for i in aibom["transformation"]["input"]] == ["org/model-base", "GPT-4o"]
+    assert aibom["transformation"]["hyperparameters"] == {"learning_rate": "1e-5"}
+    # datasets that the draft references but does not describe are dropped
+    assert aibom["transformation"]["datasets"] == [{"dataset": "org/sft-data", "role": "finetuning"}]
+    sft = next(d for d in aibom["dataset"] if d["identity"] == "org/sft-data")
+    assert sft["provenance"]["parent"] == ["cais/mmlu"]
+    assert aibom["evaluation"][0]["configuration"] == {"benchmark": "MMLU", "shots": 5}
+    assert aibom["evaluation"][0]["extensions"]["baseline_score"] == 65.0
+    assert aibom["license_policy"][0]["extensions"]["spdx_id"] == "Apache-2.0"
+    uris = {r["uri"]: r["type"] for r in aibom["reference"]}
+    assert uris["https://arxiv.org/abs/2601.00001"] == "paper"
+    assert uris["https://huggingface.co/datasets/org/sft-data"] == "dataset_card"
+    assert result["aibomSummary"]["evaluations"] == 1
+    assert result["aibomDraft"]["transformation"]["method"] == ["SFT", "DPO"]
 
 
 def test_openrouter_response_becomes_reviewable_admin_draft() -> None:
@@ -236,6 +354,7 @@ def test_load_catalog_context_collects_families_relationships_and_ids() -> None:
     assert context.model_ids == ("meta-llama/Llama-3.1-8B", "org/child")
     assert context.relationship_vocabulary[0] == "adapterTrainedFrom"
     assert context.relationship_vocabulary.count("adapterTrainedFrom") == 1
+    assert context.datasets == ()
 
 
 def test_stream_endpoint_reports_missing_configuration(monkeypatch) -> None:
@@ -278,6 +397,8 @@ def merge_content() -> dict:
             for field in fields
         ],
         "parentCandidates": [],
+        "aibom": aibom_content(),
+        "areaDecisions": [{"area": "evaluations", "chosen": "combined", "rationale": "두 결과를 합쳤습니다."}],
         "warnings": ["familyDeveloper 값이 두 조사에서 달랐습니다."],
     }
 
@@ -298,6 +419,7 @@ def test_merge_payload_compacts_inputs_and_disables_web_search() -> None:
     assert inputs["huggingface"]["draft"]["familyDeveloper"] == "Example Org"
     assert "detailsJson" not in inputs["huggingface"]["draft"]
     assert inputs["paper"]["sources"] == [{"title": "paper", "url": "https://example.test/paper"}]
+    assert inputs["huggingface"]["aibom"]["transformation"]["method"] == ["SFT", "DPO"]
 
     payload = build_merge_payload("org/model", inputs, as_of=date(2026, 9, 13))
 
@@ -323,6 +445,8 @@ def test_merge_response_becomes_admin_draft_with_decisions() -> None:
     assert [item["source"] for item in result["sources"]] == ["huggingface", "paper"]
     assert result["warnings"] == ["familyDeveloper 값이 두 조사에서 달랐습니다."]
     assert len(result["fieldDecisions"]) == len(merge_content()["fieldDecisions"])
+    assert result["areaDecisions"][0]["area"] == "evaluations"
+    assert result["aibom"]["evaluation"][0]["score"] == 70.5
 
 
 def test_merge_stream_endpoint_reports_missing_configuration(monkeypatch) -> None:

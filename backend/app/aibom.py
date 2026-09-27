@@ -228,12 +228,23 @@ class LicensePolicyArea(_Area):
     extensions: dict[str, Any] | None = None
 
 
+class DatasetProvenanceArea(_Area):
+    origin: str | None = Field(default=None, max_length=255)
+    provider: str | None = Field(default=None, max_length=255)
+    parent: list[str] = Field(default_factory=list, description="parent dataset identities (not `dataset:` subjects)")
+    relation: str | None = Field(default=None, max_length=50)
+    evidence: list[int | str] = Field(default_factory=list)
+    extensions: dict[str, Any] | None = None
+
+
 class DatasetArea(_Area):
     identity: str = Field(min_length=1, max_length=255)
     version: str | None = Field(default=None, max_length=255)
     processing: list[Any] = Field(default_factory=list)
     license: str | None = Field(default=None, max_length=255)
     extensions: dict[str, Any] | None = None
+    provenance: DatasetProvenanceArea | None = Field(
+        default=None, description="Replaces the dataset's PROVENANCE row when given; kept as-is when omitted.")
 
 
 class ReferenceArea(_Area):
@@ -311,11 +322,15 @@ def save_model_aibom(session: Session, model_id: str, payload: AibomWrite) -> di
 
     for ref in payload.reference:
         _upsert_reference(session, ref.uri, ref)
+    payload_datasets = {ds.identity for ds in payload.dataset}
     for ds in payload.dataset:
         row = session.get(Dataset, ds.identity) or Dataset(identity=ds.identity)
         row.version, row.processing, row.license, row.extensions = ds.version, ds.processing, ds.license, ds.extensions
         session.add(row)
     session.flush()
+    for ds in payload.dataset:
+        if ds.provenance is not None:
+            _replace_dataset_provenance(session, ds.identity, ds.provenance, payload_datasets)
 
     known_models = set(session.scalars(select(ModelInfo.model_id)))
     tr = payload.transformation
@@ -339,9 +354,13 @@ def save_model_aibom(session: Session, model_id: str, payload: AibomWrite) -> di
     session.flush()
 
     m = payload.model
+    model_extensions = dict(m.extensions or {}) or None
+    if model_extensions and model_extensions.get("evidence"):
+        # MODEL field evidence may be given as URIs (AI research); store reference ids like the loader does.
+        model_extensions["evidence"] = _resolve_evidence(session, model_extensions["evidence"])
     session.add(AibomModel(identity=model_id, architecture=m.architecture, tokenizer=m.tokenizer, modality=m.modality,
                            intended_use=m.intended_use, capabilities=m.capabilities or None,
-                           limitations=m.limitations or None, provenance=provenance.id, extensions=m.extensions))
+                           limitations=m.limitations or None, provenance=provenance.id, extensions=model_extensions))
     if tr is not None:
         session.add(Transformation(
             input=inputs or None, output=model_id, method=tr.method, objective=tr.objective,
@@ -367,6 +386,25 @@ def save_model_aibom(session: Session, model_id: str, payload: AibomWrite) -> di
     refresh_dataset_roles(session, old_datasets | referenced)
     session.commit()
     return load_model_aibom(session, model_id) or {}
+
+
+def _replace_dataset_provenance(session: Session, dataset_id: str, area: DatasetProvenanceArea,
+                                payload_datasets: set[str]) -> None:
+    parents = [p for p in dict.fromkeys(area.parent) if p != dataset_id]
+    known = payload_datasets | set(session.scalars(select(Dataset.identity).where(Dataset.identity.in_(parents))))         if parents else payload_datasets
+    if missing := [p for p in parents if p not in known]:
+        raise _unprocessable(f"Unknown parent dataset(s) for {dataset_id}: {', '.join(missing)}.")
+    dataset = session.get(Dataset, dataset_id)
+    subject = dataset_subject(dataset_id)
+    dataset.provenance = None
+    session.flush()
+    session.execute(delete(Provenance).where(Provenance.subject == subject))
+    row = Provenance(subject=subject, origin=area.origin, provider=area.provider,
+                     parent=[dataset_subject(p) for p in parents] or None, relation=area.relation,
+                     evidence=_resolve_evidence(session, area.evidence) or None, extensions=area.extensions)
+    session.add(row)
+    session.flush()
+    dataset.provenance = row.id
 
 
 # --- catalog <-> AIBOM consistency ------------------------------------------------------------
@@ -439,7 +477,8 @@ def sync_catalog_lineage(session: Session, info: ModelInfo, parent_id: str | Non
     session.flush()
 
     if session.get(AibomModel, model_id) is None:
-        session.add(AibomModel(identity=model_id, intended_use=info.primary_purpose, provenance=provenance.id))
+        # primary_purpose is a pipeline tag (e.g. text-generation), not MODEL.intended_use; leave it empty.
+        session.add(AibomModel(identity=model_id, provenance=provenance.id))
     if created and info.family_license_name and not session.scalar(
             select(LicensePolicy).where(LicensePolicy.subject == subject)):
         session.add(LicensePolicy(subject=subject, license=info.family_license_name[:200],

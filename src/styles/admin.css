@@ -270,3 +270,10 @@
 .aibom-editor-option-lists { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; margin-top:10px; }
 .aibom-editor-option-lists ul { max-height:220px; overflow:auto; margin:0; padding:10px 12px 10px 26px; border:1px solid #dbe3ee; border-radius:9px; background:#fbfcfe; }
 .aibom-editor-option-lists li { margin:2px 0; word-break:break-all; }
+.ai-aibom-table { display:grid; border:1px solid #dbe3ee; border-radius:10px; overflow:hidden; font-size:.83rem; }
+.ai-aibom-row { display:grid; grid-template-columns:minmax(150px,1.3fr) repeat(var(--aibom-columns,3),minmax(80px,1fr)); border-top:1px solid #e6ecf4; }
+.ai-aibom-row:first-child { border-top:0; }
+.ai-aibom-row > span { padding:8px 12px; }
+.ai-aibom-row.is-head { background:#f5f8fd; color:#58697e; font-weight:700; font-size:.76rem; }
+.ai-aibom-row > span.is-chosen { background:#edf3ff; color:#2251cc; font-weight:700; }
+.ai-area-decisions { margin:10px 0 0; padding-left:18px; color:var(--text-soft); font-size:.8rem; line-height:1.6; }
