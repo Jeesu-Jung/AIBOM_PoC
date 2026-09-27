@@ -131,7 +131,9 @@ paths:
     get:
       tags: [models]
       summary: 모델 상세 조회
-      description: '`modelId` 는 `namespace/model-name` 형식이며 슬래시를 포함합니다 (path 파라미터 전체 매칭).'
+      description: |
+        `modelId` 는 `namespace/model-name` 형식이며 슬래시를 포함합니다 (path 파라미터 전체 매칭).
+        카탈로그 레코드와 함께 설계안 8개 영역의 AIBOM을 `aibom` 에 담아 반환합니다 (저장된 AIBOM이 없으면 `null`).
       operationId: getModel
       parameters:
         - $ref: '#/components/parameters/ModelId'
@@ -174,6 +176,9 @@ paths:
       summary: '[관리자] 모델 생성'
       description: |
         `model_info` 와 `model_hierarchy` 레코드를 함께 생성합니다.
+        AIBOM 영역도 함께 초기화합니다: `provenance`(subject, origin=familyName, provider=supplier, parent, relation),
+        부모가 있으면 `transformation`(input = 부모, role base), `model`(intended_use = primaryPurpose),
+        `familyLicenseName` 이 있으면 `license_policy`.
         - `parentModelId` 가 있으면 부모가 존재하고 동일 패밀리여야 하며, `hierarchyDepth` 는 부모 depth + 1 로 계산됩니다.
         - 루트 모델(`parentModelId: null`)은 `relationshipType` 을 가질 수 없고, 파생 모델은 반드시 가져야 합니다.
       operationId: adminCreateModel
@@ -229,6 +234,8 @@ paths:
         - 자식이 있는 모델은 다른 패밀리로 이동할 수 없습니다.
         - 자기 자신 또는 자신의 후손을 부모로 지정하면 순환으로 거부됩니다.
         - 부모가 바뀌면 모든 후손의 `hierarchyDepth` 가 재계산됩니다.
+        - 부모 또는 `relationshipType` 이 바뀐 경우에만 AIBOM의 `provenance.parent` / `relation` 과
+          `transformation.input` 의 base 항목이 새 부모로 교체됩니다 (base가 아닌 input 은 유지).
       operationId: adminUpdateModel
       parameters:
         - $ref: '#/components/parameters/ModelId'
@@ -283,7 +290,10 @@ paths:
     delete:
       tags: [admin]
       summary: '[관리자] 모델 삭제'
-      description: 자식이 없는 모델만 삭제할 수 있습니다. `model_hierarchy` 행을 먼저 삭제한 뒤 `model_info` 행을 삭제합니다.
+      description: |
+        자식이 없는 모델만 삭제할 수 있습니다. `model_hierarchy` 행을 먼저 삭제한 뒤 `model_info` 행을 삭제합니다.
+        이 모델의 AIBOM 행(`model`, `provenance`, `transformation`, `evaluation`, `safety_ethics`, `license_policy`)도 함께 삭제합니다.
+        다른 모델의 `transformation.input` 으로 쓰이는 모델은 409로 거부됩니다.
       operationId: adminDeleteModel
       parameters:
         - $ref: '#/components/parameters/ModelId'
@@ -303,7 +313,110 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorDetail'
-              example: { detail: "Move or delete this model's children before deleting it." }
+              examples:
+                children:
+                  value: { detail: "Move or delete this model's children before deleting it." }
+                aibomInput:
+                  value: { detail: 'This model is an input of other transformations (org/child). Update their AIBOM first.' }
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/admin/models/{modelId}/aibom:
+    get:
+      tags: [admin]
+      summary: '[관리자] 모델 AIBOM 조회'
+      description: 설계안 8개 영역의 AIBOM. 저장된 행이 없으면 빈 객체를 반환합니다.
+      operationId: adminGetModelAibom
+      parameters:
+        - $ref: '#/components/parameters/ModelId'
+      responses:
+        '200':
+          description: 모델 AIBOM
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelAibom'
+        '404':
+          description: 모델을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+    put:
+      tags: [admin]
+      summary: '[관리자] 모델 AIBOM 저장'
+      description: |
+        이 모델의 AIBOM 행을 전체 교체합니다. `provenance.parent` 는 `transformation.input` 중 role이
+        base / merge_source 인 항목으로 자동 계산됩니다. `dataset` / `reference` 항목은 공유 행으로 upsert 되며,
+        `provenance.evidence` 에는 reference id 또는 URI(없으면 새로 등록)를 넣을 수 있습니다.
+        `dataset.role` 은 카탈로그 전체의 사용처로 다시 계산됩니다.
+      operationId: adminSaveModelAibom
+      parameters:
+        - $ref: '#/components/parameters/ModelId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AibomWrite'
+      responses:
+        '200':
+          description: 저장된 AIBOM
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelAibom'
+        '404':
+          description: 모델을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+        '422':
+          description: 검증 실패 (없는 dataset / reference 참조, 자기 자신을 input으로 지정, 중복 license 등)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ErrorDetail'
+                  - $ref: '#/components/schemas/HTTPValidationError'
+              example: { detail: 'Unknown dataset(s): org/data. Add them under `dataset` first.' }
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/admin/aibom/options:
+    get:
+      tags: [admin]
+      summary: '[관리자] AIBOM에서 참조 가능한 dataset / reference 목록'
+      operationId: adminAibomOptions
+      responses:
+        '200':
+          description: 참조 후보
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [datasets, references]
+                properties:
+                  datasets:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        identity: { type: string }
+                        name: { type: string }
+                        role: { type: array, items: { type: string, enum: [pretraining, finetuning, evaluation] } }
+                  references:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        type: { type: string }
+                        uri: { type: string }
+                        title: { type: [string, 'null'] }
         '503':
           $ref: '#/components/responses/DatabaseUnavailable'
 
@@ -750,6 +863,146 @@ components:
           type: object
           additionalProperties: true
           description: '`details_json` 원본 (family_config, model, checklist, family 등)'
+        aibom:
+          description: 상세 조회(`GET /api/v1/models/{modelId}`)에만 포함됩니다.
+          oneOf:
+            - $ref: '#/components/schemas/ModelAibom'
+            - type: 'null'
+
+    # ---------- AIBOM (sql/004: 영역 = 테이블, 필드 = 컬럼) ----------
+    ModelAibom:
+      type: object
+      description: 설계안 8개 영역. 키와 필드명은 AIBOM_스키마_설계안.md 와 같습니다.
+      properties:
+        model:
+          type: [object, 'null']
+          properties:
+            identity: { type: string }
+            architecture: { type: [object, 'null'] }
+            tokenizer: { type: [object, 'null'] }
+            modality: { type: [object, 'null'] }
+            intended_use: { type: [string, 'null'] }
+            capabilities: { type: array, items: {} }
+            limitations: { type: array, items: {} }
+            provenance: { type: [integer, 'null'], description: provenance.id }
+            extensions: { type: [object, 'null'] }
+        provenance:
+          $ref: '#/components/schemas/AibomProvenance'
+        transformation:
+          type: [object, 'null']
+          properties:
+            id: { type: integer }
+            input:
+              type: array
+              items:
+                type: object
+                properties:
+                  model: { type: string }
+                  role: { type: string, enum: [base, merge_source, teacher, generator, verifier, reward_model] }
+                  external: { type: boolean, description: 카탈로그 밖의 모델 (예 GPT-4o) }
+            output: { type: string }
+            method: { type: array, items: {} }
+            objective: { type: [string, 'null'] }
+            hyperparameters: { type: [object, 'null'] }
+            datasets:
+              type: array
+              items:
+                type: object
+                properties:
+                  dataset: { type: string }
+                  role: { type: string, enum: [pretraining, finetuning, preference, distillation, calibration, other] }
+            timestamp: { type: [string, 'null'], format: date }
+            extensions: { type: [object, 'null'] }
+        dataset:
+          type: array
+          description: 이 모델의 transformation.datasets 와 evaluation.dataset 에 연결된 데이터셋
+          items:
+            type: object
+            properties:
+              identity: { type: string }
+              version: { type: [string, 'null'] }
+              role: { type: array, items: { type: string, enum: [pretraining, finetuning, evaluation] } }
+              processing: { type: array, items: {} }
+              license: { type: [string, 'null'] }
+              provenance:
+                $ref: '#/components/schemas/AibomProvenance'
+              extensions: { type: [object, 'null'] }
+        evaluation:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              model: { type: string }
+              dataset: { type: [string, 'null'] }
+              configuration: { type: [object, 'null'], description: '{benchmark, shots, ...}' }
+              metric: { type: [string, 'null'] }
+              score: { type: [number, 'null'] }
+              timestamp: { type: [string, 'null'], format: date }
+              extensions: { type: [object, 'null'], description: '{score_text, baseline_model, baseline_score, evaluator_model, reference}' }
+        safety_ethics:
+          type: [object, 'null']
+          properties:
+            subject: { type: string }
+            safety_risk: { type: array, items: { type: object } }
+            ethical_considerations: { type: array, items: { type: object } }
+            prohibited_use: { type: array, items: { type: object } }
+            mitigation: { type: array, items: { type: object } }
+            extensions: { type: [object, 'null'] }
+        license_policy:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              subject: { type: string, example: 'model:Qwen/Qwen2.5-7B-Instruct' }
+              license: { type: string }
+              usage_policy: { type: [string, 'null'] }
+              restrictions: { type: array, items: {} }
+              extensions: { type: [object, 'null'] }
+        reference:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              type: { type: string }
+              uri: { type: string }
+              revision: { type: [string, 'null'] }
+              retrieved_at: { type: [string, 'null'], format: date }
+              hash: { type: [string, 'null'] }
+              extensions: { type: [object, 'null'] }
+    AibomProvenance:
+      type: [object, 'null']
+      properties:
+        id: { type: integer }
+        subject: { type: string, example: 'model:Qwen/Qwen2.5-7B-Instruct' }
+        origin: { type: [string, 'null'] }
+        provider: { type: [string, 'null'] }
+        parent: { type: array, items: { type: string }, example: ['model:Qwen/Qwen2.5-7B'] }
+        relation: { type: [string, 'null'] }
+        evidence: { type: array, items: { type: integer }, description: reference id 목록 }
+        extensions: { type: [object, 'null'], description: '{disclosure_status, notes}' }
+    AibomWrite:
+      type: object
+      additionalProperties: false
+      description: 한 모델의 AIBOM 전체 교체 요청. 조회 응답에서 id / subject / output / parent / external 을 뺀 형태입니다.
+      properties:
+        model: { type: object }
+        provenance:
+          type: object
+          properties:
+            origin: { type: [string, 'null'] }
+            provider: { type: [string, 'null'] }
+            relation: { type: [string, 'null'] }
+            evidence: { type: array, items: { type: [integer, string] }, description: reference id 또는 URI }
+            extensions: { type: [object, 'null'] }
+        transformation: { type: [object, 'null'] }
+        evaluation: { type: array, items: { type: object } }
+        safety_ethics: { type: [object, 'null'] }
+        license_policy: { type: array, items: { type: object, required: [license] } }
+        dataset: { type: array, items: { type: object, required: [identity] }, description: 공유 행 upsert }
+        reference: { type: array, items: { type: object, required: [uri] }, description: 공유 행 upsert }
     ModelHierarchyInfo:
       type: object
       required: [parentModelId, relationshipType, depth, siblingOrder, changeDetails]

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from .aibom import delete_model_aibom, sync_catalog_lineage
 from .models import ModelHierarchy, ModelInfo
 
 
@@ -159,6 +160,8 @@ def create_admin_model(session: Session, payload: AdminModelWrite) -> ModelInfo:
         change_details_json=payload.change_details_json,
     )
     session.add(row)
+    session.flush()
+    sync_catalog_lineage(session, row, payload.parent_model_id, payload.relationship_type, parent_changed=True)
     session.commit()
     session.refresh(row)
     return session.scalar(_statement().where(ModelInfo.model_id == payload.model_id))
@@ -177,6 +180,8 @@ def update_admin_model(session: Session, model_id: str, payload: AdminModelWrite
         raise HTTPException(status_code=422, detail="A model with children cannot be moved to another family.")
 
     depth = _validate_parent(session, payload, current_id=model_id)
+    lineage_changed = (row.hierarchy.parent_model_id, row.hierarchy.relationship_type) != (
+        payload.parent_model_id, payload.relationship_type)
     _apply_model(row, payload)
     row.hierarchy.parent_model_id = payload.parent_model_id
     row.hierarchy.relationship_type = payload.relationship_type
@@ -184,6 +189,8 @@ def update_admin_model(session: Session, model_id: str, payload: AdminModelWrite
     row.hierarchy.sibling_order = payload.sibling_order
     row.hierarchy.change_details_json = payload.change_details_json
     _recalculate_descendant_depths(session, model_id)
+    sync_catalog_lineage(session, row, payload.parent_model_id, payload.relationship_type,
+                         parent_changed=lineage_changed)
     session.commit()
     return session.scalar(_statement().where(ModelInfo.model_id == model_id))
 
@@ -200,6 +207,7 @@ def delete_admin_model(session: Session, model_id: str) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="Move or delete this model's children before deleting it.",
         )
+    delete_model_aibom(session, model_id)
     hierarchy = session.get(ModelHierarchy, model_id)
     if hierarchy:
         session.delete(hierarchy)

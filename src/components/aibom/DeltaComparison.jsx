@@ -1,12 +1,12 @@
 import { RelationChip } from "../common/Chips.jsx";
 import Value from "../common/Value.jsx";
-import { buildDeltaComparisonSections, isMissingChecklistValue } from "../../domain/aibom.js";
+import { aibomParentId, buildAibomDeltaSections, isEmptyValue } from "../../domain/aibomDelta.js";
 
 function ComparisonValue({ value, side, type }) {
-  if (!isMissingChecklistValue(value)) return <span><Value value={value} /></span>;
+  if (!isEmptyValue(value)) return <span><Value value={value} /></span>;
   const hints = side === "before"
-    ? { added: "Not present in base JSON", modified: "No base value documented" }
-    : { removed: "Not present in selected JSON", modified: "No selected-model value documented" };
+    ? { added: "Not present in the base AIBOM", modified: "No base value documented" }
+    : { removed: "Not present in the selected AIBOM", modified: "No selected-model value documented" };
 
   return (
     <>
@@ -16,18 +16,28 @@ function ComparisonValue({ value, side, type }) {
   );
 }
 
-export default function DeltaComparison({ node, onSelect, nodeMap, checklistRegistry }) {
-  if (node.kind !== "derived") return null;
-  const parent = nodeMap.get(node.parent_model || node.parent);
-  const parentLabel = parent?.title || node.parent_model || node.parent;
-  const sections = buildDeltaComparisonSections(node, checklistRegistry);
+/** Base model for the comparison: AIBOM provenance.parent first, then the catalog hierarchy parent. */
+export function comparisonBaseId(node, aibomRegistry = {}) {
+  return aibomParentId(aibomRegistry[node.id]) || node.parent_model || node.parent || null;
+}
+
+export default function DeltaComparison({ node, onSelect, nodeMap, aibomRegistry = {} }) {
+  if (node.kind === "document") return null;
+  const parentId = comparisonBaseId(node, aibomRegistry);
+  if (!parentId) return null;
+  const parent = nodeMap.get(parentId);
+  const parentLabel = parent?.title || parentId;
+  const selected = aibomRegistry[node.id];
+  const base = aibomRegistry[parentId];
+  const sections = buildAibomDeltaSections(selected, base);
   const typeLabels = { added: "Added", modified: "Modified", removed: "Removed" };
+  const changeCount = sections.reduce((sum, section) => sum + section.rows.length, 0);
 
   return (
     <section className="delta-comparison" aria-label="Changes from the base model">
       <div className="delta-head">
         <div>
-          <p className="eyebrow">Compared with base · CycloneDX 1.7</p>
+          <p className="eyebrow">Compared with base · AIBOM</p>
           <h5>What changed in this model?</h5>
         </div>
         {parent && (
@@ -36,42 +46,51 @@ export default function DeltaComparison({ node, onSelect, nodeMap, checklistRegi
           </button>
         )}
       </div>
-      <p className="delta-source-note">Only changed CycloneDX 1.7 field values are shown. The generation-specific serial number is excluded.</p>
+      <p className="delta-source-note">
+        Field values of the 8 AIBOM areas that differ from the base model ({changeCount} changes).
+        Identifiers, subjects and reference lists are excluded; evaluations are matched by benchmark and metric.
+      </p>
       <div className="comparison-models">
         <div className="comparison-model-spacer" aria-hidden="true">Field</div>
         <div className="comparison-model comparison-base-model">
-          <span>Before · CycloneDX 1.7</span><strong>{parentLabel}</strong>
+          <span>Before · Base AIBOM</span><strong>{parentLabel}</strong>
         </div>
         <div className="comparison-model comparison-selected-model">
-          <span>After · CycloneDX 1.7</span><strong>{node.title}</strong>
-          <div className="comparison-relation"><RelationChip relation={node.relationship} /></div>
+          <span>After · Selected AIBOM</span><strong>{node.title}</strong>
+          {node.relationship && <div className="comparison-relation"><RelationChip relation={node.relationship} /></div>}
+          {!node.relationship && selected?.provenance?.relation && <em className="comparison-relation-inline">{selected.provenance.relation}</em>}
         </div>
       </div>
-      <div className="comparison-sections">
-        {sections.map((section) => (
-          <section className="comparison-section" key={section.label}>
-            <h6>{section.label}</h6>
-            <div className="comparison-rows">
-              {section.rows.map((row) => (
-                <div className="comparison-row" key={row.aspect}>
-                  <div className="comparison-aspect">
-                    <span className={`comparison-badge comparison-${row.type}`}>{typeLabels[row.type]}</span>
-                    <strong>{row.aspect}</strong>
+      {!selected || !base ? (
+        <p className="section-note">{!selected ? "이 모델의 AIBOM이 없어 비교할 수 없습니다." : "base 모델의 AIBOM을 불러오는 중이거나 저장된 AIBOM이 없습니다."}</p>
+      ) : (
+        <div className="comparison-sections">
+          {sections.map((section) => (
+            <section className="comparison-section" key={section.label}>
+              <h6>{section.label} <code className="aibom-area-table">{section.table}</code></h6>
+              <div className="comparison-rows">
+                {section.rows.map((row) => (
+                  <div className="comparison-row" key={row.aspect}>
+                    <div className="comparison-aspect">
+                      <span className={`comparison-badge comparison-${row.type}`}>{typeLabels[row.type]}</span>
+                      <strong>{row.aspect}</strong>
+                    </div>
+                    <div className="comparison-value comparison-before">
+                      <span className="comparison-mobile-label">Before · Base</span>
+                      <ComparisonValue value={row.before} side="before" type={row.type} />
+                    </div>
+                    <div className="comparison-value comparison-after">
+                      <span className="comparison-mobile-label">After · Selected</span>
+                      <ComparisonValue value={row.after} side="after" type={row.type} />
+                    </div>
                   </div>
-                  <div className="comparison-value comparison-before">
-                    <span className="comparison-mobile-label">Before · Base</span>
-                    <ComparisonValue value={row.before} side="before" type={row.type} />
-                  </div>
-                  <div className="comparison-value comparison-after">
-                    <span className="comparison-mobile-label">After · Selected</span>
-                    <ComparisonValue value={row.after} side="after" type={row.type} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+                ))}
+              </div>
+            </section>
+          ))}
+          {!sections.length && <p className="section-note">base 모델과 AIBOM 필드 값이 같습니다.</p>}
+        </div>
+      )}
     </section>
   );
 }

@@ -49,49 +49,6 @@ export function buildModelChecklist(model) {
   };
 }
 
-function checklistValuesEqual(left, right) {
-  if (isMissingChecklistValue(left) && isMissingChecklistValue(right)) return true;
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-export function buildDeltaComparisonSections(node, checklistRegistry) {
-  const parentId = node.parent_model || node.parent;
-  const baseChecklist = checklistRegistry[parentId];
-  const selectedChecklist = checklistRegistry[node.id];
-  if (!baseChecklist || !selectedChecklist) return [];
-
-  const baseCategories = new Map(baseChecklist.categories.map((category) => [category.id, category]));
-  const selectedCategories = new Map(selectedChecklist.categories.map((category) => [category.id, category]));
-  const categoryIds = [
-    ...selectedChecklist.categories.map((category) => category.id),
-    ...baseChecklist.categories.map((category) => category.id).filter((id) => !selectedCategories.has(id))
-  ];
-
-  return categoryIds.map((categoryId) => {
-    const baseCategory = baseCategories.get(categoryId);
-    const selectedCategory = selectedCategories.get(categoryId);
-    const baseFields = new Map((baseCategory?.fields || []).map((field) => [field.name, field]));
-    const selectedFields = new Map((selectedCategory?.fields || []).map((field) => [field.name, field]));
-    const fieldNames = [
-      ...(selectedCategory?.fields || []).map((field) => field.name),
-      ...(baseCategory?.fields || []).map((field) => field.name).filter((name) => !selectedFields.has(name))
-    ];
-    const rows = fieldNames.flatMap((fieldName) => {
-      if (categoryId === "required" && fieldName === "serialNumber") return [];
-      const before = baseFields.get(fieldName)?.value;
-      const after = selectedFields.get(fieldName)?.value;
-      if (checklistValuesEqual(before, after)) return [];
-      return [{
-        aspect: fieldName,
-        type: isMissingChecklistValue(before) ? "added" : isMissingChecklistValue(after) ? "removed" : "modified",
-        before,
-        after
-      }];
-    });
-    return { label: selectedCategory?.label || baseCategory?.label || toTitleCase(categoryId), rows };
-  }).filter((section) => section.rows.length);
-}
-
 function formatLegacyValue(value) {
   if (value == null || value === "") return "Not disclosed";
   if (Array.isArray(value)) return value.length ? value.join(", ") : "Not disclosed";

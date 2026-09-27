@@ -132,6 +132,46 @@ try {
   assert(panelHtml.includes("20.91B total parameters"));
   assert(panelHtml.includes("apache-2.0"));
 
+  const aibomPanelHtml = renderToStaticMarkup(React.createElement(AibomPanel, {
+    node: sparseNode,
+    onSelect: () => {},
+    familyRegistry: sparseRegistry,
+    checklistRegistry: sparseChecklistRegistry,
+    aibomRegistry: {
+      [sparseNode.id]: {
+        model: { identity: sparseNode.id, architecture: { family: "MoE Transformer" }, capabilities: ["reasoning"] },
+        provenance: { subject: `model:${sparseNode.id}`, provider: "OpenAI", parent: [], relation: "pretrained", evidence: [1] },
+        transformation: null,
+        dataset: [],
+        evaluation: [{ id: 1, configuration: { benchmark: "GPQA" }, metric: "acc", score: 71.5 }],
+        safety_ethics: null,
+        license_policy: [{ id: 1, subject: `model:${sparseNode.id}`, license: "Apache-2.0", restrictions: [] }],
+        reference: [{ id: 1, type: "model_card", uri: "https://huggingface.co/openai/gpt-oss-20b" }]
+      }
+    },
+    nodeMap: sparseLineage.nodeMap
+  }));
+  ["AIBOM schema", "MoE Transformer", "GPQA", "71.5", "Apache-2.0", "https://huggingface.co/openai/gpt-oss-20b", "— (root)"]
+    .forEach((text) => assert(aibomPanelHtml.includes(text), `AIBOM view is missing: ${text}`));
+
+  const { default: DeltaComparison } = await vite.ssrLoadModule("/src/components/aibom/DeltaComparison.jsx");
+  const fullLineage = buildLineageCatalog(testCatalog.familyRegistry);
+  const derivedNode = fullLineage.nodeMap.get("FreedomIntelligence/HuatuoGPT-o1-8B");
+  const baseId = "meta-llama/Llama-3.1-8B-Instruct";
+  const deltaHtml = renderToStaticMarkup(React.createElement(DeltaComparison, {
+    node: derivedNode,
+    onSelect: () => {},
+    nodeMap: fullLineage.nodeMap,
+    aibomRegistry: {
+      [baseId]: { model: { intended_use: "assistant chat" }, provenance: { parent: [] },
+        evaluation: [{ configuration: { benchmark: "MedQA" }, metric: "acc", score: 58.7 }] },
+      [derivedNode.id]: { model: { intended_use: "medical reasoning" }, provenance: { parent: [`model:${baseId}`] },
+        evaluation: [{ configuration: { benchmark: "MedQA" }, metric: "acc", score: 72.6 }] }
+    }
+  }));
+  ["Compared with base · AIBOM", "intended_use", "medical reasoning", "MedQA · acc", "72.6", "58.7"]
+    .forEach((text) => assert(deltaHtml.includes(text), `AIBOM delta is missing: ${text}`));
+
   console.log("PASS: React renders query-selected and sparse single-model AIBOM views.");
 } finally {
   await vite.close();

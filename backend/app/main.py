@@ -6,6 +6,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from .aibom import AibomWrite, load_aibom_options, load_model_aibom, save_model_aibom
 from .catalog import (
     build_catalog,
     load_family_index,
@@ -42,7 +43,7 @@ from .research import (
 app = FastAPI(
     title="AIBOM Model Catalog API",
     version="1.0.0",
-    description="MySQL-backed API for model metadata and model hierarchy data.",
+    description="MySQL-backed API for model metadata, model hierarchy, and AIBOM area data.",
 )
 app.add_middleware(
     CORSMiddleware,
@@ -101,13 +102,14 @@ def family_hierarchy(family_key: str, db: Session = Depends(get_db)) -> dict:
 
 @app.get("/api/v1/models/{model_id:path}", tags=["models"])
 def model(model_id: str, db: Session = Depends(get_db)) -> dict:
+    """Catalog record plus the model's AIBOM (the 8 design areas) under `aibom`."""
     try:
         row = load_model_row(db, model_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Model not found.")
+        return {**model_to_dict(row), "aibom": load_model_aibom(db, model_id)}
     except SQLAlchemyError as error:
         raise _database_unavailable() from error
-    if row is None:
-        raise HTTPException(status_code=404, detail="Model not found.")
-    return model_to_dict(row)
 
 
 @app.get("/api/v1/admin/models", tags=["admin"])
@@ -182,6 +184,42 @@ async def admin_stream_model_merge(payload: MergeResearchRequest) -> StreamingRe
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/api/v1/admin/aibom/options", tags=["admin"])
+def admin_aibom_options(db: Session = Depends(get_db)) -> dict:
+    """Datasets and references that an AIBOM payload can point to."""
+    try:
+        return load_aibom_options(db)
+    except SQLAlchemyError as error:
+        raise _database_unavailable() from error
+
+
+# Registered before the `{model_id:path}` routes below, which would otherwise swallow `/aibom`.
+@app.get("/api/v1/admin/models/{model_id:path}/aibom", tags=["admin"])
+def admin_model_aibom(model_id: str, db: Session = Depends(get_db)) -> dict:
+    try:
+        if load_model_row(db, model_id) is None:
+            raise HTTPException(status_code=404, detail="Model not found.")
+        return load_model_aibom(db, model_id) or {}
+    except SQLAlchemyError as error:
+        raise _database_unavailable() from error
+
+
+@app.put("/api/v1/admin/models/{model_id:path}/aibom", tags=["admin"])
+def admin_save_model_aibom(model_id: str, payload: AibomWrite, db: Session = Depends(get_db)) -> dict:
+    """Replace the model's AIBOM rows; `dataset` / `reference` entries are upserted."""
+    try:
+        return save_model_aibom(db, model_id, payload)
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="The AIBOM could not be saved because it conflicts with another record.") from error
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise _database_unavailable() from error
 
 
 @app.post("/api/v1/admin/models", tags=["admin"], status_code=status.HTTP_201_CREATED)

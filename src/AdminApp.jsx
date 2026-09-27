@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import AibomEditor from "./components/admin/AibomEditor.jsx";
 import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
 
 const EMPTY_MODEL = {
@@ -618,6 +619,7 @@ export default function AdminApp() {
   const [notice, setNotice] = useState(null);
   const [createMode, setCreateMode] = useState(null);
   const [aiDraft, setAiDraft] = useState(false);
+  const [aibomRefresh, setAibomRefresh] = useState(0);
 
   const reload = async (preferredId = selectedId) => {
     const data = await fetchAdminModels();
@@ -711,6 +713,7 @@ export default function AdminApp() {
       };
       const saved = selectedId ? await updateAdminModel(selectedId, payload) : await createAdminModel(payload);
       await reload(saved.modelId);
+      setAibomRefresh((value) => value + 1);
       setNotice({ type: "success", text: selectedId ? "모델 정보가 수정되었습니다." : "새 모델이 등록되었습니다." });
     } catch (error) {
       setNotice({ type: "error", text: error.message });
@@ -814,6 +817,7 @@ export default function AdminApp() {
               <button type="submit" className="admin-primary" disabled={saving}>{saving ? "저장 중..." : selectedId ? "변경사항 저장" : aiDraft ? "검토 완료 및 모델 등록" : "모델 등록"}</button>
             </div>
           </form>
+          {selectedId && <AibomEditor modelId={selectedId} refreshKey={aibomRefresh} onNotice={setNotice} />}
         </section>
       </main>
     </div>

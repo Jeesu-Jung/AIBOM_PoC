@@ -4,6 +4,7 @@ from typing import Any
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, selectinload
 
+from .aibom import count_relation_types
 from .models import ModelHierarchy, ModelInfo
 
 
@@ -41,7 +42,9 @@ def load_family_index(session: Session) -> dict[str, Any]:
         }
         for row in rows
     ]
-    transformation_count = session.scalar(
+    # Transformation types come from the AIBOM provenance relations; the catalog's free-form
+    # relationship_type is the fallback until AIBOM rows exist.
+    transformation_count = count_relation_types(session) or session.scalar(
         select(func.count(func.distinct(ModelHierarchy.relationship_type))).where(
             ModelHierarchy.relationship_type.is_not(None)
         )

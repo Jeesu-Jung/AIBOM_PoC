@@ -551,6 +551,17 @@ body {
   background: #eef4ff;
 }
 
+.comparison-relation-inline {
+  justify-self: start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 600;
+}
+
 .comparison-relation {
   position: absolute;
   top: 50%;
@@ -733,6 +744,70 @@ body {
 
 .aibom-table tbody td:nth-child(2) {
   color: var(--text-soft);
+}
+
+.aibom-view-tabs {
+  display: inline-flex;
+  gap: 4px;
+  justify-self: start;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-soft);
+}
+
+.aibom-view-tabs button {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.aibom-view-tabs button small {
+  margin-left: 4px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+
+.aibom-view-tabs button.is-active {
+  background: var(--panel);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(22, 32, 43, 0.12);
+}
+
+.aibom-area h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.aibom-area-table {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.aibom-area-count {
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.aibom-area-fields tbody tr.is-empty td {
+  color: #9aa6b5;
+}
+
+.aibom-area-list tbody td {
+  color: var(--text-soft);
+  word-break: break-word;
 }
 
 .table-link {

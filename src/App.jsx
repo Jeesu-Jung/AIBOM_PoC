@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AibomPanel from "./components/aibom/AibomPanel.jsx";
+import { comparisonBaseId } from "./components/aibom/DeltaComparison.jsx";
 import DashboardHeader from "./components/layout/DashboardHeader.jsx";
 import LineageBoard from "./components/lineage/LineageBoard.jsx";
 import { fetchFamilies, fetchFamilyHierarchy, fetchModel } from "./api/catalog.js";
@@ -51,6 +52,7 @@ export default function App({ initialCatalog = null }) {
   const [familyIndex, setFamilyIndex] = useState(initialIndex);
   const [familyRegistry, setFamilyRegistry] = useState(initialCatalog?.familyRegistry || EMPTY_REGISTRY);
   const [checklistRegistry, setChecklistRegistry] = useState(initialCatalog?.checklistRegistry || EMPTY_REGISTRY);
+  const [aibomRegistry, setAibomRegistry] = useState(initialCatalog?.aibomRegistry || EMPTY_REGISTRY);
   const [activeFamilyId, setActiveFamilyId] = useState(initialFamilyId);
   const [activeNodeId, setActiveNodeId] = useState(initialNodeId);
   const [loadError, setLoadError] = useState(null);
@@ -75,6 +77,7 @@ export default function App({ initialCatalog = null }) {
           const model = await fetchModel(requestedNodeId);
           if (!active) return;
           setChecklistRegistry({ [model.modelId]: buildModelChecklist(model) });
+          if (model.aibom) setAibomRegistry({ [model.modelId]: model.aibom });
           setActiveFamilyId(model.familyKey);
           setActiveNodeId(model.modelId);
           return;
@@ -120,9 +123,11 @@ export default function App({ initialCatalog = null }) {
       setDetailLoading(false);
       return undefined;
     }
+    // The comparison base comes from the AIBOM (provenance.parent) once the model itself is loaded,
+    // falling back to the catalog hierarchy parent.
     const modelIds = [activeNode.id];
-    const parentId = activeNode.parent_model || activeNode.parent;
-    if (activeNode.kind === "derived" && parentId) modelIds.push(parentId);
+    const parentId = comparisonBaseId(activeNode, aibomRegistry);
+    if (parentId) modelIds.push(parentId);
     const missingIds = modelIds.filter((modelId) => !checklistRegistry[modelId]);
     if (!missingIds.length) {
       setDetailLoading(false);
@@ -139,6 +144,11 @@ export default function App({ initialCatalog = null }) {
         });
         return next;
       });
+      setAibomRegistry((current) => {
+        const next = { ...current };
+        models.forEach((model) => { if (model.aibom) next[model.modelId] = model.aibom; });
+        return next;
+      });
       setDetailLoading(false);
     }).catch((error) => {
       if (active) {
@@ -147,7 +157,7 @@ export default function App({ initialCatalog = null }) {
       }
     });
     return () => { active = false; };
-  }, [activeNode, checklistRegistry, initialCatalog]);
+  }, [activeNode, checklistRegistry, aibomRegistry, initialCatalog]);
 
   const selectNode = useCallback((nodeId, scrollIntoView = false) => {
     if (!nodeMap.has(nodeId)) return;
@@ -214,6 +224,7 @@ export default function App({ initialCatalog = null }) {
                 onSelect={selectNode}
                 familyRegistry={activeRegistry}
                 checklistRegistry={checklistRegistry}
+                aibomRegistry={aibomRegistry}
                 nodeMap={nodeMap}
                 loading={detailLoading || (activeNode.kind !== "document" && !checklistRegistry[activeNode.id])}
               />

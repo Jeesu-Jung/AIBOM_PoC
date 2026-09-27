@@ -81,3 +81,8 @@ export const updateAdminModel = (modelId, payload) => request(`/api/v1/admin/mod
 export const deleteAdminModel = (modelId) => request(`/api/v1/admin/models/${modelPath(modelId)}`, {
   method: "DELETE"
 });
+export const fetchAdminModelAibom = (modelId) => request(`/api/v1/admin/models/${modelPath(modelId)}/aibom`);
+export const saveAdminModelAibom = (modelId, payload) => request(`/api/v1/admin/models/${modelPath(modelId)}/aibom`, {
+  method: "PUT", body: JSON.stringify(payload)
+});
+export const fetchAdminAibomOptions = () => request("/api/v1/admin/aibom/options");
