@@ -1,54 +1,5 @@
 import { toTitleCase } from "../utils/format.js";
 
-export function isMissingChecklistValue(value) {
-  return value == null || value === "" || value === "Not found" || (Array.isArray(value) && !value.length);
-}
-
-function checklistField(name, value, tier = "Critical", type = "CDX") {
-  return {
-    name,
-    value,
-    present: !isMissingChecklistValue(value),
-    actualLocation: "model catalog",
-    tier,
-    type
-  };
-}
-
-function checklistCategory(id, label, fields) {
-  const present = fields.filter((field) => field.present).length;
-  return { id, label, present, total: fields.length, score: present, maxScore: fields.length, fields };
-}
-
-export function buildModelChecklist(model) {
-  const provided = model.details?.checklist;
-  if (provided?.categories) return provided;
-
-  return {
-    modelId: model.modelId,
-    categories: [
-      checklistCategory("identity", "Identity", [
-        checklistField("modelId", model.modelId),
-        checklistField("modelName", model.modelName),
-        checklistField("modelVersion", model.modelVersion),
-        checklistField("supplier", model.supplier),
-        checklistField("familyDeveloper", model.familyDeveloper),
-        checklistField("modelUrl", model.modelUrl),
-        checklistField("packageUrl", model.packageUrl),
-        checklistField("license", model.licenseReported || model.familyLicenseName)
-      ]),
-      checklistCategory("model-card", "Model card", [
-        checklistField("description", model.description),
-        checklistField("primaryPurpose", model.primaryPurpose),
-        checklistField("artifactFormat", model.artifactFormat),
-        checklistField("tensorType", model.tensorType),
-        checklistField("parameterScale", model.parameterScale),
-        checklistField("artifactRevision", model.artifactRevision)
-      ])
-    ]
-  };
-}
-
 function formatLegacyValue(value) {
   if (value == null || value === "") return "Not disclosed";
   if (Array.isArray(value)) return value.length ? value.join(", ") : "Not disclosed";
@@ -129,13 +80,7 @@ function buildDocumentAibomSections(node, family) {
   ];
 }
 
-export function buildAibomSections(node, checklistRegistry, familyRegistry) {
-  const checklist = checklistRegistry[node.id];
-  if (!checklist) return buildDocumentAibomSections(node, familyRegistry[node.familyId]);
-  return checklist.categories.map((category) => ({
-    title: category.label,
-    summary: `${category.present}/${category.total} present · ${category.score}/${category.maxScore} points`,
-    note: category.displayNote,
-    rows: category.fields
-  }));
+/** Summary table for a family's evidence-document node (e.g. the technical report). */
+export function buildDocumentSections(node, familyRegistry) {
+  return buildDocumentAibomSections(node, familyRegistry[node.familyId]);
 }

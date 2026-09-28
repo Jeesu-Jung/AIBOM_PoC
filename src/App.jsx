@@ -4,7 +4,6 @@ import { comparisonBaseId } from "./components/aibom/DeltaComparison.jsx";
 import DashboardHeader from "./components/layout/DashboardHeader.jsx";
 import LineageBoard from "./components/lineage/LineageBoard.jsx";
 import { fetchFamilies, fetchFamilyHierarchy, fetchModel } from "./api/catalog.js";
-import { buildModelChecklist } from "./domain/aibom.js";
 import { buildLineageCatalog, getInitialNodeId } from "./domain/lineage.js";
 import { useLineageConnections } from "./hooks/useLineageConnections.js";
 
@@ -51,7 +50,7 @@ export default function App({ initialCatalog = null }) {
   const initialFamilyId = initialLineage.nodeMap.get(initialNodeId)?.familyId || null;
   const [familyIndex, setFamilyIndex] = useState(initialIndex);
   const [familyRegistry, setFamilyRegistry] = useState(initialCatalog?.familyRegistry || EMPTY_REGISTRY);
-  const [checklistRegistry, setChecklistRegistry] = useState(initialCatalog?.checklistRegistry || EMPTY_REGISTRY);
+  // modelId -> AIBOM (null when the model has none). A key is present once the model detail has loaded.
   const [aibomRegistry, setAibomRegistry] = useState(initialCatalog?.aibomRegistry || EMPTY_REGISTRY);
   const [activeFamilyId, setActiveFamilyId] = useState(initialFamilyId);
   const [activeNodeId, setActiveNodeId] = useState(initialNodeId);
@@ -76,8 +75,7 @@ export default function App({ initialCatalog = null }) {
         try {
           const model = await fetchModel(requestedNodeId);
           if (!active) return;
-          setChecklistRegistry({ [model.modelId]: buildModelChecklist(model) });
-          if (model.aibom) setAibomRegistry({ [model.modelId]: model.aibom });
+          setAibomRegistry({ [model.modelId]: model.aibom ?? null });
           setActiveFamilyId(model.familyKey);
           setActiveNodeId(model.modelId);
           return;
@@ -128,7 +126,7 @@ export default function App({ initialCatalog = null }) {
     const modelIds = [activeNode.id];
     const parentId = comparisonBaseId(activeNode, aibomRegistry);
     if (parentId) modelIds.push(parentId);
-    const missingIds = modelIds.filter((modelId) => !checklistRegistry[modelId]);
+    const missingIds = modelIds.filter((modelId) => !Object.hasOwn(aibomRegistry, modelId));
     if (!missingIds.length) {
       setDetailLoading(false);
       return undefined;
@@ -137,16 +135,9 @@ export default function App({ initialCatalog = null }) {
     setDetailLoading(true);
     Promise.all(missingIds.map(fetchModel)).then((models) => {
       if (!active) return;
-      setChecklistRegistry((current) => {
-        const next = { ...current };
-        models.forEach((model) => {
-          next[model.modelId] = buildModelChecklist(model);
-        });
-        return next;
-      });
       setAibomRegistry((current) => {
         const next = { ...current };
-        models.forEach((model) => { if (model.aibom) next[model.modelId] = model.aibom; });
+        models.forEach((model) => { next[model.modelId] = model.aibom ?? null; });
         return next;
       });
       setDetailLoading(false);
@@ -157,7 +148,7 @@ export default function App({ initialCatalog = null }) {
       }
     });
     return () => { active = false; };
-  }, [activeNode, checklistRegistry, aibomRegistry, initialCatalog]);
+  }, [activeNode, aibomRegistry, initialCatalog]);
 
   const selectNode = useCallback((nodeId, scrollIntoView = false) => {
     if (!nodeMap.has(nodeId)) return;
@@ -223,10 +214,9 @@ export default function App({ initialCatalog = null }) {
                 node={activeNode}
                 onSelect={selectNode}
                 familyRegistry={activeRegistry}
-                checklistRegistry={checklistRegistry}
                 aibomRegistry={aibomRegistry}
                 nodeMap={nodeMap}
-                loading={detailLoading || (activeNode.kind !== "document" && !checklistRegistry[activeNode.id])}
+                loading={detailLoading || (activeNode.kind !== "document" && !Object.hasOwn(aibomRegistry, activeNode.id))}
               />
             </div>
           </div>

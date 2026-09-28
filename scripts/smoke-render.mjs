@@ -8,20 +8,15 @@ import { createServer } from "vite";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 globalThis.window = { location: new URL("http://localhost/") };
 
-const field = (name, value) => ({
-  name, value, present: true, actualLocation: "test", tier: "Critical", type: "CDX"
-});
-const checklist = (modelId, datasetName) => ({
-  modelId,
-  categories: [{
-    id: "model-card",
-    label: "Component Model Card",
-    present: 1,
-    total: 1,
-    score: 30,
-    maxScore: 30,
-    fields: [field("datasets", { datasetNames: [datasetName], datasetUrls: [`https://example.test/${datasetName}`] })]
-  }]
+const aibom = (modelId, datasetName, parentId = null) => ({
+  model: { identity: modelId, architecture: { family: "decoder-only Transformer" } },
+  provenance: { subject: `model:${modelId}`, parent: parentId ? [`model:${parentId}`] : [], relation: parentId ? "fine_tuned_from" : "pretrained" },
+  transformation: { input: parentId ? [{ model: parentId, role: "base" }] : [], method: ["SFT"], datasets: [{ dataset: datasetName, role: "finetuning" }] },
+  dataset: [{ identity: datasetName, role: ["finetuning"], extensions: { name: datasetName, uri: `https://example.test/${datasetName}` } }],
+  evaluation: [],
+  safety_ethics: null,
+  license_policy: [],
+  reference: []
 });
 const testCatalog = {
   familyRegistry: {
@@ -52,9 +47,9 @@ const testCatalog = {
       }]
     }
   },
-  checklistRegistry: {
-    "meta-llama/Llama-3.1-8B-Instruct": checklist("meta-llama/Llama-3.1-8B-Instruct", "base-dataset"),
-    "FreedomIntelligence/HuatuoGPT-o1-8B": checklist("FreedomIntelligence/HuatuoGPT-o1-8B", "medical-dataset")
+  aibomRegistry: {
+    "meta-llama/Llama-3.1-8B-Instruct": aibom("meta-llama/Llama-3.1-8B-Instruct", "base-dataset"),
+    "FreedomIntelligence/HuatuoGPT-o1-8B": aibom("FreedomIntelligence/HuatuoGPT-o1-8B", "medical-dataset", "meta-llama/Llama-3.1-8B-Instruct")
   }
 };
 
@@ -75,14 +70,11 @@ try {
 
   window.location = new URL("http://localhost/?node=FreedomIntelligence%2FHuatuoGPT-o1-8B");
   const datasetHtml = renderToStaticMarkup(React.createElement(App, { initialCatalog: testCatalog }));
-  const datasetValue = testCatalog.checklistRegistry["FreedomIntelligence/HuatuoGPT-o1-8B"]
-    .categories.find((category) => category.id === "model-card")
-    .fields.find((field) => field.name === "datasets").value;
-  datasetValue.datasetNames.forEach((name) => assert(datasetHtml.includes(name)));
-  datasetValue.datasetUrls.forEach((url) => assert(datasetHtml.includes(url)));
+  ["medical-dataset", "https://example.test/medical-dataset", "Compared with base · AIBOM", "MODEL"]
+    .forEach((text) => assert(datasetHtml.includes(text), `derived model view is missing: ${text}`));
+  assert(!datasetHtml.includes("CycloneDX"), "the CycloneDX checklist view was removed");
 
   const { buildLineageCatalog } = await vite.ssrLoadModule("/src/domain/lineage.js");
-  const { buildModelChecklist } = await vite.ssrLoadModule("/src/domain/aibom.js");
   const { default: LineageBoard } = await vite.ssrLoadModule("/src/components/lineage/LineageBoard.jsx");
   const { default: AibomPanel } = await vite.ssrLoadModule("/src/components/aibom/AibomPanel.jsx");
   const sparseFamily = {
@@ -101,42 +93,27 @@ try {
   const sparseRegistry = { "gpt-oss": sparseFamily };
   const sparseLineage = buildLineageCatalog(sparseRegistry);
   const sparseNode = sparseLineage.nodeMap.get("openai/gpt-oss-20b");
-  const sparseModel = {
-    modelId: sparseNode.id,
-    modelName: "gpt-oss-20b",
-    supplier: "OpenAI",
-    familyDeveloper: "OpenAI",
-    modelUrl: "https://openai.com/index/introducing-gpt-oss/",
-    packageUrl: "https://huggingface.co/openai/gpt-oss-20b",
-    licenseReported: ["apache-2.0"],
-    parameterScale: "20.91B total parameters",
-    description: sparseNode.subtitle,
-    details: { model: { title: sparseNode.id } }
-  };
-  const sparseChecklistRegistry = { [sparseNode.id]: buildModelChecklist(sparseModel) };
   const boardHtml = renderToStaticMarkup(React.createElement(LineageBoard, {
     context: sparseLineage.familyContexts[0],
     activeNodeId: sparseNode.id,
     onSelect: () => {},
     familyRegistry: sparseRegistry
   }));
-  const panelHtml = renderToStaticMarkup(React.createElement(AibomPanel, {
-    node: sparseNode,
-    onSelect: () => {},
-    familyRegistry: sparseRegistry,
-    checklistRegistry: sparseChecklistRegistry,
-    nodeMap: sparseLineage.nodeMap
+  const loadingHtml = renderToStaticMarkup(React.createElement(AibomPanel, {
+    node: sparseNode, onSelect: () => {}, familyRegistry: sparseRegistry, aibomRegistry: {}, nodeMap: sparseLineage.nodeMap
+  }));
+  const emptyHtml = renderToStaticMarkup(React.createElement(AibomPanel, {
+    node: sparseNode, onSelect: () => {}, familyRegistry: sparseRegistry, aibomRegistry: { [sparseNode.id]: null }, nodeMap: sparseLineage.nodeMap
   }));
   assert(boardHtml.includes("No example descendants added for this root yet."));
   assert(boardHtml.includes("openai/gpt-oss-20b"));
-  assert(panelHtml.includes("20.91B total parameters"));
-  assert(panelHtml.includes("apache-2.0"));
+  assert(loadingHtml.includes("Loading the selected model AIBOM"));
+  assert(emptyHtml.includes("저장된 AIBOM이 없습니다"));
 
   const aibomPanelHtml = renderToStaticMarkup(React.createElement(AibomPanel, {
     node: sparseNode,
     onSelect: () => {},
     familyRegistry: sparseRegistry,
-    checklistRegistry: sparseChecklistRegistry,
     aibomRegistry: {
       [sparseNode.id]: {
         model: { identity: sparseNode.id, architecture: { family: "MoE Transformer" }, capabilities: ["reasoning"] },
@@ -151,7 +128,7 @@ try {
     },
     nodeMap: sparseLineage.nodeMap
   }));
-  ["AIBOM schema", "MoE Transformer", "GPQA", "71.5", "Apache-2.0", "https://huggingface.co/openai/gpt-oss-20b", "— (root)"]
+  ["MODEL", "MoE Transformer", "GPQA", "71.5", "Apache-2.0", "https://huggingface.co/openai/gpt-oss-20b", "— (root)"]
     .forEach((text) => assert(aibomPanelHtml.includes(text), `AIBOM view is missing: ${text}`));
 
   const { default: DeltaComparison } = await vite.ssrLoadModule("/src/components/aibom/DeltaComparison.jsx");

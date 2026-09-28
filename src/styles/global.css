@@ -746,38 +746,16 @@ body {
   color: var(--text-soft);
 }
 
-.aibom-view-tabs {
-  display: inline-flex;
-  gap: 4px;
-  justify-self: start;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel-soft);
+.aibom-area code,
+.delta-comparison code,
+.aibom-area-table {
+  font-family: inherit;
 }
 
-.aibom-view-tabs button {
-  padding: 8px 14px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--text-soft);
-  font: inherit;
-  font-size: 0.88rem;
+.aibom-area-fields tbody th code {
+  font-size: 0.92rem;
   font-weight: 600;
-  cursor: pointer;
-}
-
-.aibom-view-tabs button small {
-  margin-left: 4px;
-  font-weight: 500;
-  opacity: 0.8;
-}
-
-.aibom-view-tabs button.is-active {
-  background: var(--panel);
-  color: var(--accent);
-  box-shadow: 0 1px 3px rgba(22, 32, 43, 0.12);
+  color: var(--text);
 }
 
 .aibom-area h4 {
@@ -890,18 +868,6 @@ body {
 .family-picker select:focus-visible {
   outline: 3px solid var(--accent-soft);
   outline-offset: 2px;
-}
-
-.status-present {
-  background: #e9f8f1;
-  border-color: #bfe8d2;
-  color: #176b4d;
-}
-
-.status-missing {
-  background: #fff0f0;
-  border-color: #f2c4c4;
-  color: #a33b3b;
 }
 
 .nav-button,
