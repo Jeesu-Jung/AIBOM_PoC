@@ -70,8 +70,21 @@ export const streamAdminModelMerge = (modelName, results, onEvent, signal) =>
   streamAdminSse("/api/v1/admin/model-research/merge/stream", { modelName, results }, onEvent, signal);
 export const fetchAdminResearchResults = (modelName) =>
   request(`/api/v1/admin/model-research/results?modelName=${encodeURIComponent(modelName)}`);
-export const saveAdminResearchResults = (modelName, results, replacePrevious = false) =>
-  request("/api/v1/admin/model-research/results", { method: "POST", body: JSON.stringify({ modelName, results, replacePrevious }) });
+export const saveAdminResearchResults = (modelName, results, replacePrevious = false, runId = null) =>
+  request("/api/v1/admin/model-research/results", { method: "POST", body: JSON.stringify({ modelName, results, replacePrevious, runId }) });
+export const fetchResearchRuns = ({ modelName, modelId, limit } = {}) => {
+  const params = new URLSearchParams();
+  if (modelName) params.set("modelName", modelName);
+  if (modelId) params.set("modelId", modelId);
+  if (limit) params.set("limit", String(limit));
+  const query = params.toString();
+  return request(`/api/v1/admin/research-runs${query ? `?${query}` : ""}`);
+};
+export const fetchResearchRun = (runId) => request(`/api/v1/admin/research-runs/${runId}`);
+export const linkResearchRun = (runId, modelId) => request(`/api/v1/admin/research-runs/${runId}/model`, {
+  method: "PUT", body: JSON.stringify({ modelId })
+});
+export const deleteResearchRun = (runId) => request(`/api/v1/admin/research-runs/${runId}`, { method: "DELETE" });
 export const createAdminModel = (payload) => request("/api/v1/admin/models", {
   method: "POST", body: JSON.stringify(payload)
 });

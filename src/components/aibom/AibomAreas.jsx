@@ -80,7 +80,7 @@ export default function AibomAreas({ aibom }) {
       <FieldTable title="PROVENANCE" table="provenance" rows={[
         ["subject", provenance.subject], ["origin", provenance.origin], ["provider", provenance.provider],
         ["parent", isEmpty(provenance.parent) ? "— (root)" : provenance.parent], ["relation", provenance.relation],
-        ["evidence", (provenance.evidence || []).map((id) => referenceById.get(id) || `#${id}`)],
+        ["evidence", (provenance.evidence || []).map((id) => (typeof id === "string" ? id : referenceById.get(id) || `#${id}`))],
         ["disclosure_status", provenance.extensions?.disclosure_status]
       ]} />
       {transformation ? <FieldTable title="TRANSFORMATION" table="transformation" rows={[

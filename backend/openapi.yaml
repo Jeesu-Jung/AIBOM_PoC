@@ -519,9 +519,10 @@ paths:
       tags: [admin]
       summary: '[관리자] AI 조사 결과 저장'
       description: |
-        조사 결과를 (modelName, source) 단위로 upsert 합니다. `replacePrevious: true` 이면 같은 modelName 의
-        기존 행을 모두 삭제한 뒤 저장합니다. 프론트는 두 조사가 끝난 시점에 `replacePrevious: true` 로 huggingface/paper 를
-        저장하고, AI 병합이 끝나면 `replacePrevious: false` 로 merged 를 추가 저장합니다.
+        조사 결과를 실행(run) 단위로 저장합니다(sql/006). `replacePrevious: true` 이면 새 실행을 만들고, `runId` 를 주면
+        그 실행에 추가합니다(같은 실행의 같은 source 는 교체). 이전 실행은 삭제하지 않으므로 `/api/v1/admin/research-runs` 에서
+        언제든 다시 볼 수 있습니다. 프론트는 두 조사가 끝나면 `replacePrevious: true` 로 huggingface/paper 를 저장하고,
+        응답의 `runId` 로 AI 병합 결과를 같은 실행에 추가합니다.
       operationId: adminSaveResearchResults
       requestBody:
         required: true
@@ -554,6 +555,91 @@ paths:
           description: 삭제됨 (없어도 204)
         '503':
           $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/admin/research-runs:
+    get:
+      tags: [admin]
+      summary: '[관리자] AI 조사 이력 목록'
+      description: |
+        "AI로 정보 채우기" 실행마다 `model_research_run` 한 행과 조사 방식별 `model_research_result` 행이 저장됩니다(sql/006).
+        새로 조사해도 이전 실행은 지워지지 않습니다. 최신 실행부터 반환하며, 각 결과는 요약만 포함합니다(전체 결과는 상세 조회).
+        `modelId` 는 그 모델로 등록된 실행과 결과가 그 모델 ID를 가리키는 실행을 모두 찾습니다.
+      operationId: adminListResearchRuns
+      parameters:
+        - { name: modelName, in: query, required: false, schema: { type: string } }
+        - { name: modelId, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        '200':
+          description: 조사 실행 요약 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ResearchRun'
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/admin/research-runs/{runId}:
+    get:
+      tags: [admin]
+      summary: '[관리자] AI 조사 실행 상세 (HF · 논문 · 병합 전체 결과)'
+      operationId: adminGetResearchRun
+      parameters:
+        - { name: runId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: 조사 실행. `results.<source>.result` 에 저장된 전체 결과가 들어 있습니다.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchRun'
+        '404':
+          description: 조사 실행을 찾을 수 없음
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDetail'
+    delete:
+      tags: [admin]
+      summary: '[관리자] AI 조사 실행 삭제'
+      operationId: adminDeleteResearchRun
+      parameters:
+        - { name: runId, in: path, required: true, schema: { type: integer } }
+      responses:
+        '204':
+          description: 삭제됨
+        '404':
+          description: 조사 실행을 찾을 수 없음
+
+  /api/v1/admin/research-runs/{runId}/model:
+    put:
+      tags: [admin]
+      summary: '[관리자] 조사 실행과 등록된 카탈로그 모델 연결'
+      description: 'AI 초안으로 모델을 등록하면 관리 화면이 호출합니다. `modelId` 가 null 이면 연결을 해제합니다.'
+      operationId: adminLinkResearchRun
+      parameters:
+        - { name: runId, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                modelId: { type: [string, 'null'] }
+      responses:
+        '200':
+          description: 연결된 조사 실행
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResearchRun'
+        '404':
+          description: 조사 실행을 찾을 수 없음
+        '422':
+          description: 카탈로그에 없는 모델
 
   /api/v1/admin/model-research/merge/stream:
     post:
@@ -1193,6 +1279,36 @@ components:
           enum: [huggingface, paper, combined, none]
           description: '`combined` 는 description 에만 허용, `none` 은 양쪽 모두 비어 null 로 둔 경우'
         rationale: { type: string, description: 한국어 한 문장 선택 근거 }
+    ResearchRun:
+      type: object
+      properties:
+        runId: { type: integer }
+        modelName: { type: string, description: 관리자가 입력한 모델명 }
+        modelId: { type: [string, 'null'], description: 이 실행으로 등록된 카탈로그 모델 }
+        resultModelId: { type: [string, 'null'], description: 조사 결과가 가리키는 모델 ID (병합 → HF → 논문 순) }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        totalCostUsd: { type: [number, 'null'] }
+        totalWebSearches: { type: [integer, 'null'] }
+        results:
+          type: object
+          description: huggingface / paper / merged 별 결과 (없으면 null)
+          additionalProperties:
+            type: [object, 'null']
+            properties:
+              id: { type: integer }
+              source: { type: string, enum: [huggingface, paper, merged] }
+              status: { type: [string, 'null'] }
+              resultModelId: { type: [string, 'null'] }
+              researchModel: { type: [string, 'null'] }
+              webSearchRequests: { type: [integer, 'null'] }
+              costUsd: { type: [number, 'null'] }
+              createdAt: { type: string, format: date-time }
+              aibomSummary: { type: object, additionalProperties: { type: integer } }
+              hasAibom: { type: boolean }
+              sourceCount: { type: integer }
+              warningCount: { type: integer }
+              result: { type: object, description: 상세 조회에서만 포함되는 전체 결과, additionalProperties: true }
     ModelMergeResult:
       type: object
       required: [status, source, draft, fieldDecisions, parentCandidates, sources, warnings, research]
@@ -1302,6 +1418,8 @@ components:
         LLM 산출 필드의 형식 규약(familyKey 슬러그, purl 형식 packageUrl, HF pipeline tag 형식 primaryPurpose, 커밋 short SHA 형식 modelVersion 등)은
         `backend/app/research.py` 의 `ResearchDraft` 필드 description 이 기준이며, 같은 설명이 OpenRouter JSON 스키마로 전달됩니다.
         부모 관계는 `parentCandidates` 를 검토해 사용자가 직접 지정해야 합니다.
+        `licenseReported`, `parameterScale`, `artifactFormat`, `tensorType` 은 따로 조사하지 않고 같은 응답의 AIBOM 초안에서
+        채웁니다(license_policy 의 SPDX id, architecture.parameter_count, model.extensions.artifact). `artifactRevision` 은 null 입니다.
       allOf:
         - $ref: '#/components/schemas/AdminModelWrite'
         - type: object

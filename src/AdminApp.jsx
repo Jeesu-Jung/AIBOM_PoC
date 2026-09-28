@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import AibomEditor from "./components/admin/AibomEditor.jsx";
-import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, saveAdminModelAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
+import ResearchHistoryDialog, { ModelResearchRuns } from "./components/admin/ResearchHistory.jsx";
+import AibomAreas from "./components/aibom/AibomAreas.jsx";
+import { aibomDraftToView } from "./domain/aibomView.js";
+import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, linkResearchRun, saveAdminModelAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
 
 const EMPTY_MODEL = {
   modelId: "", namespace: "", modelName: "", familyKey: "", familyName: "", modelRole: "DERIVED",
   supplier: "", familyDeveloper: "", familyReleaseDate: "", familyLicenseName: "", primaryPurpose: "",
   modelVersion: "", packageUrl: "", modelUrl: "", licenseReported: null, artifactFormat: "", tensorType: "",
-  parameterScale: "", artifactRevision: "", description: "", bomFormat: "CycloneDX", bomSpecVersion: "1.6",
-  bomSerialNumber: "", bomVersion: "1", checklistPresentFields: null, checklistTotalFields: null,
+  parameterScale: "", artifactRevision: "", description: "", bomFormat: null, bomSpecVersion: null,
+  bomSerialNumber: null, bomVersion: null, checklistPresentFields: null, checklistTotalFields: null,
   checklistScore: null, checklistPenaltyFactor: null, sourceGeneratedAt: null, detailsJson: {}, parentModelId: null,
   relationshipType: null, hierarchyDepth: 0, siblingOrder: 0, changeDetailsJson: null
 };
@@ -16,8 +19,7 @@ const textFields = [
   ["supplier", "Supplier"], ["familyDeveloper", "Family developer"], ["familyLicenseName", "Family license"],
   ["primaryPurpose", "Primary purpose"], ["modelVersion", "Model version"], ["artifactFormat", "Artifact format"],
   ["tensorType", "Tensor type"], ["parameterScale", "Parameter scale"], ["artifactRevision", "Artifact revision"],
-  ["packageUrl", "Package URL"], ["bomFormat", "BOM format"], ["bomSpecVersion", "BOM spec version"],
-  ["bomSerialNumber", "BOM serial number"], ["bomVersion", "BOM version"]
+  ["packageUrl", "Package URL"]
 ];
 
 function treeOrder(models) {
@@ -75,10 +77,12 @@ const mergeFields = [
   ["modelId", "Model ID"], ["namespace", "Namespace"], ["modelName", "Model name"], ["familyKey", "Family key"],
   ["familyName", "Family name"], ["modelRole", "Role"], ["supplier", "Supplier"], ["familyDeveloper", "Family developer"],
   ["familyReleaseDate", "Family release date"], ["familyLicenseName", "Family license"], ["primaryPurpose", "Primary purpose"],
-  ["modelVersion", "Model version"], ["packageUrl", "Package URL"], ["modelUrl", "Model URL"], ["licenseReported", "License reported"],
-  ["artifactFormat", "Artifact format"], ["tensorType", "Tensor type"], ["parameterScale", "Parameter scale"],
-  ["artifactRevision", "Artifact revision"], ["description", "Description"]
+  ["modelVersion", "Model version"], ["packageUrl", "Package URL"], ["modelUrl", "Model URL"], ["description", "Description"]
 ];
+// Catalog columns filled from the AIBOM draft instead of being researched separately.
+const aibomDerivedFields = ["licenseReported", "artifactFormat", "tensorType", "parameterScale", "artifactRevision"];
+const historyFields = [...mergeFields, ["licenseReported", "License reported (AIBOM)"], ["artifactFormat", "Artifact format (AIBOM)"],
+  ["tensorType", "Tensor type (AIBOM)"], ["parameterScale", "Parameter scale (AIBOM)"]];
 const linkedFieldGroups = [["modelId", "namespace", "modelName"], ["familyKey", "familyName"]];
 const statusLabels = { found: "확인됨", ambiguous: "후보 여러 개", not_found: "찾지 못함" };
 const decisionLabels = { huggingface: "HF 값", paper: "논문 값", combined: "두 결과 결합", none: "값 없음" };
@@ -160,6 +164,8 @@ const aibomAreaLabels = {
 };
 
 function AibomDraftSummary({ results, chosenKey }) {
+  const [preview, setPreview] = useState(false);
+  const chosen = chosenKey ? results[chosenKey] : null;
   const columns = [...researchSources, { value: "merged", label: "AI 병합" }].filter((option) => results[option.value]);
   if (!columns.some((option) => results[option.value]?.aibom)) {
     return <div className="ai-result-section"><div className="ai-result-heading"><strong>AIBOM 초안</strong></div>
@@ -176,6 +182,12 @@ function AibomDraftSummary({ results, chosenKey }) {
       </div>)}
     </div>
     {decisions.length > 0 && <ul className="ai-area-decisions">{decisions.map((item) => <li key={item.area}><b>{aibomAreaLabels[item.area] || item.area}</b> {decisionLabels[item.chosen] || item.chosen} · {item.rationale}</li>)}</ul>}
+    {chosen?.aibom && <div className="ai-aibom-preview">
+      <button type="button" className="admin-secondary" onClick={() => setPreview((value) => !value)} aria-expanded={preview}>
+        {preview ? "AIBOM 미리보기 접기" : `${sourceLabel(chosenKey)} AIBOM 8개 영역 미리보기`}
+      </button>
+      {preview && <AibomAreas aibom={aibomDraftToView(chosen.aibom, chosen.draft?.modelId)} />}
+    </div>}
     <p className="ai-merge-hint">AIBOM은 모델 등록 후 편집 화면 하단의 AIBOM 섹션에서 영역별로 수정할 수 있습니다.</p>
   </div>;
 }
@@ -201,7 +213,10 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
   const [checkingStore, setCheckingStore] = useState(false);
   const [loadedFromStore, setLoadedFromStore] = useState(false);
   const [saveState, setSaveState] = useState({ status: "idle", message: "" });
+  const [runId, setRunId] = useState(null);
+  const runIdRef = useRef(null);
   const abortRef = useRef(null);
+  const trackRun = (id) => { runIdRef.current = id; setRunId(id); };
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -232,14 +247,17 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
     setStored(null);
     setLoadedFromStore(false);
     setSaveState({ status: "idle", message: "" });
+    trackRun(null);
     setStage("input");
   };
 
+  // replacePrevious starts a new run; later saves (the merge) go into the same run. Runs are never overwritten.
   const persist = async (modelName, payload, replacePrevious) => {
     setSaveState({ status: "saving", message: "조사 결과를 저장하고 있습니다." });
     try {
-      const saved = await saveAdminResearchResults(modelName, payload, replacePrevious);
-      setSaveState({ status: "saved", message: `조사 결과를 저장했습니다 (${formatDateTime(saved.latestCreatedAt)}).` });
+      const saved = await saveAdminResearchResults(modelName, payload, replacePrevious, replacePrevious ? null : runIdRef.current);
+      trackRun(saved.runId);
+      setSaveState({ status: "saved", message: `조사 결과를 AI 조사 이력 #${saved.runId}에 저장했습니다 (${formatDateTime(saved.latestCreatedAt)}). 상단 “AI 조사 이력”에서 언제든 다시 볼 수 있습니다.` });
       return true;
     } catch (error) {
       setSaveState({ status: "error", message: `조사 결과 저장에 실패했습니다: ${error.message}` });
@@ -271,6 +289,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
       const existing = await fetchAdminResearchResults(modelName);
       if (existing?.exists) {
         setStored(existing);
+        trackRun(existing.runId);
         setStage("existing");
         return;
       }
@@ -393,6 +412,8 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
 
   // ---- review helpers ----
   const baseResult = results.merged || results.huggingface || results.paper;
+  const aibomKey = results.merged?.aibom ? "merged" : ["huggingface", "paper"].find((key) => results[key]?.aibom) || null;
+  const finalAibom = aibomKey ? results[aibomKey].aibom : null;
   const decisions = useMemo(() => {
     const map = {};
     (results.merged?.fieldDecisions || []).forEach((item) => { map[item.field] = item; });
@@ -434,6 +455,8 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
     if (stage !== "review" || !baseResult) return null;
     const draft = { ...baseResult.draft };
     mergeFields.forEach(([field]) => { draft[field] = finalValue(field); });
+    const aibomSource = results[aibomKey] || baseResult;
+    aibomDerivedFields.forEach((field) => { draft[field] = aibomSource?.draft?.[field] ?? draft[field] ?? null; });
     const ai = { ...(baseResult.draft.detailsJson?.ai_research || {}), reviewed: false };
     if (Object.keys(overrides).length) ai.manualOverrides = { ...overrides };
     draft.detailsJson = {
@@ -442,10 +465,8 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
       ai_research: ai
     };
     return draft;
-  }, [stage, baseResult, overrides, results]);
+  }, [stage, baseResult, overrides, results, aibomKey]);
 
-  const aibomKey = results.merged?.aibom ? "merged" : ["huggingface", "paper"].find((key) => results[key]?.aibom) || null;
-  const finalAibom = aibomKey ? results[aibomKey].aibom : null;
   const overrideCount = Object.keys(overrides).length;
   const workingTitle = runs.merged.status === "loading" ? "두 조사 결과를 AI가 병합하고 있습니다" : `“${query}” 정보를 찾고 있습니다`;
 
@@ -480,7 +501,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
 
         {mode === "ai" && stage === "existing" && stored && <div className="ai-existing">
           <button type="button" className="create-back" onClick={() => { setStored(null); setStage("input"); }}>← 모델명 다시 입력</button>
-          <div className="ai-existing-banner"><span>↺</span><div><strong>“{stored.modelName}” 의 이전 조사 결과가 있습니다</strong><p>마지막 저장 {formatDateTime(stored.latestCreatedAt)}. 저장된 결과를 불러오거나 새로 조사할 수 있습니다. 새로 조사하면 조사가 끝나 저장되는 시점에 이전 결과가 삭제됩니다.</p></div></div>
+          <div className="ai-existing-banner"><span>↺</span><div><strong>“{stored.modelName}” 의 이전 조사 결과가 있습니다</strong><p>최근 실행 #{stored.runId} · 마지막 저장 {formatDateTime(stored.latestCreatedAt)} · 저장된 실행 {stored.runCount}개. 최근 결과를 불러오거나 새로 조사할 수 있습니다. 새로 조사하면 새 실행으로 저장되고, 이전 실행은 AI 조사 이력에 그대로 남습니다.</p></div></div>
           <div className="ai-run-summary">
             {[...researchSources, { value: "merged", label: "AI 병합" }].map((option) => {
               const row = stored.results[option.value];
@@ -602,7 +623,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
             </details>;
           })}
 
-          <div className="create-dialog-actions"><button type="button" className="admin-secondary" onClick={resetSearch}>다시 검색</button><button type="button" className="admin-primary" onClick={() => onUseDraft(finalDraft, finalAibom)}>편집 화면에서 검토</button></div>
+          <div className="create-dialog-actions"><button type="button" className="admin-secondary" onClick={resetSearch}>다시 검색</button><button type="button" className="admin-primary" onClick={() => onUseDraft(finalDraft, finalAibom, runId)}>편집 화면에서 검토</button></div>
         </div>}
       </section>
     </div>
@@ -655,6 +676,8 @@ export default function AdminApp() {
   const [aiDraft, setAiDraft] = useState(false);
   const [aibomRefresh, setAibomRefresh] = useState(0);
   const [pendingAibom, setPendingAibom] = useState(null);
+  const [pendingRunId, setPendingRunId] = useState(null);
+  const [historyRunId, setHistoryRunId] = useState(undefined); // undefined: closed, null: open without selection
 
   const reload = async (preferredId = selectedId) => {
     const data = await fetchAdminModels();
@@ -712,9 +735,10 @@ export default function AdminApp() {
     setSelectedId(null); setForm(normalizeForForm(fresh)); setDetailsText("{}"); setChangeText(""); setLicenseText(""); setNotice(null); setCreateMode(null); setAiDraft(false); setPendingAibom(null);
   }
 
-  function useAiDraft(draft, aibom = null) {
+  function useAiDraft(draft, aibom = null, runId = null) {
     setSelectedId(null);
     setPendingAibom(aibom);
+    setPendingRunId(runId);
     setForm(normalizeForForm(draft));
     setDetailsText(jsonText(draft.detailsJson || {}));
     setChangeText("");
@@ -759,7 +783,12 @@ export default function AdminApp() {
           aibomNote = ` 다만 AIBOM 저장에 실패했습니다: ${error.message} 편집 화면 하단 AIBOM 섹션에서 다시 저장해 주세요.`;
         }
       }
+      if (!selectedId && pendingRunId) {
+        // Remember which research run produced this catalog record (shown in the research history).
+        await linkResearchRun(pendingRunId, saved.modelId).catch(() => {});
+      }
       setPendingAibom(null);
+      setPendingRunId(null);
       await reload(saved.modelId);
       setAibomRefresh((value) => value + 1);
       setNotice({ type: aibomNote.includes("실패") ? "error" : "success", text: (selectedId ? "모델 정보가 수정되었습니다." : "새 모델이 등록되었습니다.") + aibomNote });
@@ -787,9 +816,10 @@ export default function AdminApp() {
     <div className="admin-shell">
       <NoticeModal notice={notice} onClose={() => setNotice(null)} />
       {createMode && <CreateModelDialog mode={createMode} onModeChange={setCreateMode} onManual={startCreate} onUseDraft={useAiDraft} onClose={() => setCreateMode(null)} />}
+      {historyRunId !== undefined && <ResearchHistoryDialog initialRunId={historyRunId} fields={historyFields} onClose={() => setHistoryRunId(undefined)} onChanged={() => setAibomRefresh((value) => value + 1)} />}
       <header className="admin-header">
         <div><p className="eyebrow">AIBOM ADMIN</p><h1>Model catalog</h1><p>등록된 모델 정보와 모델 간 연결 관계를 조회하고 수정할 수 있습니다.</p></div>
-        <div className="admin-header-actions"><a href="/" className="admin-secondary">메인으로</a><button type="button" className="admin-primary" onClick={() => setCreateMode("method")}>+ 새 모델</button></div>
+        <div className="admin-header-actions"><a href="/" className="admin-secondary">메인으로</a><button type="button" className="admin-secondary" onClick={() => setHistoryRunId(null)}>AI 조사 이력</button><button type="button" className="admin-primary" onClick={() => setCreateMode("method")}>+ 새 모델</button></div>
       </header>
       <div className="admin-stats">
         <span><strong>{models.length}</strong> Models</span><span><strong>{families.length}</strong> Families</span>
@@ -849,12 +879,7 @@ export default function AdminApp() {
               <Field label="License reported JSON" wide><textarea className="code-input" value={licenseText} onChange={(e) => setLicenseText(e.target.value)} rows="3" placeholder='"apache-2.0" 또는 ["license-a"]' /></Field>
             </div></fieldset>
 
-            <fieldset><legend>품질 및 원본 데이터</legend><div className="admin-form-grid">
-              <Field label="Checklist present"><Input field="checklistPresentFields" form={form} setForm={setForm} type="number" min="0" /></Field>
-              <Field label="Checklist total"><Input field="checklistTotalFields" form={form} setForm={setForm} type="number" min="0" /></Field>
-              <Field label="Checklist score"><Input field="checklistScore" form={form} setForm={setForm} type="number" min="0" max="100" step="0.01" /></Field>
-              <Field label="Penalty factor"><Input field="checklistPenaltyFactor" form={form} setForm={setForm} type="number" min="0" max="1" step="0.0001" /></Field>
-              <Field label="Source generated at"><Input field="sourceGeneratedAt" form={form} setForm={setForm} type="datetime-local" step="any" /></Field>
+            <fieldset><legend>원본 데이터</legend><div className="admin-form-grid">
               <Field label="Details JSON" wide><textarea className="code-input" value={detailsText} onChange={(e) => setDetailsText(e.target.value)} rows="14" required /></Field>
             </div></fieldset>
 
@@ -866,6 +891,7 @@ export default function AdminApp() {
             </div>
           </form>
           {selectedId && <AibomEditor modelId={selectedId} refreshKey={aibomRefresh} onNotice={setNotice} />}
+          {selectedId && <ModelResearchRuns modelId={selectedId} refreshKey={aibomRefresh} onOpen={(id) => setHistoryRunId(id)} />}
         </section>
       </main>
     </div>

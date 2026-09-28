@@ -28,6 +28,7 @@ def aibom_content() -> dict:
                              "kv_heads": None, "activation": None, "position_embedding": "RoPE"},
             "tokenizer": {"name": "BPE", "vocab_size": 151000},
             "modality": {"input": ["text"], "output": ["text"], "languages": ["en"]},
+            "artifact": {"format": "safetensors", "tensor_type": "BF16"},
             "intended_use": "General-purpose chat assistant.",
             "capabilities": ["chat"],
             "limitations": ["may hallucinate"],
@@ -89,11 +90,6 @@ def research_content() -> dict:
             "modelVersion": "1.0",
             "packageUrl": None,
             "modelUrl": "https://example.test/model",
-            "licenseReported": ["Apache-2.0"],
-            "artifactFormat": "safetensors",
-            "tensorType": "BF16",
-            "parameterScale": "7B",
-            "artifactRevision": None,
             "description": "Example model",
         },
         "parentCandidates": [],
@@ -225,6 +221,23 @@ def test_response_schemas_are_valid_for_strict_structured_outputs() -> None:
     assert problems == []
 
 
+def test_catalog_draft_takes_scale_license_and_artifact_from_the_aibom() -> None:
+    from app.aibom_research import parameter_scale
+
+    schema = build_openrouter_payload("org/model")["response_format"]["json_schema"]["schema"]
+    researched = set(schema["$defs"]["ResearchDraft"]["properties"])
+    assert not researched & {"licenseReported", "parameterScale", "artifactFormat", "tensorType", "artifactRevision"}
+
+    result = parse_openrouter_response({"choices": [{"message": {"content": json.dumps(research_content())}}]})
+    draft = result["draft"]
+    assert draft["parameterScale"] == "7B"
+    assert draft["licenseReported"] == ["apache-2.0"]
+    assert (draft["artifactFormat"], draft["tensorType"]) == ("safetensors", "BF16")
+    assert result["aibom"]["model"]["extensions"]["artifact"] == {"format": "safetensors", "tensor_type": "BF16"}
+    assert parameter_scale(8030261248) == "8.03B"
+    assert parameter_scale(None) is None
+
+
 def test_research_aibom_becomes_admin_aibom_payload() -> None:
     from app.aibom import AibomWrite
 
@@ -312,7 +325,34 @@ def test_not_found_status_adds_reviewer_warning_and_context_warnings() -> None:
     assert result["warnings"][0].startswith("신뢰할 수 있는 출처에서")
     assert result["warnings"][1] == "DB 컨텍스트 없음"
     assert "모델 페이지를 찾지 못했습니다." in result["warnings"]
-    assert result["warnings"][-1] == "OpenRouter 응답에 URL 인용 정보가 없습니다."
+    assert result["warnings"][-1].startswith("OpenRouter 응답에 URL 인용 정보가 없어")
+    # without citations, the AIBOM references stand in as sources
+    assert result["sources"][0] == {"title": "Card", "url": "https://example.test/model", "excerpt": None,
+                                    "origin": "aibom_reference"}
+
+
+def test_web_search_count_reads_streaming_usage_key() -> None:
+    from app.research import web_search_count
+
+    assert web_search_count({"server_tool_use": {"web_search_requests": 2}}) == 2
+    assert web_search_count({"server_tool_use_details": {"web_search_requests": 13}}) == 13
+    assert web_search_count(None) is None
+
+
+def test_duplicate_evaluations_from_two_sources_are_merged() -> None:
+    from app.aibom_research import aibom_write_from_draft
+
+    draft = aibom_content()
+    first = draft["evaluations"][0]
+    draft["datasets"].append({**draft["datasets"][1], "identity": "slug:mmlu"})
+    first = {**first, "dataset": "slug:mmlu", "metric": "accuracy_percent"}
+    draft["evaluations"] = [first, {**first, "benchmark": "mmlu ", "metric": "accuracy (%)", "dataset": "cais/mmlu",
+                                    "source_url": "https://arxiv.org/abs/2601.00001"},
+                            {**first, "score": 71.0}]
+    rows = aibom_write_from_draft(draft)["evaluation"]
+    assert [row["score"] for row in rows] == [70.5, 71.0]
+    assert rows[0]["dataset"] == "cais/mmlu"  # the real dataset id wins over the slug
+    assert rows[0]["extensions"]["also_reported_in"] == ["https://arxiv.org/abs/2601.00001"]
 
 
 def test_public_stream_chunk_removes_private_reasoning() -> None:

@@ -24,9 +24,15 @@ from .admin import (
 )
 from .config import settings
 from .database import SessionLocal, get_db
+from pydantic import BaseModel, Field
+
 from .research_store import (
     SaveResearchResultsRequest,
     delete_research_results,
+    delete_research_run,
+    get_research_run,
+    link_research_run,
+    list_research_runs,
     load_research_results,
     save_research_results,
 )
@@ -157,9 +163,12 @@ def admin_research_results(modelName: str, db: Session = Depends(get_db)) -> dic
 
 @app.post("/api/v1/admin/model-research/results", tags=["admin"])
 def admin_save_research_results(payload: SaveResearchResultsRequest, db: Session = Depends(get_db)) -> dict:
-    """Persist research results; with replacePrevious the previous rows for the name are deleted first."""
+    """Persist research results into a run (new run with replacePrevious, or `runId`); runs are never overwritten."""
     try:
         return save_research_results(db, payload)
+    except HTTPException:
+        db.rollback()
+        raise
     except SQLAlchemyError as error:
         db.rollback()
         raise _database_unavailable() from error
@@ -169,6 +178,54 @@ def admin_save_research_results(payload: SaveResearchResultsRequest, db: Session
 def admin_delete_research_results(modelName: str, db: Session = Depends(get_db)) -> Response:
     try:
         delete_research_results(db, modelName)
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise _database_unavailable() from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+class ResearchRunLink(BaseModel):
+    model_id: str | None = Field(alias="modelId", default=None, max_length=512)
+
+
+@app.get("/api/v1/admin/research-runs", tags=["admin"])
+def admin_research_runs(modelName: str | None = None, modelId: str | None = None, limit: int = 100,
+                        db: Session = Depends(get_db)) -> list[dict]:
+    """Every stored research run (newest first) with per-source summaries."""
+    try:
+        return list_research_runs(db, model_name=modelName, model_id=modelId, limit=max(1, min(limit, 500)))
+    except SQLAlchemyError as error:
+        raise _database_unavailable() from error
+
+
+@app.get("/api/v1/admin/research-runs/{run_id}", tags=["admin"])
+def admin_research_run(run_id: int, db: Session = Depends(get_db)) -> dict:
+    try:
+        return get_research_run(db, run_id)
+    except SQLAlchemyError as error:
+        raise _database_unavailable() from error
+
+
+@app.put("/api/v1/admin/research-runs/{run_id}/model", tags=["admin"])
+def admin_link_research_run(run_id: int, payload: ResearchRunLink, db: Session = Depends(get_db)) -> dict:
+    """Record which catalog model was registered from this run (null to unlink)."""
+    try:
+        return link_research_run(db, run_id, payload.model_id)
+    except HTTPException:
+        db.rollback()
+        raise
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise _database_unavailable() from error
+
+
+@app.delete("/api/v1/admin/research-runs/{run_id}", tags=["admin"], status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_research_run(run_id: int, db: Session = Depends(get_db)) -> Response:
+    try:
+        delete_research_run(db, run_id)
+    except HTTPException:
+        db.rollback()
+        raise
     except SQLAlchemyError as error:
         db.rollback()
         raise _database_unavailable() from error

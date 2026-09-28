@@ -71,9 +71,62 @@ def test_replace_previous_drops_old_rows_and_upsert_keeps_them() -> None:
 def test_missing_name_reports_empty() -> None:
     loaded = load_research_results(session(), "org/unknown")
     assert loaded == {
-        "modelName": "org/unknown", "exists": False, "latestCreatedAt": None,
+        "modelName": "org/unknown", "exists": False, "latestCreatedAt": None, "runId": None, "runCount": 0,
         "results": {"huggingface": None, "paper": None, "merged": None},
     }
+
+
+def test_new_runs_keep_the_history_and_run_id_targets_a_run() -> None:
+    from app.research_store import get_research_run, list_research_runs
+
+    db = session()
+    first = save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": "org/model", "replacePrevious": True,
+        "results": {"huggingface": {**result("huggingface", "org/old"),
+                                    "research": {"model": "m", "usage": {"cost": 0.1,
+                                                 "server_tool_use_details": {"web_search_requests": 7}}}}},
+    }))
+    second = save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": "org/model", "replacePrevious": True, "results": {"paper": result("paper", "org/new")},
+    }))
+    save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": "org/model", "runId": first["runId"], "results": {"merged": result("merged", "org/old")},
+    }))
+
+    runs = list_research_runs(db, model_name="org/model")
+    assert [run["runId"] for run in runs] == [second["runId"], first["runId"]]
+    assert load_research_results(db, "org/model")["runCount"] == 2
+    old = get_research_run(db, first["runId"])
+    assert old["results"]["merged"]["resultModelId"] == "org/old"
+    assert old["results"]["huggingface"]["webSearchRequests"] == 7
+    assert old["totalCostUsd"] == 0.1
+    assert "result" not in runs[1]["results"]["huggingface"]  # summaries omit the full payload
+    assert [run["runId"] for run in list_research_runs(db, model_id="org/new")] == [second["runId"]]
+
+
+def test_research_run_endpoints_list_get_link_and_delete() -> None:
+    from app.admin import AdminModelWrite, create_admin_model
+
+    db = session()
+    create_admin_model(db, AdminModelWrite.model_validate({
+        "modelId": "org/model", "namespace": "org", "modelName": "model", "familyKey": "f", "familyName": "F",
+        "modelRole": "BASE", "modelUrl": "https://example.test", "detailsJson": {}}))
+    saved = save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": "org/model", "replacePrevious": True, "results": {"huggingface": result("huggingface")}}))
+    main.app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(main.app)
+        run_id = saved["runId"]
+        assert client.get("/api/v1/admin/research-runs").json()[0]["runId"] == run_id
+        assert client.get(f"/api/v1/admin/research-runs/{run_id}").json()["results"]["huggingface"]["result"]["status"] == "found"
+        linked = client.put(f"/api/v1/admin/research-runs/{run_id}/model", json={"modelId": "org/model"})
+        assert linked.status_code == 200 and linked.json()["modelId"] == "org/model"
+        assert client.put(f"/api/v1/admin/research-runs/{run_id}/model", json={"modelId": "org/missing"}).status_code == 422
+        assert client.get("/api/v1/admin/research-runs", params={"modelId": "org/model"}).json()[0]["runId"] == run_id
+        assert client.delete(f"/api/v1/admin/research-runs/{run_id}").status_code == 204
+        assert client.get(f"/api/v1/admin/research-runs/{run_id}").status_code == 404
+    finally:
+        main.app.dependency_overrides.clear()
 
 
 def test_results_endpoints_save_load_and_delete() -> None:

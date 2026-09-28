@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -75,6 +75,11 @@ class ModelHierarchy(Base):
 # here so the tests can build the schema on SQLite (dataset.role is a MySQL SET, read as text).
 
 _BIGINT = BigInteger().with_variant(Integer, "sqlite")
+
+
+def _utcnow() -> datetime:
+    """Naive UTC timestamp (the columns are TIMESTAMP without time zone)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Reference(Base):
@@ -177,18 +182,39 @@ class LicensePolicy(Base):
     extensions: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
+class ModelResearchRun(Base):
+    """One "AI로 정보 채우기" run: Hugging Face and paper research, then the merge (sql/006)."""
+
+    __tablename__ = "model_research_run"
+
+    id: Mapped[int] = mapped_column(_BIGINT, primary_key=True, autoincrement=True)
+    requested_model: Mapped[str] = mapped_column(String(512))
+    model_id: Mapped[str | None] = mapped_column(String(512), ForeignKey("model_info.model_id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow,
+                                                 onupdate=_utcnow)
+
+    results: Mapped[list["ModelResearchResult"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="ModelResearchResult.id")
+
+
 class ModelResearchResult(Base):
-    """Stored AI research result for one requested model name and source."""
+    """Stored AI research result for one run and source (huggingface / paper / merged)."""
 
     __tablename__ = "model_research_result"
 
     id: Mapped[int] = mapped_column(
         BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
     )
+    run_id: Mapped[int] = mapped_column(_BIGINT, ForeignKey("model_research_run.id"))
     requested_model: Mapped[str] = mapped_column(String(512))
     source: Mapped[str] = mapped_column(String(20))
     status: Mapped[str | None] = mapped_column(String(20))
     result_model_id: Mapped[str | None] = mapped_column(String(512))
     research_model: Mapped[str | None] = mapped_column(String(255))
+    web_search_requests: Mapped[int | None]
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
     result_json: Mapped[dict[str, Any]] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow)
+
+    run: Mapped[ModelResearchRun] = relationship(back_populates="results")

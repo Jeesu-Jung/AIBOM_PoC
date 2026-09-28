@@ -13,7 +13,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from .aibom_research import RELATION_VOCABULARY, AibomDraft, aibom_write_from_draft, summarize_aibom
+from .aibom_research import (
+    RELATION_VOCABULARY,
+    AibomDraft,
+    aibom_write_from_draft,
+    catalog_fields_from_aibom,
+    summarize_aibom,
+)
 from .config import settings
 from .models import Dataset, ModelHierarchy, ModelInfo
 
@@ -42,10 +48,12 @@ class ChangeDetails(BaseModel):
 
 
 class ResearchDraft(BaseModel):
-    """LLM-authored part of the admin draft.
+    """LLM-authored part of the admin draft: catalog identity and family facts only.
 
     Field descriptions are forwarded to the provider inside the JSON schema, so they double as
     the field glossary for the research model. Keep them aligned with the catalog conventions.
+    Scale, license identifiers and artifact facts are researched once in the AIBOM and copied into
+    the catalog draft by `catalog_fields_from_aibom`.
     """
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -148,43 +156,6 @@ class ResearchDraft(BaseModel):
         description=(
             "Canonical public page of this exact repository, normally "
             "`https://huggingface.co/<namespace>/<model-name>`. Null when status is `not_found`."
-        ),
-    )
-    license_reported: list[str] | None = Field(
-        alias="licenseReported",
-        description=(
-            "License identifiers declared by this repository itself, as written in its metadata or "
-            "model card, e.g. [`apache-2.0`], [`llama3.1`], [`other`]. Keep the repository's own "
-            "spelling. Null when the repository declares no license."
-        ),
-    )
-    artifact_format: str | None = Field(
-        alias="artifactFormat",
-        description=(
-            "Primary weight file format distributed by this repository, e.g. `safetensors`, "
-            "`pytorch`, `gguf`, `mlx`, `PEFT LoRA adapter`."
-        ),
-    )
-    tensor_type: str | None = Field(
-        alias="tensorType",
-        description=(
-            "Weight precision shown on the model page or in config, e.g. `BF16`, `FP16`, `F32`, "
-            "`Q4_K_M`, `int4`. Use the repository's spelling."
-        ),
-    )
-    parameter_scale: str | None = Field(
-        alias="parameterScale",
-        description=(
-            "Parameter count as shown by the source, compact form with unit suffix, e.g. `8B`, "
-            "`7.61B`, `1.5B`, or a size note for adapters such as `~150MB adapter`. Never infer it "
-            "from the model name alone."
-        ),
-    )
-    artifact_revision: str | None = Field(
-        alias="artifactRevision",
-        description=(
-            "Specific revision, tag, or branch of the artifact when a source cites one that differs "
-            "from modelVersion (e.g. a release tag). Otherwise null."
         ),
     )
     description: str | None = Field(
@@ -359,7 +330,7 @@ Research rules:
    `unknown`, modelRole to `DERIVED`, every other draft field to null, and explain in warnings.
 3. Prefer primary sources in this order: the developer's official model card or documentation,
    the official repository, the official technical report or paper, then reputable registries.
-4. Corroborate identity, license, parameter scale, release date, artifact format, and lineage.
+4. Corroborate identity, license, parameter count, release date, artifact format, and lineage.
    When sources conflict, keep the best-supported value and describe the conflict in warnings.
 5. Never infer an undisclosed value from naming conventions or from a related model. Use null.
    Do not fabricate commit SHAs, dates, or parameter counts.
@@ -409,8 +380,9 @@ SOURCE_PROMPTS: dict[str, str] = {
   `base_model:finetune` / `base_model:adapter` / `base_model:quantized` / `base_model:merge`,
   `library_name`, `tags`, `datasets`, and `language`.
 - Read the repository's "Files and versions" facts when the search surfaces them: weight file
-  extensions for artifactFormat, the tensor type badge for tensorType, the params badge for
-  parameterScale, and the main-branch commit short SHA for modelVersion.
+  extensions for aibom.model.artifact.format, the tensor type badge for aibom.model.artifact.tensor_type,
+  the exact parameter count (safetensors metadata) for aibom.model.architecture.parameter_count, and
+  the main-branch commit short SHA for modelVersion.
 - Use `base_model` metadata as the primary lineage signal. Map `finetune` to an instruction, task,
   domain, or preference relationship according to the card's own description; map `adapter` to
   `adapterTrainedFrom`, `quantized` to `quantizedFrom`, `merge` to `mergedFrom`, and format-only
@@ -433,15 +405,15 @@ SOURCE_PROMPTS: dict[str, str] = {
   papers that merely evaluate the model as corroborating sources only.
 - From the paper derive: familyDeveloper (author affiliations or the organization named in the
   abstract), familyReleaseDate (first arXiv submission date or the official announcement date the
-  paper itself states), familyName, parameterScale, primaryPurpose, tensorType and artifactFormat
-  only when the paper states them, licenseReported and familyLicenseName only when the paper states
+  paper itself states), familyName, primaryPurpose, familyLicenseName only when the paper states
   the license, and lineage (which base model or prior version the paper says it was trained,
-  fine-tuned, distilled, or extended from).
+  fine-tuned, distilled, or extended from). Parameter count, license and artifact facts go into the
+  aibom only when the paper states them.
 - Identity: if the paper names the released repository (Hugging Face, GitHub release, or a model
   hub), use that id for modelId, namespace, modelName, modelUrl, and packageUrl. If the paper
   releases no artifact, set modelId to `<organization-slug>/<model-name-as-in-paper>`, set modelUrl
-  to the paper's canonical URL (arXiv abs page), leave packageUrl, modelVersion, and
-  artifactRevision null, and state in warnings that no artifact repository was found.
+  to the paper's canonical URL (arXiv abs page), leave packageUrl and modelVersion null, and state
+  in warnings that no artifact repository was found.
 - Cite the paper URL (arXiv abs page or DOI landing page, not a PDF mirror) in fieldEvidence and in
   every parentCandidate the paper supports. Mention the paper title and identifier (e.g.
   `arXiv:2407.21783`) in description.
@@ -571,6 +543,35 @@ def _extract_sources(message: dict[str, Any]) -> list[dict[str, str | None]]:
     return sources
 
 
+def web_search_count(usage: dict[str, Any] | None) -> int | None:
+    """OpenRouter reports searches under `server_tool_use` or (streaming) `server_tool_use_details`."""
+    usage = usage or {}
+    for key in ("server_tool_use", "server_tool_use_details"):
+        count = (usage.get(key) or {}).get("web_search_requests")
+        if isinstance(count, int):
+            return count
+    return None
+
+
+def _fallback_sources(content: "ResearchContent") -> list[dict[str, str | None]]:
+    """Streaming responses often carry no url_citation annotations; list the sources the model cited
+    in its AIBOM references and field evidence instead, marked with `origin`."""
+    sources: list[dict[str, str | None]] = []
+    seen: set[str] = set()
+    for ref in content.aibom.references:
+        if ref.uri.startswith(("http://", "https://")) and ref.uri not in seen:
+            seen.add(ref.uri)
+            sources.append({"title": ref.title or urlparse(ref.uri).netloc, "url": ref.uri, "excerpt": None,
+                            "origin": "aibom_reference"})
+    for evidence in content.field_evidence:
+        for url in evidence.urls:
+            if url.startswith(("http://", "https://")) and url not in seen:
+                seen.add(url)
+                sources.append({"title": urlparse(url).netloc, "url": url, "excerpt": None,
+                                "origin": "field_evidence"})
+    return sources
+
+
 def _content_text(raw_content: Any) -> str:
     """Normalize content returned by different OpenRouter providers."""
     if isinstance(raw_content, str):
@@ -639,8 +640,10 @@ def parse_openrouter_response(
     except (KeyError, IndexError, TypeError, ValidationError, json.JSONDecodeError) as error:
         raise ValueError("OpenRouter returned an invalid model research response.") from error
 
-    sources = _extract_sources(message)
+    cited = _extract_sources(message)
+    sources = cited or _fallback_sources(content)
     draft = content.draft.model_dump(mode="json", by_alias=True)
+    draft.update(catalog_fields_from_aibom(content.aibom))
     source_urls = [source["url"] for source in sources]
     draft.update({
         "bomFormat": None,
@@ -679,8 +682,9 @@ def parse_openrouter_response(
         warnings.append(STATUS_WARNINGS[content.status])
     warnings.extend(context.warnings if context else ())
     warnings.extend(content.warnings)
-    if not sources:
-        warnings.append("OpenRouter 응답에 URL 인용 정보가 없습니다.")
+    if not cited:
+        warnings.append("OpenRouter 응답에 URL 인용 정보가 없어, AI가 기록한 근거 자료 목록을 출처로 표시합니다."
+                        if sources else "OpenRouter 응답에 URL 인용 정보가 없습니다.")
 
     aibom = aibom_write_from_draft(content.aibom)
     return {
@@ -699,7 +703,7 @@ def parse_openrouter_response(
             "provider": "OpenRouter",
             "model": payload.get("model") or settings.openrouter_model,
             "source": source,
-            "webSearchRequests": (payload.get("usage") or {}).get("server_tool_use", {}).get("web_search_requests"),
+            "webSearchRequests": web_search_count(payload.get("usage")),
             "usage": payload.get("usage") or {},
         },
     }
@@ -786,8 +790,7 @@ Merge rules:
 2. Per field, pick the value with the stronger evidence (higher fieldEvidence confidence, primary
    source, explicit statement). When evidence is equal, use these defaults:
    - Repository facts come from `huggingface`: modelId, namespace, modelName, modelUrl, packageUrl,
-     modelVersion, artifactRevision, artifactFormat, tensorType, licenseReported, primaryPurpose,
-     supplier, parameterScale.
+     modelVersion, primaryPurpose, supplier.
    - Family facts come from `paper` when it states them explicitly: familyDeveloper,
      familyReleaseDate, familyName, familyLicenseName. Otherwise keep the `huggingface` value.
    - familyKey must be identical to the familyName's key; reuse a key from the catalog context
@@ -919,6 +922,7 @@ def parse_merge_response(
 
     decisions = [item.model_dump(mode="json") for item in content.field_decisions]
     draft = content.draft.model_dump(mode="json", by_alias=True)
+    draft.update(catalog_fields_from_aibom(content.aibom))
     draft.update({
         "bomFormat": None,
         "bomSpecVersion": None,

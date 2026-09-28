@@ -8,6 +8,7 @@ Every field description doubles as the glossary the research model reads.
 """
 from __future__ import annotations
 
+import re
 from datetime import date
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -48,6 +49,14 @@ class TokenizerDraft(_Strict):
     vocab_size: int | None = Field(description="Vocabulary size from the config or paper.")
 
 
+class ArtifactDraft(_Strict):
+    format: str | None = Field(
+        description="Primary weight file format of this repository, e.g. `safetensors`, `pytorch`, `gguf`, `mlx`, "
+                    "`PEFT LoRA adapter`.")
+    tensor_type: str | None = Field(
+        description="Weight precision shown on the model page or config, e.g. `BF16`, `FP16`, `Q4_K_M`; repository spelling.")
+
+
 class ModalityDraft(_Strict):
     input: list[str] = Field(description="Input modalities, e.g. [`text`] or [`text`, `image`].")
     output: list[str] = Field(description="Output modalities.")
@@ -58,6 +67,7 @@ class ModelAreaDraft(_Strict):
     architecture: ArchitectureDraft
     tokenizer: TokenizerDraft
     modality: ModalityDraft
+    artifact: ArtifactDraft
     intended_use: str | None = Field(
         description="One or two English sentences on the officially intended use and scenarios. Not a pipeline tag.")
     capabilities: list[str] = Field(description="Short phrases for documented capabilities.")
@@ -207,6 +217,10 @@ def _compact(value: dict[str, Any]) -> dict[str, Any] | None:
     return result or None
 
 
+def _norm(text: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
 def reference_type(uri: str) -> str:
     host = urlparse(uri).netloc.lower()
     path = urlparse(uri).path.lower()
@@ -253,6 +267,25 @@ def aibom_write_from_draft(draft: AibomDraft | dict[str, Any]) -> dict[str, Any]
         },
     } for ds in d.datasets]
 
+    # The two research routes often report the same number from different pages, with different metric
+    # spellings (`accuracy_percent` / `accuracy (%)`) and dataset keys (HF id / slug). Keep one row per
+    # (benchmark, normalized metric, score, shots), prefer a real dataset id, and remember the other sources.
+    evaluations: list[EvaluationDraft] = []
+    also_reported: dict[int, list[str]] = {}
+    seen_evaluations: dict[tuple, int] = {}
+    for ev in d.evaluations:
+        key = (_norm(ev.benchmark), _norm(ev.metric).replace("percent", ""), ev.score, ev.score_text, ev.shots)
+        if key in seen_evaluations:
+            index = seen_evaluations[key]
+            kept = evaluations[index]
+            if ev.dataset and (not kept.dataset or (kept.dataset.startswith("slug:") and not ev.dataset.startswith("slug:"))):
+                evaluations[index] = kept.model_copy(update={"dataset": ev.dataset})
+            if ev.source_url not in also_reported.setdefault(index, []):
+                also_reported[index].append(ev.source_url)
+            continue
+        seen_evaluations[key] = len(evaluations)
+        evaluations.append(ev)
+
     payload = {
         "model": {
             "architecture": _compact(m.architecture.model_dump()),
@@ -263,6 +296,7 @@ def aibom_write_from_draft(draft: AibomDraft | dict[str, Any]) -> dict[str, Any]
             "limitations": m.limitations,
             "extensions": _compact({"knowledge_cutoff": m.knowledge_cutoff,
                                     "release_date": m.release_date.isoformat() if m.release_date else None,
+                                    "artifact": _compact(m.artifact.model_dump()),
                                     "unknowns": d.unknowns, "evidence": cite(m.evidence_urls),
                                     "source": "ai_research"}),
         },
@@ -288,8 +322,10 @@ def aibom_write_from_draft(draft: AibomDraft | dict[str, Any]) -> dict[str, Any]
             "timestamp": ev.reported_at.isoformat() if ev.reported_at else None,
             "extensions": _compact({"score_text": ev.score_text, "baseline_model": ev.baseline_model,
                                     "baseline_score": ev.baseline_score, "evaluator_model": ev.evaluator_model,
-                                    "reference": (cite([ev.source_url]) or [None])[0]}),
-        } for ev in d.evaluations],
+                                    "reference": (cite([ev.source_url]) or [None])[0],
+                                    "also_reported_in": [u for u in cite(also_reported.get(index, []))
+                                                         if u != ev.source_url]}),
+        } for index, ev in enumerate(evaluations)],
         "safety_ethics": None if not any([safety.safety_risk, safety.ethical_considerations, safety.prohibited_use,
                                           safety.mitigation, safety.risk_summary]) else {
             field: [_compact({"description": item.description, "reference": (cite([item.source_url]) or [None])[0]})
@@ -314,6 +350,29 @@ def aibom_write_from_draft(draft: AibomDraft | dict[str, Any]) -> dict[str, Any]
     for ev in write["evaluation"]:  # Decimal dumps as a string in JSON mode; keep scores numeric
         ev["score"] = float(ev["score"]) if ev["score"] is not None else None
     return write
+
+
+def parameter_scale(count: int | None) -> str | None:
+    """8030261248 -> `8.03B` (the catalog's compact parameterScale form)."""
+    if not count:
+        return None
+    for size, unit in ((1e12, "T"), (1e9, "B"), (1e6, "M")):
+        if count >= size:
+            return f"{count / size:.2f}".rstrip("0").rstrip(".") + unit
+    return str(count)
+
+
+def catalog_fields_from_aibom(draft: AibomDraft) -> dict[str, Any]:
+    """Catalog (model_info) columns that are no longer researched separately but derived from the AIBOM."""
+    declared = [lic for lic in draft.license_policy if lic.kind == "declared"] or draft.license_policy
+    licenses = list(dict.fromkeys((lic.spdx_id or lic.license).lower() for lic in declared))
+    return {
+        "licenseReported": licenses or None,
+        "artifactFormat": draft.model.artifact.format,
+        "tensorType": draft.model.artifact.tensor_type,
+        "parameterScale": parameter_scale(draft.model.architecture.parameter_count),
+        "artifactRevision": None,
+    }
 
 
 def summarize_aibom(write: dict[str, Any] | None) -> dict[str, int]:
