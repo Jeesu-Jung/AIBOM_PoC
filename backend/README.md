@@ -11,22 +11,25 @@ mysql -u root -p < sql/001_model_hierarchy_schema.sql
 mysql -u root -p < sql/002_import_model_hierarchy.sql
 ```
 
-백엔드 환경을 구성하고 실행합니다.
+백엔드 환경을 구성합니다. 설정은 `.env.example`을 복사한 `backend/.env.local`에 적습니다.
 
 ```bash
 cd backend
 python -m venv .venv
 .venv/Scripts/activate
 pip install -r requirements.txt
-set DATABASE_URL=mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/aibom?charset=utf8mb4
+copy .env.example .env.local   # DATABASE_URL, OPENROUTER_API_KEY 등을 채웁니다
+```
+
+실행합니다. 앱이 시작할 때 `backend/.env.local`(그다음 `backend/.env`)을 자동으로 읽으므로 환경 변수를 따로 설정할 필요가 없습니다.
+
+```bash
 uvicorn app.main:app --reload
 ```
 
-PowerShell에서는 환경 변수를 다음과 같이 설정합니다.
-
-```powershell
-$env:DATABASE_URL = "mysql+pymysql://USER:PASSWORD@127.0.0.1:3306/aibom?charset=utf8mb4"
-```
+- 셸에 이미 설정된 환경 변수가 파일 값보다 우선합니다. 예: `$env:OPENROUTER_MODEL = "..."` (PowerShell)
+- `AIBOM_SKIP_ENV_FILES=1`이면 파일을 읽지 않습니다. 테스트(`tests/conftest.py`)는 이 값을 설정해 개발자 설정과 무관하게 동작합니다.
+- `/api/v1/health`가 503이면 DB 연결 정보(`DATABASE_URL`)를 확인하세요.
 
 API 문서는 `http://127.0.0.1:8000/docs`에서 확인할 수 있습니다.
 

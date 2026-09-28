@@ -1,5 +1,35 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+# Loaded in order; a variable already set (shell, CI, or an earlier file) always wins.
+ENV_FILES = (BACKEND_DIR / ".env.local", BACKEND_DIR / ".env")
+
+
+def _load_env_files() -> None:
+    """Minimal KEY=VALUE loader so `uvicorn app.main:app` works without exporting variables first.
+
+    Set AIBOM_SKIP_ENV_FILES=1 to disable (the test suite does, to keep settings deterministic).
+    """
+    if os.getenv("AIBOM_SKIP_ENV_FILES") == "1":
+        return
+    for path in ENV_FILES:
+        if not path.is_file():
+            continue
+        for raw in path.read_text(encoding="utf-8-sig").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.removeprefix("export ").split("=", 1)
+            key, value = key.strip(), value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            if key:
+                os.environ.setdefault(key, value)
+
+
+_load_env_files()
 
 
 def _origins() -> tuple[str, ...]:
