@@ -91,6 +91,10 @@ export const createAdminModel = (payload) => request("/api/v1/admin/models", {
 export const updateAdminModel = (modelId, payload) => request(`/api/v1/admin/models/${modelPath(modelId)}`, {
   method: "PUT", body: JSON.stringify(payload)
 });
+export const saveAdminModelWithAibom = (modelId, model, aibom) => request(
+  modelId ? `/api/v1/admin/models/${modelPath(modelId)}/complete` : "/api/v1/admin/models/complete",
+  { method: modelId ? "PUT" : "POST", body: JSON.stringify({ model, aibom }) }
+);
 export const deleteAdminModel = (modelId) => request(`/api/v1/admin/models/${modelPath(modelId)}`, {
   method: "DELETE"
 });

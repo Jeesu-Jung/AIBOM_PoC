@@ -772,6 +772,7 @@ components:
             rootCount: 2
             derivedCount: 3
             defaultNodeId: Qwen/Qwen2.5-7B-Instruct
+            documentNodeId: document:qwen2.5-release-materials
         summary:
           familyCount: 1
           modelCount: 5
@@ -781,7 +782,7 @@ components:
           latestRelease: '2024-09-19'
     FamilyIndexItem:
       type: object
-      required: [familyKey, familyName, releaseDate, modelCount, rootCount, derivedCount, defaultNodeId]
+      required: [familyKey, familyName, releaseDate, modelCount, rootCount, derivedCount, defaultNodeId, documentNodeId]
       properties:
         familyKey: { type: string }
         familyName: { type: string }
@@ -798,6 +799,9 @@ components:
         defaultNodeId:
           type: [string, 'null']
           description: 기본 선택 노드. INSTRUCT 루트가 있으면 그 중 최소 ID, 없으면 depth 0 루트 중 최소 ID
+        documentNodeId:
+          type: string
+          description: 패밀리의 evidence document 노드 ID. document 딥링크를 모델 ID와 구별하는 데 사용됩니다.
     FamilyIndexSummary:
       type: object
       required: [familyCount, modelCount, rootCount, derivedCount, transformationTypeCount, latestRelease]

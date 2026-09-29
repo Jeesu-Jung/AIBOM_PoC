@@ -149,6 +149,12 @@ def test_catalog_create_does_not_copy_pipeline_tag_into_intended_use() -> None:
     assert load_model_aibom(db, "org/base")["model"]["intended_use"] is None
 
 
+def test_catalog_root_uses_empty_parent_array() -> None:
+    db = session()
+    create_admin_model(db, catalog_payload("org/root"))
+    assert provenance(db, "org/root").parent == []
+
+
 def test_save_model_aibom_writes_dataset_provenance_and_resolves_model_evidence_uris() -> None:
     db = session()
     create_admin_model(db, catalog_payload("org/base"))

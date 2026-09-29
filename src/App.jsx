@@ -37,7 +37,7 @@ function indexFromCatalog(catalog) {
 
 function familyForRequestedDocument(items, nodeId) {
   if (!nodeId?.startsWith("document:")) return null;
-  return items.find((item) => nodeId === `document:${item.familyKey}`)?.familyKey || null;
+  return items.find((item) => nodeId === (item.documentNodeId ?? `document:${item.familyKey}`))?.familyKey || null;
 }
 
 export default function App({ initialCatalog = null }) {

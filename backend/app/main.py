@@ -46,6 +46,12 @@ from .research import (
 )
 
 
+class AdminModelWithAibomWrite(BaseModel):
+    """The admin editor saves the catalog fields and all AIBOM areas as one unit."""
+    model: AdminModelWrite
+    aibom: AibomWrite
+
+
 app = FastAPI(
     title="AIBOM Model Catalog API",
     version="1.0.0",
@@ -283,6 +289,42 @@ def admin_save_model_aibom(model_id: str, payload: AibomWrite, db: Session = Dep
 def admin_create_model(payload: AdminModelWrite, db: Session = Depends(get_db)) -> dict:
     try:
         return admin_model_to_dict(create_admin_model(db, payload))
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="The model could not be saved because its data conflicts with another record.") from error
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise _database_unavailable() from error
+
+
+@app.post("/api/v1/admin/models/complete", tags=["admin"], status_code=status.HTTP_201_CREATED)
+def admin_create_complete_model(payload: AdminModelWithAibomWrite, db: Session = Depends(get_db)) -> dict:
+    try:
+        row = create_admin_model(db, payload.model, commit=False)
+        aibom = save_model_aibom(db, row.model_id, payload.aibom, commit=False)
+        db.commit()
+        return {"model": admin_model_to_dict(row), "aibom": aibom}
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="The model could not be saved because its data conflicts with another record.") from error
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise _database_unavailable() from error
+
+
+@app.put("/api/v1/admin/models/{model_id:path}/complete", tags=["admin"])
+def admin_update_complete_model(model_id: str, payload: AdminModelWithAibomWrite, db: Session = Depends(get_db)) -> dict:
+    try:
+        row = update_admin_model(db, model_id, payload.model, commit=False)
+        aibom = save_model_aibom(db, model_id, payload.aibom, commit=False)
+        db.commit()
+        return {"model": admin_model_to_dict(row), "aibom": aibom}
     except HTTPException:
         db.rollback()
         raise

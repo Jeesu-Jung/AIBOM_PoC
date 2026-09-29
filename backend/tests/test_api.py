@@ -30,6 +30,7 @@ def test_families_endpoint_returns_lightweight_index(monkeypatch) -> None:
             "rootCount": 2,
             "derivedCount": 10,
             "defaultNodeId": "org/root",
+            "documentNodeId": "document:sample-source",
         }],
         "summary": {
             "familyCount": 1,

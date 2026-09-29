@@ -2,8 +2,11 @@ import { RelationChip } from "../common/Chips.jsx";
 import Value from "../common/Value.jsx";
 import { aibomParentId, buildAibomDeltaSections, isEmptyValue } from "../../domain/aibomDelta.js";
 
-function ComparisonValue({ value, side, type }) {
+function ComparisonValue({ value, side, type, listDelta = false }) {
   if (!isEmptyValue(value)) return <span><Value value={value} /></span>;
+  if (listDelta && type === "modified") {
+    return <small>{side === "before" ? "No items removed" : "No items added"}</small>;
+  }
   const hints = side === "before"
     ? { added: "Not present in the base AIBOM", modified: "No base value documented" }
     : { removed: "Not present in the selected AIBOM", modified: "No selected-model value documented" };
@@ -16,9 +19,10 @@ function ComparisonValue({ value, side, type }) {
   );
 }
 
-/** Base model for the comparison: AIBOM provenance.parent first, then the catalog hierarchy parent. */
+/** Base model for the comparison: AIBOM provenance.parent first, then the catalog hierarchy parent.
+ * `node.parent` is the graph edge from a root model to its evidence document, not a model ID. */
 export function comparisonBaseId(node, aibomRegistry = {}) {
-  return aibomParentId(aibomRegistry[node.id]) || node.parent_model || node.parent || null;
+  return aibomParentId(aibomRegistry[node.id]) || node.parent_model || null;
 }
 
 export default function DeltaComparison({ node, onSelect, nodeMap, aibomRegistry = {} }) {
@@ -77,11 +81,11 @@ export default function DeltaComparison({ node, onSelect, nodeMap, aibomRegistry
                     </div>
                     <div className="comparison-value comparison-before">
                       <span className="comparison-mobile-label">Before · Base</span>
-                      <ComparisonValue value={row.before} side="before" type={row.type} />
+                      <ComparisonValue value={row.before} side="before" type={row.type} listDelta={row.listDelta} />
                     </div>
                     <div className="comparison-value comparison-after">
                       <span className="comparison-mobile-label">After · Selected</span>
-                      <ComparisonValue value={row.after} side="after" type={row.type} />
+                      <ComparisonValue value={row.after} side="after" type={row.type} listDelta={row.listDelta} />
                     </div>
                   </div>
                 ))}

@@ -145,7 +145,7 @@ def _recalculate_descendant_depths(session: Session, root_id: str) -> None:
             queue.append(child.model_id)
 
 
-def create_admin_model(session: Session, payload: AdminModelWrite) -> ModelInfo:
+def create_admin_model(session: Session, payload: AdminModelWrite, *, commit: bool = True) -> ModelInfo:
     if session.get(ModelInfo, payload.model_id) is not None:
         raise HTTPException(status_code=409, detail="A model with this ID already exists.")
     depth = _validate_parent(session, payload)
@@ -162,12 +162,15 @@ def create_admin_model(session: Session, payload: AdminModelWrite) -> ModelInfo:
     session.add(row)
     session.flush()
     sync_catalog_lineage(session, row, payload.parent_model_id, payload.relationship_type, parent_changed=True)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     session.refresh(row)
     return session.scalar(_statement().where(ModelInfo.model_id == payload.model_id))
 
 
-def update_admin_model(session: Session, model_id: str, payload: AdminModelWrite) -> ModelInfo:
+def update_admin_model(session: Session, model_id: str, payload: AdminModelWrite, *, commit: bool = True) -> ModelInfo:
     if payload.model_id != model_id:
         raise HTTPException(status_code=422, detail="Model ID cannot be changed after creation.")
     row = session.scalar(_statement().where(ModelInfo.model_id == model_id))
@@ -191,7 +194,10 @@ def update_admin_model(session: Session, model_id: str, payload: AdminModelWrite
     _recalculate_descendant_depths(session, model_id)
     sync_catalog_lineage(session, row, payload.parent_model_id, payload.relationship_type,
                          parent_changed=lineage_changed)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     return session.scalar(_statement().where(ModelInfo.model_id == model_id))
 
 

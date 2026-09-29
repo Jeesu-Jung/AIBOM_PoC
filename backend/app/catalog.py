@@ -30,6 +30,24 @@ def load_family_index(session: Session) -> dict[str, Any]:
         .order_by(func.max(ModelInfo.family_release_date), ModelInfo.family_key)
     )
     rows = session.execute(statement).all()
+
+    # The document node is configured per family rather than being a model row.
+    # Include its actual ID in the lightweight index so document deep links do not
+    # get mistaken for model IDs by clients before a hierarchy has been loaded.
+    document_node_ids: dict[str, str] = {}
+    config_rows = session.execute(
+        select(ModelInfo.family_key, ModelInfo.details_json).order_by(
+            ModelInfo.family_key, ModelInfo.model_id
+        )
+    ).all()
+    for family_key, details_json in config_rows:
+        if family_key in document_node_ids:
+            continue
+        document_id = (details_json.get("family_config", {})
+                       .get("document_node", {})
+                       .get("id"))
+        document_node_ids[family_key] = document_id or f"document:{family_key}"
+
     items = [
         {
             "familyKey": row.family_key,
@@ -39,6 +57,9 @@ def load_family_index(session: Session) -> dict[str, Any]:
             "rootCount": int(row.root_count or 0),
             "derivedCount": int(row.derived_count or 0),
             "defaultNodeId": row.default_node_id,
+            "documentNodeId": document_node_ids.get(
+                row.family_key, f"document:{row.family_key}"
+            ),
         }
         for row in rows
     ]

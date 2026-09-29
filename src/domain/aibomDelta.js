@@ -37,10 +37,22 @@ function listRows(aspect, before, after) {
   const afterSet = new Set(after);
   const added = after.filter((item) => !beforeSet.has(item));
   const removed = before.filter((item) => !afterSet.has(item));
-  const rows = [];
-  if (added.length) rows.push({ aspect: `${aspect} (added)`, type: "added", before: null, after: added });
-  if (removed.length) rows.push({ aspect: `${aspect} (removed)`, type: "removed", before: removed, after: null });
-  return rows;
+  if (!added.length && !removed.length) return [];
+
+  // A list is still one AIBOM field. When it exists on both models, show its
+  // item-level delta in one modified row instead of presenting synthetic
+  // "(added)" and "(removed)" fields.
+  if (!isEmptyValue(before) && !isEmptyValue(after)) {
+    return [{ aspect, type: "modified", before: removed, after: added, listDelta: true }];
+  }
+
+  return [{
+    aspect,
+    type: isEmptyValue(before) ? "added" : "removed",
+    before: removed.length ? removed : null,
+    after: added.length ? added : null,
+    listDelta: true
+  }];
 }
 
 function evaluationRows(before = [], after = []) {

@@ -37,7 +37,7 @@ export default function AibomPanel({ node, onSelect, familyRegistry, aibomRegist
           <DeltaComparison node={node} onSelect={onSelect} nodeMap={nodeMap} aibomRegistry={aibomRegistry} />
           {aibom
             ? <AibomAreas aibom={aibom} />
-            : <p className="section-note">이 모델에는 저장된 AIBOM이 없습니다. 관리자 화면의 AIBOM 섹션에서 등록할 수 있습니다.</p>}
+            : <p className="section-note">이 모델에는 저장된 AIBOM이 없습니다. 관리자 편집 화면에서 모델 정보와 함께 등록할 수 있습니다.</p>}
         </>
       )}
     </article>

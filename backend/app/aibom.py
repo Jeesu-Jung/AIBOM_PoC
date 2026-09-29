@@ -248,6 +248,7 @@ class DatasetArea(_Area):
 
 
 class ReferenceArea(_Area):
+    id: int | None = Field(default=None, ge=1, description="Existing reference ID; omitted for a new reference.")
     type: REFERENCE_TYPES = "webpage"
     uri: str = Field(min_length=1, max_length=1000)
     revision: str | None = Field(default=None, max_length=255)
@@ -274,7 +275,9 @@ def _unprocessable(detail: str) -> HTTPException:
 
 
 def _upsert_reference(session: Session, uri: str, area: ReferenceArea | None = None) -> Reference:
-    ref = session.scalar(select(Reference).where(Reference.uri == uri))
+    ref = session.get(Reference, area.id) if area and area.id is not None else None
+    if ref is None:
+        ref = session.scalar(select(Reference).where(Reference.uri == uri))
     if ref is None:
         ref = Reference(uri=uri, type=area.type if area else "webpage", retrieved_at=date.today())
         session.add(ref)
@@ -315,7 +318,7 @@ def refresh_dataset_roles(session: Session, dataset_ids: set[str]) -> None:
         dataset.role = ",".join(sorted(roles[dataset.identity])) or None
 
 
-def save_model_aibom(session: Session, model_id: str, payload: AibomWrite) -> dict[str, Any]:
+def save_model_aibom(session: Session, model_id: str, payload: AibomWrite, *, commit: bool = True) -> dict[str, Any]:
     info = session.get(ModelInfo, model_id)
     if info is None:
         raise HTTPException(status_code=404, detail=f"Model not found: {model_id}")
@@ -348,7 +351,9 @@ def save_model_aibom(session: Session, model_id: str, payload: AibomWrite) -> di
     inputs = [{"model": i.model, "role": i.role, "external": i.model not in known_models} for i in (tr.input if tr else [])]
     provenance = Provenance(
         subject=model_subject(model_id), origin=pv.origin, provider=pv.provider, relation=pv.relation,
-        parent=[model_subject(i["model"]) for i in inputs if i["role"] in PARENT_ROLES] or None,
+        # MySQL's multi-valued JSON index requires an array, including when there
+        # are no parents. `null` fails at INSERT for root models.
+        parent=[model_subject(i["model"]) for i in inputs if i["role"] in PARENT_ROLES],
         evidence=_resolve_evidence(session, pv.evidence) or None, extensions=pv.extensions)
     session.add(provenance)
     session.flush()
@@ -384,7 +389,10 @@ def save_model_aibom(session: Session, model_id: str, payload: AibomWrite) -> di
                                   restrictions=lic.restrictions or None, extensions=lic.extensions))
     session.flush()
     refresh_dataset_roles(session, old_datasets | referenced)
-    session.commit()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
     return load_model_aibom(session, model_id) or {}
 
 
@@ -400,7 +408,7 @@ def _replace_dataset_provenance(session: Session, dataset_id: str, area: Dataset
     session.flush()
     session.execute(delete(Provenance).where(Provenance.subject == subject))
     row = Provenance(subject=subject, origin=area.origin, provider=area.provider,
-                     parent=[dataset_subject(p) for p in parents] or None, relation=area.relation,
+                     parent=[dataset_subject(p) for p in parents], relation=area.relation,
                      evidence=_resolve_evidence(session, area.evidence) or None, extensions=area.extensions)
     session.add(row)
     session.flush()
@@ -467,7 +475,9 @@ def sync_catalog_lineage(session: Session, info: ModelInfo, parent_id: str | Non
     transformation = session.scalar(select(Transformation).where(Transformation.output == model_id))
     others = [i for i in (transformation.input or [] if transformation else []) if i.get("role") not in PARENT_ROLES]
     inputs = ([{"model": parent_id, "role": "base", "external": False}] if parent_id else []) + others
-    provenance.parent = [model_subject(parent_id)] if parent_id else None
+    # `parent` backs a MySQL multi-valued JSON index, so root nodes must use an
+    # empty JSON array rather than JSON null.
+    provenance.parent = [model_subject(parent_id)] if parent_id else []
     provenance.relation = relation_from_hierarchy(relationship_type) or ("pretrained" if not parent_id else None)
     if transformation is None and parent_id:
         transformation = Transformation(output=model_id, method=[], extensions={"source": "catalog"})

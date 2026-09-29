@@ -131,7 +131,12 @@ try {
   ["MODEL", "MoE Transformer", "GPQA", "71.5", "Apache-2.0", "https://huggingface.co/openai/gpt-oss-20b", "— (root)"]
     .forEach((text) => assert(aibomPanelHtml.includes(text), `AIBOM view is missing: ${text}`));
 
-  const { default: DeltaComparison } = await vite.ssrLoadModule("/src/components/aibom/DeltaComparison.jsx");
+  const { default: DeltaComparison, comparisonBaseId } = await vite.ssrLoadModule("/src/components/aibom/DeltaComparison.jsx");
+  assert.equal(
+    comparisonBaseId({ id: "root/model", kind: "root", parent: "document:source" }),
+    null,
+    "a root model's evidence document must not be fetched as a comparison model"
+  );
   const fullLineage = buildLineageCatalog(testCatalog.familyRegistry);
   const derivedNode = fullLineage.nodeMap.get("FreedomIntelligence/HuatuoGPT-o1-8B");
   const baseId = "meta-llama/Llama-3.1-8B-Instruct";
