@@ -241,12 +241,12 @@ function AibomDraftSummary({ results, chosenKey, overrides, fieldOverrides, onSe
   }
   const decisions = results.merged?.areaDecisions || [];
   return <div className="ai-result-section">
-    <div className="ai-result-heading"><strong>AIBOM 초안 (8개 영역)</strong><span>검토 화면에서 모델 정보와 함께 수정·등록됩니다</span></div>
+    <div className="ai-result-heading"><strong>AIBOM 초안</strong><span>검토 화면에서 모델 정보와 함께 수정·등록됩니다</span></div>
     <AibomFullComparison results={results} columns={columns} overrides={overrides} fieldOverrides={fieldOverrides} onSelect={onSelect} onFieldSelect={onFieldSelect} />
     {decisions.length > 0 && <ul className="ai-area-decisions">{decisions.map((item) => <li key={item.area}><b>{aibomAreaLabels[item.area] || item.area}</b> {decisionLabels[item.chosen] || item.chosen} · {item.rationale}</li>)}</ul>}
     {chosen?.aibom && <div className="ai-aibom-preview">
       <button type="button" className="admin-secondary" onClick={() => setPreview((value) => !value)} aria-expanded={preview}>
-        {preview ? "AIBOM 미리보기 접기" : `${sourceLabel(chosenKey)} AIBOM 8개 영역 미리보기`}
+        {preview ? "AIBOM 미리보기 접기" : `${sourceLabel(chosenKey)} AIBOM 미리보기`}
       </button>
       {preview && <AibomAreas aibom={aibomDraftToView(chosen.aibom, chosen.draft?.modelId)} />}
     </div>}

@@ -98,7 +98,7 @@ function SourceDetail({ item, fields, sourceKey }) {
         ))}</ul>}
         {view ? (showAibom
           ? <div className="research-aibom-preview"><AibomAreas aibom={view} /></div>
-          : <button type="button" className="admin-secondary" onClick={() => setShowAibom(true)}>AIBOM 8개 영역 펼쳐 보기</button>)
+          : <button type="button" className="admin-secondary" onClick={() => setShowAibom(true)}>AIBOM 펼쳐 보기</button>)
           : <p className="ai-result-empty">AIBOM 초안이 없는 결과입니다(이전 버전에서 저장).</p>}
       </div>
 

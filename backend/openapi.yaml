@@ -133,7 +133,7 @@ paths:
       summary: 모델 상세 조회
       description: |
         `modelId` 는 `namespace/model-name` 형식이며 슬래시를 포함합니다 (path 파라미터 전체 매칭).
-        카탈로그 레코드와 함께 설계안 8개 영역의 AIBOM을 `aibom` 에 담아 반환합니다 (저장된 AIBOM이 없으면 `null`).
+        카탈로그 레코드와 함께 모델의 AIBOM을 `aibom` 에 담아 반환합니다 (저장된 AIBOM이 없으면 `null`).
       operationId: getModel
       parameters:
         - $ref: '#/components/parameters/ModelId'
@@ -326,7 +326,7 @@ paths:
     get:
       tags: [admin]
       summary: '[관리자] 모델 AIBOM 조회'
-      description: 설계안 8개 영역의 AIBOM. 저장된 행이 없으면 빈 객체를 반환합니다.
+      description: 모델의 AIBOM. 저장된 행이 없으면 빈 객체를 반환합니다.
       operationId: adminGetModelAibom
       parameters:
         - $ref: '#/components/parameters/ModelId'
@@ -963,7 +963,7 @@ components:
     # ---------- AIBOM (sql/004: 영역 = 테이블, 필드 = 컬럼) ----------
     ModelAibom:
       type: object
-      description: 설계안 8개 영역. 키와 필드명은 AIBOM_스키마_설계안.md 와 같습니다.
+      description: 모델의 AIBOM. 영역별 키와 필드명은 AIBOM 테이블(sql/004)과 같습니다.
       properties:
         model:
           type: [object, 'null']
