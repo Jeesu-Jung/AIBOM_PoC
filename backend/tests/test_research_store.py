@@ -168,3 +168,28 @@ def test_run_endpoint_can_return_results_ready_for_the_editor() -> None:
     assert "evidence" not in stored["results"]["huggingface"]["result"]
     assert [(row["field"], row["url"]) for row in resolved["results"]["huggingface"]["result"]["evidence"]] == [
         ("familyName", "https://example.test/card")]
+
+
+def test_runs_report_whether_they_were_reviewed_and_saved() -> None:
+    from app.admin import AdminModelWrite, create_admin_model
+    from app.research_store import get_research_run, link_research_run, list_research_runs
+
+    db = session()
+    first = save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": "org/model", "replacePrevious": True, "results": {"merged": result("merged")}}))
+    other = save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": "org/other", "replacePrevious": True, "results": {"merged": result("merged", "org/other")}}))
+
+    states = {run["runId"]: (run["reviewStatus"], run["catalogModelId"]) for run in list_research_runs(db)}
+    assert states == {first["runId"]: ("pending", None), other["runId"]: ("pending", None)}
+
+    create_admin_model(db, AdminModelWrite.model_validate({
+        "modelId": "org/model", "namespace": "org", "modelName": "model", "familyKey": "family", "familyName": "Family",
+        "modelRole": "BASE", "modelUrl": "https://example.test/model", "detailsJson": {}}))
+    # The catalog already has the researched model, but nobody reviewed this run yet.
+    assert get_research_run(db, first["runId"])["reviewStatus"] == "pending"
+    assert get_research_run(db, first["runId"])["catalogModelId"] == "org/model"
+
+    link_research_run(db, first["runId"], "org/model")
+    states = {run["runId"]: (run["reviewStatus"], run["catalogModelId"]) for run in list_research_runs(db)}
+    assert states == {first["runId"]: ("saved", "org/model"), other["runId"]: ("pending", None)}

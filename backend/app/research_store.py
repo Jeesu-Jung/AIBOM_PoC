@@ -118,6 +118,20 @@ def _run_to_dict(run: ModelResearchRun, include_results: bool = True) -> dict[st
     }
 
 
+def _add_review_state(run: dict[str, Any], catalog_ids: set[str]) -> dict[str, Any]:
+    """Whether a human reviewed and saved the run, and which catalog model it belongs to.
+
+    `saved`: the run is linked to the catalog model that was registered (or updated) from it.
+    `pending`: the results are only stored; `catalogModelId` then names the catalog model with the
+    researched id when one already exists, so the review continues on that model instead of
+    creating a duplicate.
+    """
+    result_id = run.get("resultModelId")
+    run["reviewStatus"] = "saved" if run.get("modelId") else "pending"
+    run["catalogModelId"] = run.get("modelId") or (result_id if result_id in catalog_ids else None)
+    return run
+
+
 def _run_query():
     return select(ModelResearchRun).options(selectinload(ModelResearchRun.results))
 
@@ -191,14 +205,17 @@ def list_research_runs(session: Session, model_name: str | None = None, model_id
     if model_id:
         runs = [run for run in runs
                 if run.model_id == model_id or any(row.result_model_id == model_id for row in run.results)]
-    return [_run_to_dict(run, include_results=False) for run in runs[:limit]]
+    catalog_ids = set(session.scalars(select(ModelInfo.model_id)))
+    return [_add_review_state(_run_to_dict(run, include_results=False), catalog_ids) for run in runs[:limit]]
 
 
 def get_research_run(session: Session, run_id: int) -> dict[str, Any]:
     run = session.scalar(_run_query().where(ModelResearchRun.id == run_id))
     if run is None:
         raise HTTPException(status_code=404, detail="Research run not found.")
-    return _run_to_dict(run)
+    data = _run_to_dict(run)
+    result_id = data.get("resultModelId")
+    return _add_review_state(data, {result_id} if result_id and session.get(ModelInfo, result_id) else set())
 
 
 def link_research_run(session: Session, run_id: int, model_id: str | None) -> dict[str, Any]:

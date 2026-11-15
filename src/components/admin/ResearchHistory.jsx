@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { deleteResearchRun, fetchResearchRun, fetchResearchRuns } from "../../api/admin.js";
 import { aibomDraftToView } from "../../domain/aibomView.js";
+import { historyFields } from "../../constants/researchFields.js";
 import { downloadJson, jsonFilename } from "../../utils/download.js";
 import AibomAreas from "../aibom/AibomAreas.jsx";
 
@@ -29,7 +30,7 @@ function SourceBadges({ run }) {
   })}</span>;
 }
 
-export function ModelResearchRuns({ modelId, refreshKey, onOpen }) {
+export function ModelResearchRuns({ modelId, refreshKey }) {
   const [runs, setRuns] = useState(null);
   const [error, setError] = useState(null);
   useEffect(() => {
@@ -40,14 +41,15 @@ export function ModelResearchRuns({ modelId, refreshKey, onOpen }) {
   return (
     <fieldset className="research-runs-inline">
       <legend>AI 조사 이력</legend>
+      <p className="admin-help">실행을 누르면 AI 조사 이력 페이지에서 조사 결과를 볼 수 있습니다.</p>
       {error ? <p className="admin-help">조사 이력을 불러오지 못했습니다: {error}</p>
         : !runs ? <p className="admin-help">조사 이력을 불러오는 중입니다...</p>
           : !runs.length ? <p className="admin-help">이 모델로 저장된 AI 조사 결과가 없습니다.</p>
             : <ul className="research-run-list is-compact">{runs.map((run) => (
-              <li key={run.runId}><button type="button" onClick={() => onOpen(run.runId)}>
+              <li key={run.runId}><a href={`/admin/research?run=${run.runId}`}>
                 <strong>#{run.runId}</strong><span>{formatDateTime(run.createdAt)}</span><SourceBadges run={run} />
-                <em>{run.modelId === modelId ? "이 실행으로 등록" : run.modelName}</em>
-              </button></li>
+                <em>{run.modelId === modelId ? "검토 완료 · 이 실행으로 저장" : run.reviewStatus === "saved" ? `저장됨 → ${run.modelId}` : "검토 대기"}</em>
+              </a></li>
             ))}</ul>}
     </fieldset>
   );
@@ -109,39 +111,70 @@ function SourceDetail({ item, fields, sourceKey }) {
   );
 }
 
-export default function ResearchHistoryDialog({ initialRunId = null, fields, onClose, onChanged }) {
+const modelLink = (modelId) => `/admin?model=${encodeURIComponent(modelId)}`;
+const reviewLink = (runId) => `/admin?run=${runId}`;
+const runLink = (runId) => `/admin/research?run=${runId}`;
+
+/** Review state of a run: saved (linked to the registered model) or only cached. */
+function ReviewBadge({ run }) {
+  if (run.reviewStatus === "saved") return <b className="research-review-badge is-saved">검토 완료 · 저장됨</b>;
+  return <b className="research-review-badge is-pending">검토 대기{run.catalogModelId ? " · 카탈로그에 같은 모델 있음" : ""}</b>;
+}
+
+const FILTERS = [["all", "전체"], ["pending", "검토 대기"], ["saved", "저장 완료"]];
+
+/**
+ * The research history as its own page (/admin/research). Every run is listed with whether a
+ * human reviewed and saved it; a run that is only cached can be opened straight in the editor.
+ */
+export default function ResearchHistoryPage() {
+  const params = new URLSearchParams(window.location.search);
   const [runs, setRuns] = useState(null);
-  const [filter, setFilter] = useState("");
-  const [selectedId, setSelectedId] = useState(initialRunId);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState(FILTERS.some(([key]) => key === params.get("status")) ? params.get("status") : "all");
+  const [selectedId, setSelectedId] = useState(Number(params.get("run")) || null);
   const [detail, setDetail] = useState(null);
   const [tab, setTab] = useState("merged");
   const [error, setError] = useState(null);
 
-  const loadRuns = () => fetchResearchRuns({ limit: 500 }).then((data) => {
-    setRuns(data);
-    setSelectedId((current) => current ?? data[0]?.runId ?? null);
-  }).catch((err) => setError(err.message));
-
+  const loadRuns = () => fetchResearchRuns({ limit: 500 }).then(setRuns).catch((err) => setError(err.message));
   useEffect(() => { loadRuns(); }, []);
-  useEffect(() => {
-    const closeOnEscape = (event) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
-  useEffect(() => {
-    if (!selectedId) { setDetail(null); return; }
-    setDetail(null);
-    fetchResearchRun(selectedId).then((data) => {
-      setDetail(data);
-      setTab(data.results.merged ? "merged" : data.results.huggingface ? "huggingface" : "paper");
-    }).catch((err) => setError(err.message));
-  }, [selectedId]);
 
   const visibleRuns = useMemo(() => {
-    const query = filter.trim().toLowerCase();
-    return (runs || []).filter((run) => !query
-      || `${run.modelName} ${run.resultModelId || ""} ${run.modelId || ""}`.toLowerCase().includes(query));
-  }, [runs, filter]);
+    const text = query.trim().toLowerCase();
+    return (runs || []).filter((run) => (status === "all" || run.reviewStatus === status)
+      && (!text || `${run.modelName} ${run.resultModelId || ""} ${run.modelId || ""}`.toLowerCase().includes(text)));
+  }, [runs, query, status]);
+  const counts = useMemo(() => ({
+    all: runs?.length || 0,
+    pending: (runs || []).filter((run) => run.reviewStatus === "pending").length,
+    saved: (runs || []).filter((run) => run.reviewStatus === "saved").length
+  }), [runs]);
+
+  // Keep a run selected that is visible under the current filter.
+  useEffect(() => {
+    if (!runs) return;
+    if (!visibleRuns.some((run) => run.runId === selectedId)) setSelectedId(visibleRuns[0]?.runId ?? null);
+  }, [runs, visibleRuns, selectedId]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selectedId) url.searchParams.set("run", selectedId); else url.searchParams.delete("run");
+    if (status === "all") url.searchParams.delete("status"); else url.searchParams.set("status", status);
+    window.history.replaceState({}, "", url);
+  }, [selectedId, status]);
+
+  useEffect(() => {
+    setDetail(null);
+    if (!selectedId) return undefined;
+    let cancelled = false;
+    fetchResearchRun(selectedId).then((data) => {
+      if (cancelled) return;
+      setDetail(data);
+      setTab(data.results.merged ? "merged" : data.results.huggingface ? "huggingface" : "paper");
+    }).catch((err) => { if (!cancelled) setError(err.message); });
+    return () => { cancelled = true; };
+  }, [selectedId]);
 
   async function removeRun() {
     if (!detail || !window.confirm(`조사 실행 #${detail.runId}(${detail.modelName})을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return;
@@ -149,51 +182,69 @@ export default function ResearchHistoryDialog({ initialRunId = null, fields, onC
       await deleteResearchRun(detail.runId);
       setSelectedId(null);
       await loadRuns();
-      onChanged?.();
     } catch (err) { setError(err.message); }
   }
 
   return (
-    <div className="admin-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="research-history-dialog" role="dialog" aria-modal="true" aria-labelledby="research-history-title">
-        <header className="research-history-head">
-          <div><p className="eyebrow">AI RESEARCH HISTORY</p><h2 id="research-history-title">AI 조사 이력</h2>
-            <p>“AI로 정보 채우기”를 실행할 때마다 Hugging Face · 논문 조사와 AI 병합 결과가 실행 단위로 저장됩니다
-              (<code>model_research_run</code>, <code>model_research_result</code>). 새로 조사해도 이전 실행은 지워지지 않습니다.</p></div>
-          <button type="button" className="create-close" aria-label="닫기" onClick={onClose}>×</button>
-        </header>
-        {error && <p className="ai-save-state is-error">{error}</p>}
-        <div className="research-history-body">
-          <aside className="research-history-list">
-            <input type="search" placeholder="모델명으로 찾기" value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Filter research runs" />
-            {!runs ? <p className="admin-help">불러오는 중...</p> : !visibleRuns.length ? <p className="admin-help">저장된 조사 실행이 없습니다.</p> : (
+    <div className="admin-shell research-page">
+      <header className="admin-header">
+        <div><p className="eyebrow">AI RESEARCH HISTORY</p><h1>AI 조사 이력</h1>
+          <p>“AI로 정보 채우기”를 실행할 때마다 Hugging Face · 논문 조사와 AI 병합 결과가 실행 단위로 저장됩니다. 검토해서 모델로 저장한 실행과, 아직 조사 결과만 남아 있는 실행을 구분해 볼 수 있습니다.</p></div>
+        <div className="admin-header-actions"><a href="/" className="admin-secondary">메인으로</a><a href="/admin" className="admin-primary">모델 관리</a></div>
+      </header>
+      <div className="admin-stats">
+        <span><strong>{counts.all}</strong> 조사 실행</span>
+        <span><strong>{counts.pending}</strong> 검토 대기</span>
+        <span><strong>{counts.saved}</strong> 저장 완료</span>
+      </div>
+      {error && <p className="ai-save-state is-error">{error}</p>}
+      <main className="research-page-body">
+        <aside className="research-history-list">
+          <div className="research-filter-tabs" role="tablist" aria-label="검토 상태">
+            {FILTERS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={status === key}
+              className={status === key ? "is-active" : ""} onClick={() => setStatus(key)}>{label} <small>{counts[key]}</small></button>)}
+          </div>
+          <input type="search" placeholder="모델명으로 찾기" value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Filter research runs" />
+          {!runs ? <p className="admin-help">불러오는 중...</p> : !visibleRuns.length
+            ? <p className="admin-help">{status === "pending" ? "검토를 기다리는 조사 실행이 없습니다." : "조건에 맞는 조사 실행이 없습니다."}</p> : (
               <ul className="research-run-list">{visibleRuns.map((run) => (
                 <li key={run.runId}><button type="button" className={run.runId === selectedId ? "is-selected" : ""} onClick={() => setSelectedId(run.runId)}>
                   <strong>#{run.runId} {run.modelName}</strong>
                   <span>{formatDateTime(run.createdAt)} · 검색 {run.totalWebSearches ?? "-"} · {formatCost(run.totalCostUsd)}</span>
                   <SourceBadges run={run} />
-                  {run.modelId && <em>등록됨 → {run.modelId}</em>}
+                  <ReviewBadge run={run} />
                 </button></li>
               ))}</ul>
             )}
-          </aside>
-          <div className="research-history-detail">
-            {!detail ? <p className="admin-help">{selectedId ? "불러오는 중..." : "왼쪽에서 조사 실행을 선택하세요."}</p> : <>
-              <div className="research-detail-head">
-                <div><h3>#{detail.runId} {detail.modelName}</h3>
-                  <p>{formatDateTime(detail.createdAt)} · 결과 모델 {detail.resultModelId || "-"} · {detail.modelId ? `카탈로그 등록: ${detail.modelId}` : "아직 카탈로그에 등록되지 않음"} · 총 검색 {detail.totalWebSearches ?? "-"} · 총 비용 {formatCost(detail.totalCostUsd)}</p></div>
-                <button type="button" className="admin-danger" onClick={removeRun}>이 실행 삭제</button>
-              </div>
-              <div className="research-source-tabs" role="tablist">{SOURCES.map(([key, label]) => (
-                <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "is-active" : ""} onClick={() => setTab(key)}>
-                  {label} <small>{detail.results[key] ? STATUS[detail.results[key].status] || detail.results[key].status : "없음"}</small>
-                </button>
-              ))}</div>
-              <SourceDetail key={`${detail.runId}-${tab}`} item={detail.results[tab]} fields={fields} sourceKey={tab} />
-            </>}
-          </div>
+        </aside>
+        <div className="research-history-detail">
+          {!detail ? <p className="admin-help">{selectedId ? "불러오는 중..." : "왼쪽에서 조사 실행을 선택하세요."}</p> : <>
+            <div className="research-detail-head">
+              <div><h3>#{detail.runId} {detail.modelName}</h3>
+                <p><ReviewBadge run={detail} /> {formatDateTime(detail.createdAt)} · 결과 모델 {detail.resultModelId || "-"} · 총 검색 {detail.totalWebSearches ?? "-"} · 총 비용 {formatCost(detail.totalCostUsd)}</p></div>
+              <button type="button" className="admin-danger" onClick={removeRun}>이 실행 삭제</button>
+            </div>
+            <div className={`research-review-panel is-${detail.reviewStatus}`}>
+              {detail.reviewStatus === "saved" ? <>
+                <p><strong>검토를 마치고 저장된 실행입니다.</strong> 이 조사 결과로 <code>{detail.modelId}</code> 모델이 저장되었습니다.</p>
+                <a className="admin-secondary" href={modelLink(detail.modelId)}>저장된 모델 열기</a>
+              </> : detail.catalogModelId ? <>
+                <p><strong>아직 검토되지 않았습니다.</strong> 카탈로그에 <code>{detail.catalogModelId}</code> 모델이 이미 있어, 그 모델의 편집 화면에서 이 조사 결과의 값을 골라 반영합니다. 저장하면 검토 완료로 표시됩니다.</p>
+                <a className="admin-primary" href={reviewLink(detail.runId)}>기존 모델에 반영하며 검토 →</a>
+              </> : <>
+                <p><strong>아직 검토되지 않았습니다.</strong> 조사 결과만 저장되어 있습니다. 편집 화면에서 값과 근거를 확인하고 모델로 등록할 수 있습니다.</p>
+                <a className="admin-primary" href={reviewLink(detail.runId)}>검토 후 저장 →</a>
+              </>}
+            </div>
+            <div className="research-source-tabs" role="tablist">{SOURCES.map(([key, label]) => (
+              <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "is-active" : ""} onClick={() => setTab(key)}>
+                {label} <small>{detail.results[key] ? STATUS[detail.results[key].status] || detail.results[key].status : "없음"}</small>
+              </button>
+            ))}</div>
+            <SourceDetail key={`${detail.runId}-${tab}`} item={detail.results[tab]} fields={historyFields} sourceKey={tab} />
+          </>}
         </div>
-      </section>
+      </main>
     </div>
   );
 }

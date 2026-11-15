@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AibomEditor from "./components/admin/AibomEditor.jsx";
-import ResearchHistoryDialog, { ModelResearchRuns } from "./components/admin/ResearchHistory.jsx";
+import { ModelResearchRuns } from "./components/admin/ResearchHistory.jsx";
+import { aibomDerivedFields, mergeFields } from "./constants/researchFields.js";
 import AibomAreas from "./components/aibom/AibomAreas.jsx";
 import { aibomDraftToView } from "./domain/aibomView.js";
 import { composeEvidence, describeEvidence, pruneEvidence, rekeyEvidence, swapEvidence } from "./domain/evidence.js";
@@ -78,16 +79,26 @@ const researchSources = [
 const sourceKeys = researchSources.map((option) => option.value);
 const sourceLabel = (key) => (key === "merged" ? "AI 병합" : researchSources.find((option) => option.value === key)?.label || key || "-");
 
-const mergeFields = [
-  ["modelId", "Model ID"], ["namespace", "Namespace"], ["modelName", "Model name"], ["familyKey", "Family key"],
-  ["familyName", "Family name"], ["modelRole", "Role"], ["supplier", "Supplier"], ["familyDeveloper", "Family developer"],
-  ["familyReleaseDate", "Family release date"], ["familyLicenseName", "Family license"], ["primaryPurpose", "Primary purpose"],
-  ["modelVersion", "Model version"], ["packageUrl", "Package URL"], ["modelUrl", "Model URL"], ["description", "Description"]
-];
-// Catalog columns filled from the AIBOM draft instead of being researched separately.
-const aibomDerivedFields = ["licenseReported", "artifactFormat", "tensorType", "parameterScale", "artifactRevision"];
-const historyFields = [...mergeFields, ["licenseReported", "License reported (AIBOM)"], ["artifactFormat", "Artifact format (AIBOM)"],
-  ["tensorType", "Tensor type (AIBOM)"], ["parameterScale", "Parameter scale (AIBOM)"]];
+/**
+ * The draft a research run gives without any manual choice: the AI merge when there is one, else
+ * the single result. Used to open a stored run in the editor (`/admin?run=<id>`).
+ */
+function draftFromResults(results) {
+  const baseKey = ["merged", "huggingface", "paper"].find((key) => results[key]?.draft);
+  if (!baseKey) return null;
+  const aibomKey = ["merged", "huggingface", "paper"].find((key) => results[key]?.aibom) || null;
+  const draft = { ...results[baseKey].draft };
+  aibomDerivedFields.forEach((field) => { draft[field] = results[aibomKey]?.draft?.[field] ?? draft[field] ?? null; });
+  return {
+    draft,
+    aibom: aibomKey ? results[aibomKey].aibom : null,
+    evidence: composeEvidence({
+      results, baseKey, aibomKey, catalogFields: mergeFields.map(([field]) => field),
+      overrides: {}, aibomOverrides: {}, aibomFieldOverrides: {}
+    })
+  };
+}
+
 const linkedFieldGroups = [["modelId", "namespace", "modelName"], ["familyKey", "familyName"]];
 const identityFields = linkedFieldGroups[0];
 // Catalog fields that research results carry a value for (hierarchy fields are set by the tree, not picked).
@@ -780,7 +791,8 @@ export default function AdminApp() {
   const [candidateRunId, setCandidateRunId] = useState(null);
   // Result last picked per catalog field; decides the marked chip when several results agree.
   const [pickedSource, setPickedSource] = useState({});
-  const [historyRunId, setHistoryRunId] = useState(undefined); // undefined: closed, null: open without selection
+  // A stored run opened from the research history for review: { runId, modelId } once its catalog model is known.
+  const [reviewRun, setReviewRun] = useState(null);
   const aibomEditorRef = useRef(null);
 
   const reload = async (preferredId = selectedId) => {
@@ -798,18 +810,48 @@ export default function AdminApp() {
       setModels(data);
       // Keep edit links shareable: /admin?model=namespace%2Fmodel-name.
       // An invalid or deleted model falls back to the first catalog entry.
-      const requestedId = new URLSearchParams(window.location.search).get("model");
+      const params = new URLSearchParams(window.location.search);
+      const requestedId = params.get("model");
       const selected = data.find((model) => model.modelId === requestedId) || data[0];
+      // /admin?run=<id>: review a stored research run (from the research history page).
+      const runId = Number(params.get("run"));
+      if (runId) return openRunForReview(runId, data).catch((error) => {
+        setNotice({ type: "error", text: `AI 조사 #${runId} 결과를 불러오지 못했습니다: ${error.message}` });
+        if (selected) selectModel(selected);
+      });
       if (selected) selectModel(selected);
+      return undefined;
     }).catch((error) => setNotice({ type: "error", text: error.message })).finally(() => setLoading(false));
   }, []);
 
+  // The run under review for what is on screen: a registered model's, or the unsaved draft's.
+  const activeReviewRunId = selectedId ? (reviewRun?.modelId === selectedId ? reviewRun.runId : null) : (aiDraft ? pendingRunId : null);
   useEffect(() => {
+    if (loading) return;
     const url = new URL(window.location.href);
     if (selectedId) url.searchParams.set("model", selectedId);
     else url.searchParams.delete("model");
+    if (activeReviewRunId) url.searchParams.set("run", activeReviewRunId);
+    else url.searchParams.delete("run");
     window.history.replaceState({}, "", url);
-  }, [selectedId]);
+  }, [selectedId, activeReviewRunId, loading]);
+
+  // Open a stored research run for review. When the catalog already has the researched model the
+  // review happens on that model (its values can be switched to the run's); otherwise the run
+  // becomes a new-model draft.
+  async function openRunForReview(runId, catalog = models) {
+    const run = await fetchResearchRun(runId, true);
+    const results = Object.fromEntries(RESEARCH_SOURCES.map(([key]) => [key, run.results[key]?.result || null]));
+    const existing = catalog.find((model) => model.modelId === run.catalogModelId);
+    if (existing) {
+      setReviewRun({ runId, modelId: existing.modelId });
+      selectModel(existing);
+      return;
+    }
+    const prepared = draftFromResults(results);
+    if (!prepared) throw new Error("이 실행에는 초안으로 쓸 조사 결과가 없습니다.");
+    useAiDraft(prepared.draft, prepared.aibom, runId, prepared.evidence, results);
+  }
 
   // Evidence of the researched values: stored rows for a registered model, the draft's rows before that.
   useEffect(() => {
@@ -832,7 +874,8 @@ export default function AdminApp() {
     if (!selectedId) return undefined;
     let cancelled = false;
     setCandidates(null); setCandidateRunId(null);
-    fetchResearchRuns({ modelId: selectedId, limit: 1 })
+    const reviewing = reviewRun?.modelId === selectedId ? reviewRun.runId : null;
+    (reviewing ? Promise.resolve([{ runId: reviewing }]) : fetchResearchRuns({ modelId: selectedId, limit: 1 }))
       .then((runs) => (runs[0] ? fetchResearchRun(runs[0].runId, true) : null))
       .then((run) => {
         if (cancelled || !run) return;
@@ -840,7 +883,7 @@ export default function AdminApp() {
         setCandidateRunId(run.runId);
       }).catch(() => {});
     return () => { cancelled = true; };
-  }, [selectedId, aibomRefresh]);
+  }, [selectedId, aibomRefresh, reviewRun]);
 
   // Catalog fields: chips to take the value (and its evidence) from a research result.
   const catalogValue = (value) => (Array.isArray(value) ? value.join(", ") : String(value ?? ""));
@@ -962,10 +1005,12 @@ export default function AdminApp() {
         ? await saveAdminModelWithAibom(selectedId, payload, aibomPayload)
         : { model: selectedId ? await updateAdminModel(selectedId, payload) : await createAdminModel(payload) };
       const saved = savedResult.model;
-      if (!selectedId && pendingRunId) {
-        // Remember which research run produced this catalog record (shown in the research history).
-        await linkResearchRun(pendingRunId, saved.modelId).catch(() => {});
+      if (activeReviewRunId) {
+        // Remember which research run this catalog record was saved from: the research history
+        // shows the run as reviewed and saved.
+        await linkResearchRun(activeReviewRunId, saved.modelId).catch(() => {});
       }
+      setReviewRun(null);
       let evidenceError = null;
       if (evidenceRows?.length && (aibomPayload || !selectedId)) {
         // Keep the evidence per model in step with the saved values: rows follow list items whose key was
@@ -1008,10 +1053,9 @@ export default function AdminApp() {
     <div className="admin-shell">
       <NoticeModal notice={notice} onClose={() => setNotice(null)} />
       {createMode && <CreateModelDialog mode={createMode} onModeChange={setCreateMode} onManual={startCreate} onUseDraft={useAiDraft} onClose={() => setCreateMode(null)} />}
-      {historyRunId !== undefined && <ResearchHistoryDialog initialRunId={historyRunId} fields={historyFields} onClose={() => setHistoryRunId(undefined)} onChanged={() => setAibomRefresh((value) => value + 1)} />}
       <header className="admin-header">
         <div><p className="eyebrow">AIBOM ADMIN</p><h1>Model catalog</h1><p>등록된 모델 정보와 모델 간 연결 관계를 조회하고 수정할 수 있습니다.</p></div>
-        <div className="admin-header-actions"><a href="/" className="admin-secondary">메인으로</a><button type="button" className="admin-secondary" onClick={() => setHistoryRunId(null)}>AI 조사 이력</button><button type="button" className="admin-primary" onClick={() => setCreateMode("method")}>+ 새 모델</button></div>
+        <div className="admin-header-actions"><a href="/" className="admin-secondary">메인으로</a><a href="/admin/research" className="admin-secondary">AI 조사 이력</a><button type="button" className="admin-primary" onClick={() => setCreateMode("method")}>+ 새 모델</button></div>
       </header>
       <div className="admin-stats">
         <span><strong>{models.length}</strong> Models</span><span><strong>{families.length}</strong> Families</span>
@@ -1043,6 +1087,7 @@ export default function AdminApp() {
             <div><p className="eyebrow">{selectedId ? "EDIT MODEL" : "CREATE MODEL"}</p><h2>{selectedId || "새 모델 등록"}</h2></div>
             {selectedId && <span className="admin-depth">Depth {form.hierarchyDepth}</span>}
           </div>
+          {selectedId && activeReviewRunId && <div className="ai-draft-banner"><span>✦</span><div><strong>AI 조사 #{activeReviewRunId} 결과를 검토하고 있습니다</strong><p>이미 등록된 모델이라 새로 만들지 않고 이 모델에 반영합니다. 각 항목 위의 HF / 논문 / AI 병합 칩으로 조사 값을 골라 넣고 저장하면, 이 조사 실행이 검토 완료로 표시됩니다.</p></div><em>검토 중</em></div>}
           {aiDraft && <div className="ai-draft-banner"><span>✦</span><div><strong>AI가 작성한 초안입니다</strong><p>내용과 출처를 확인하고 필요한 항목을 수정한 뒤 등록해 주세요. 각 항목 위의 HF / 논문 / AI 병합 칩으로 다른 조사 결과의 값으로 바꿀 수 있습니다.{pendingAibom ? ` AIBOM(평가 ${pendingAibom.evaluation?.length || 0}건 · 데이터셋 ${pendingAibom.dataset?.length || 0}개 · 근거 ${pendingAibom.reference?.length || 0}개)을 포함한 전체 정보가 한 번에 저장됩니다.` : ""}</p></div><em>검토 필요</em></div>}
           <form onSubmit={save}>
             <fieldset><legend>기본 정보</legend><div className="admin-form-grid">
@@ -1080,7 +1125,7 @@ export default function AdminApp() {
               <button type="submit" className="admin-primary" disabled={saving}>{saving ? "저장 중..." : selectedId ? "변경사항 저장" : aiDraft ? "검토 완료 및 모델 등록" : "모델 등록"}</button>
             </div>
           </form>
-          {selectedId && <ModelResearchRuns modelId={selectedId} refreshKey={aibomRefresh} onOpen={(id) => setHistoryRunId(id)} />}
+          {selectedId && <ModelResearchRuns modelId={selectedId} refreshKey={aibomRefresh} />}
         </section>
       </main>
     </div>

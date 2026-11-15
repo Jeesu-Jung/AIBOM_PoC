@@ -400,3 +400,21 @@
 .source-picker button.is-manual.is-selected { border-color:#b7791f; background:#fff8e8; color:#8a5a00; }
 .aibom-area-picker { display:flex; align-items:center; gap:8px; margin:-4px 0 16px; padding:8px 10px; border-radius:8px; background:#f1f5fb; }
 .aibom-area-picker::before { content:"영역 전체"; color:#58697e; font-size:.7rem; font-weight:800; }
+.research-page-body { display:grid; grid-template-columns:minmax(300px,380px) minmax(0,1fr); min-height:720px; margin-top:18px; border:1px solid var(--line); border-radius:18px; overflow:hidden; background:#fff; box-shadow:var(--shadow); }
+.research-page .research-history-list { max-height:calc(100vh - 40px); position:sticky; top:0; }
+.research-filter-tabs { display:flex; gap:4px; padding:4px; border:1px solid #dbe3ee; border-radius:11px; background:#fff; }
+.research-filter-tabs button { flex:1; padding:7px 8px; border:0; border-radius:8px; background:transparent; color:#58697e; font:inherit; font-size:.82rem; font-weight:650; cursor:pointer; }
+.research-filter-tabs button small { margin-left:3px; font-weight:500; }
+.research-filter-tabs button.is-active { background:#edf3ff; color:#2251cc; }
+.research-review-badge { justify-self:start; display:inline-block; padding:2px 8px; border-radius:999px; font-size:.7rem; font-weight:700; }
+.research-review-badge.is-saved { background:#e9f8f1; color:#176b4d; }
+.research-review-badge.is-pending { background:#fff4d6; color:#8a5a00; }
+.research-review-panel { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:14px 0 4px; padding:14px 16px; border:1px solid #dbe3ee; border-radius:12px; }
+.research-review-panel.is-pending { border-color:#f0d894; background:#fffaf0; }
+.research-review-panel.is-saved { border-color:#bfe5d3; background:#f3fbf7; }
+.research-review-panel p { margin:0; font-size:.86rem; line-height:1.55; }
+.research-review-panel code { padding:1px 5px; border-radius:5px; background:rgba(34,81,204,.08); color:#2251cc; font-family:inherit; }
+.research-review-panel a { flex:none; text-decoration:none; }
+.research-run-list a { display:grid; grid-template-columns:auto auto 1fr auto; align-items:center; gap:10px; padding:10px 12px; border:1px solid #dbe3ee; border-radius:10px; background:#fff; color:var(--text); text-decoration:none; }
+.research-run-list a:hover { border-color:#527ee1; }
+@media(max-width:980px){.research-page-body{grid-template-columns:1fr}.research-page .research-history-list{position:static;max-height:none}.research-review-panel{flex-direction:column;align-items:flex-start}}
