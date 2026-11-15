@@ -6,6 +6,7 @@ import LineageBoard from "./components/lineage/LineageBoard.jsx";
 import { fetchFamilies, fetchFamilyHierarchy, fetchModel } from "./api/catalog.js";
 import { buildLineageCatalog, getInitialNodeId } from "./domain/lineage.js";
 import { useLineageConnections } from "./hooks/useLineageConnections.js";
+import { downloadJson, jsonFilename } from "./utils/download.js";
 
 const EMPTY_REGISTRY = Object.freeze({});
 
@@ -178,6 +179,12 @@ export default function App({ initialCatalog = null }) {
     ["Transformation types", familyIndex.summary.transformationTypeCount]
   ];
 
+  const downloadActiveFamily = () => {
+    const family = familyRegistry[activeFamilyId];
+    if (!family) return;
+    downloadJson(family, `${jsonFilename(family.label || activeFamilyId, "model-family")}-hierarchy.json`);
+  };
+
   return (
     <div className="page-shell">
       <DashboardHeader metrics={metrics} familyIndex={familyIndex} nodeCount={allNodes.length} />
@@ -187,18 +194,23 @@ export default function App({ initialCatalog = null }) {
             <div><p className="eyebrow">Supply-chain view</p><h2>Hierarchy and transformations</h2></div>
             <div className="section-controls">
               <p className="section-note">The graph centers the technical report as the evidence root and shows how descendant models add or modify behavior relative to the inherited AIBOM.</p>
-              <label className="family-picker" htmlFor="family-select">
-                <span>Model family</span>
-                <select id="family-select" aria-label="Select model family" value={activeFamilyId} onChange={(event) => {
-                  const nextFamily = familyIndex.items.find((item) => item.familyKey === event.target.value);
-                  if (nextFamily) {
-                    setActiveFamilyId(nextFamily.familyKey);
-                    setActiveNodeId(nextFamily.defaultNodeId);
-                  }
-                }}>
-                  {familyIndex.items.map((family) => <option value={family.familyKey} key={family.familyKey}>{family.familyName}</option>)}
-                </select>
-              </label>
+              <div className="family-actions">
+                <label className="family-picker" htmlFor="family-select">
+                  <span>Model family</span>
+                  <select id="family-select" aria-label="Select model family" value={activeFamilyId} onChange={(event) => {
+                    const nextFamily = familyIndex.items.find((item) => item.familyKey === event.target.value);
+                    if (nextFamily) {
+                      setActiveFamilyId(nextFamily.familyKey);
+                      setActiveNodeId(nextFamily.defaultNodeId);
+                    }
+                  }}>
+                    {familyIndex.items.map((family) => <option value={family.familyKey} key={family.familyKey}>{family.familyName}</option>)}
+                  </select>
+                </label>
+                <button type="button" className="json-download-button" onClick={downloadActiveFamily}>
+                  JSON Download
+                </button>
+              </div>
             </div>
           </div>
           <div className="lineage-board" id="lineage-board">
@@ -206,7 +218,7 @@ export default function App({ initialCatalog = null }) {
           </div>
           <div className="focus-section">
             <div className="focus-head">
-              <div><p className="eyebrow">Selected node</p><h3>Full AIBOM</h3></div>
+              <div><p className="eyebrow">Selected node</p><h3>AIBOM</h3></div>
               <p className="section-note">Click any node above to replace the table below with its full AIBOM view.</p>
             </div>
             <div id="full-aibom-panel">

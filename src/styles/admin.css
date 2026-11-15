@@ -309,6 +309,11 @@
 .research-source-tabs button.is-active { background:#fff; color:#2251cc; box-shadow:0 1px 3px rgba(22,32,43,.12); }
 .research-source-detail { display:grid; gap:12px; }
 .research-source-detail h5 { margin:8px 0 0; font-size:.95rem; }
+.research-draft-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.research-draft-head h5 { margin:8px 0 0; }
+.research-draft-head .json-download-button { min-height:34px; padding:6px 10px; }
+.research-aibom-in-draft { display:grid; gap:10px; padding-top:2px; }
+.research-aibom-label { margin:0; color:#25364c; font-size:.9rem; font-weight:700; }
 .research-aibom-counts { margin-left:8px; color:var(--text-soft); font-size:.78rem; font-weight:500; }
 .research-source-meta { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px; margin:0; }
 .research-source-meta div { padding:8px 10px; border:1px solid #e6ecf4; border-radius:9px; }

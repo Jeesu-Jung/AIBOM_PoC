@@ -446,6 +446,18 @@ body {
   font-size: 1.08rem;
 }
 
+.focus-model-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.focus-model-heading .json-download-button {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
 .delta-comparison {
   display: grid;
   gap: 16px;
@@ -870,6 +882,32 @@ body {
   outline-offset: 2px;
 }
 
+.family-actions {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  width: min(100%, 390px);
+}
+
+.family-actions .family-picker { flex: 1; }
+
+.json-download-button {
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.json-download-button:hover { background: var(--accent-soft); }
+.json-download-button:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 2px; }
+
 .nav-button,
 .back-link {
   display: inline-flex;
@@ -1002,6 +1040,8 @@ body {
     justify-items: start;
     min-width: 0;
   }
+
+  .family-actions { width: min(100%, 390px); }
 
   .section-controls .section-note {
     text-align: left;

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { deleteResearchRun, fetchResearchRun, fetchResearchRuns } from "../../api/admin.js";
 import { aibomDraftToView } from "../../domain/aibomView.js";
+import { downloadJson, jsonFilename } from "../../utils/download.js";
 import AibomAreas from "../aibom/AibomAreas.jsx";
 
 // Stored "AI로 정보 채우기" runs (model_research_run / model_research_result): every run keeps its
@@ -59,6 +60,10 @@ function SourceDetail({ item, fields, sourceKey }) {
   const draft = result.draft || {};
   const decisions = new Map((result.fieldDecisions || []).map((decision) => [decision.field, decision]));
   const view = result.aibom ? aibomDraftToView(result.aibom, draft.modelId) : null;
+  const downloadDraft = () => downloadJson(
+    result,
+    `${jsonFilename(draft.modelId || "model", "model")}-${sourceKey === "merged" ? "ai-merged-" : `${sourceKey}-`}research-result.json`
+  );
 
   return (
     <div className="research-source-detail">
@@ -70,23 +75,30 @@ function SourceDetail({ item, fields, sourceKey }) {
         <div><dt>저장 시각</dt><dd>{formatDateTime(item.createdAt)}</dd></div>
       </dl>
 
-      <h5>카탈로그 초안</h5>
+      <div className="research-draft-head">
+        <h5>모델정보 초안</h5>
+        <button type="button" className="json-download-button" onClick={downloadDraft}>JSON 다운로드</button>
+      </div>
       <table className="research-draft-table"><tbody>{fields.map(([field, label]) => {
         const decision = decisions.get(field);
         return <tr key={field}><th scope="row">{label}</th><td>{display(draft[field]) || <span className="is-empty">값 없음</span>}
           {decision && <small>{DECISIONS[decision.chosen] || decision.chosen} · {decision.rationale}</small>}</td></tr>;
       })}</tbody></table>
 
-      <h5>AIBOM 초안 {result.aibomSummary && <span className="research-aibom-counts">
-        평가 {result.aibomSummary.evaluations ?? 0} · 데이터셋 {result.aibomSummary.datasets ?? 0} · 안전 {result.aibomSummary.safety_items ?? 0} · 근거 {result.aibomSummary.references ?? 0}
-      </span>}</h5>
-      {result.areaDecisions?.length > 0 && <ul className="ai-area-decisions">{result.areaDecisions.map((decision) => (
-        <li key={decision.area}><b>{decision.area}</b> {DECISIONS[decision.chosen] || decision.chosen} · {decision.rationale}</li>
-      ))}</ul>}
-      {view ? (showAibom
-        ? <div className="research-aibom-preview"><AibomAreas aibom={view} /></div>
-        : <button type="button" className="admin-secondary" onClick={() => setShowAibom(true)}>AIBOM 8개 영역 펼쳐 보기</button>)
-        : <p className="ai-result-empty">AIBOM 초안이 없는 결과입니다(이전 버전에서 저장).</p>}
+      <div className="research-aibom-in-draft">
+        <p className="research-aibom-label">AIBOM
+          {result.aibomSummary && <span className="research-aibom-counts">
+            평가 {result.aibomSummary.evaluations ?? 0} · 데이터셋 {result.aibomSummary.datasets ?? 0} · 안전 {result.aibomSummary.safety_items ?? 0} · 근거 {result.aibomSummary.references ?? 0}
+          </span>}
+        </p>
+        {result.areaDecisions?.length > 0 && <ul className="ai-area-decisions">{result.areaDecisions.map((decision) => (
+          <li key={decision.area}><b>{decision.area}</b> {DECISIONS[decision.chosen] || decision.chosen} · {decision.rationale}</li>
+        ))}</ul>}
+        {view ? (showAibom
+          ? <div className="research-aibom-preview"><AibomAreas aibom={view} /></div>
+          : <button type="button" className="admin-secondary" onClick={() => setShowAibom(true)}>AIBOM 8개 영역 펼쳐 보기</button>)
+          : <p className="ai-result-empty">AIBOM 초안이 없는 결과입니다(이전 버전에서 저장).</p>}
+      </div>
 
       {result.warnings?.length > 0 && <div className="ai-warning-list is-inset"><strong>검토할 항목</strong>
         <ul>{result.warnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}</ul></div>}

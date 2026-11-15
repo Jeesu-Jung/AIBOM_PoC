@@ -4,6 +4,7 @@ dist/
 backend/.venv/
 backend/.env
 backend/.env.local
+backend/.env.prod
 backend/.uvicorn.*.log
 __pycache__/
 .pytest_cache/

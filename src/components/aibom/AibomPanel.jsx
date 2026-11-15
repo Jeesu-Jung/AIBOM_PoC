@@ -4,6 +4,7 @@ import { getNodePreview } from "../../domain/lineage.js";
 import AibomAreas from "./AibomAreas.jsx";
 import AibomTable from "./AibomTable.jsx";
 import DeltaComparison from "./DeltaComparison.jsx";
+import { downloadJson, jsonFilename } from "../../utils/download.js";
 
 /** `aibomRegistry[id]` is the model's AIBOM once loaded (null when none is stored; absent while loading). */
 export default function AibomPanel({ node, onSelect, familyRegistry, aibomRegistry = {}, nodeMap, loading = false }) {
@@ -14,6 +15,10 @@ export default function AibomPanel({ node, onSelect, familyRegistry, aibomRegist
     return <article className="focus-card"><p className="section-note">Loading the selected model AIBOM...</p></article>;
   }
   const aibom = aibomRegistry[node.id];
+  const downloadModelAibom = () => downloadJson({
+    model: node,
+    aibom: aibom ?? null
+  }, `${jsonFilename(node.id || node.title, "model")}-aibom.json`);
 
   return (
     <article className="focus-card">
@@ -24,7 +29,12 @@ export default function AibomPanel({ node, onSelect, familyRegistry, aibomRegist
             <KindChip kind={node.kind} />
             {node.kind === "derived" && <RelationChip relation={node.relationship} />}
           </div>
-          <h4>{node.title}</h4>
+          <div className="focus-model-heading">
+            <h4>{node.title}</h4>
+            {!isDocument && <button type="button" className="json-download-button" onClick={downloadModelAibom}>
+              AIBOM JSON Download
+            </button>}
+          </div>
           <p className="focus-summary">{getNodePreview(node, familyRegistry)}</p>
         </div>
       </div>
