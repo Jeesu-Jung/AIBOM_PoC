@@ -161,25 +161,31 @@ async def admin_stream_model_research(payload: ModelResearchRequest) -> Streamin
     )
 
 
+def _refresh_stored_results(db: Session, data: dict) -> dict:
+    """Bring stored research results up to date with the current catalog, on copies.
+
+    Stored drafts predate later catalog changes (e.g. the parent was registered afterwards), so
+    they are placed in the tree again; evidence rows follow the lineage (inherited fields carry
+    none) and older runs stored none.
+    """
+    context = load_catalog_context(db)
+    for row in data["results"].values():
+        if row and isinstance(row.get("result"), dict):
+            row["result"] = resolve_catalog_lineage(deepcopy(row["result"]), context)
+    inputs = {key: (data["results"].get(key) or {}).get("result") for key in ("huggingface", "paper")}
+    for row in data["results"].values():
+        if row and isinstance(row.get("result"), dict):
+            attach_evidence(row["result"], inputs)
+    return data
+
+
 @app.get("/api/v1/admin/model-research/results", tags=["admin"])
 def admin_research_results(modelName: str, db: Session = Depends(get_db)) -> dict:
     """Return stored research results (huggingface / paper / merged) for a requested model name."""
     if len(modelName.strip()) < 2:
         raise HTTPException(status_code=422, detail="modelName must be at least 2 characters.")
     try:
-        data = load_research_results(db, modelName)
-        # Stored drafts predate later catalog changes (e.g. the parent was registered afterwards),
-        # so place them in the current tree again before the dialog shows them.
-        context = load_catalog_context(db)
-        for row in data["results"].values():
-            if row and isinstance(row.get("result"), dict):
-                row["result"] = resolve_catalog_lineage(deepcopy(row["result"]), context)
-        # Evidence rows follow the lineage (inherited fields carry none) and older runs stored none.
-        inputs = {key: (data["results"].get(key) or {}).get("result") for key in ("huggingface", "paper")}
-        for row in data["results"].values():
-            if row and isinstance(row.get("result"), dict):
-                attach_evidence(row["result"], inputs)
-        return data
+        return _refresh_stored_results(db, load_research_results(db, modelName))
     except SQLAlchemyError as error:
         raise _database_unavailable() from error
 
@@ -222,9 +228,12 @@ def admin_research_runs(modelName: str | None = None, modelId: str | None = None
 
 
 @app.get("/api/v1/admin/research-runs/{run_id}", tags=["admin"])
-def admin_research_run(run_id: int, db: Session = Depends(get_db)) -> dict:
+def admin_research_run(run_id: int, resolve: bool = False, db: Session = Depends(get_db)) -> dict:
+    """One stored run. `resolve=true` returns the results as the editor uses them: placed in the
+    current catalog tree and with per-value evidence rows (the history view keeps them as stored)."""
     try:
-        return get_research_run(db, run_id)
+        run = get_research_run(db, run_id)
+        return _refresh_stored_results(db, run) if resolve else run
     except SQLAlchemyError as error:
         raise _database_unavailable() from error
 

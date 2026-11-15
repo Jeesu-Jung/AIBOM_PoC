@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AibomEditor from "./components/admin/AibomEditor.jsx";
 import ResearchHistoryDialog, { ModelResearchRuns } from "./components/admin/ResearchHistory.jsx";
 import AibomAreas from "./components/aibom/AibomAreas.jsx";
 import { aibomDraftToView } from "./domain/aibomView.js";
-import { composeEvidence, describeEvidence, pruneEvidence, rekeyEvidence } from "./domain/evidence.js";
+import { composeEvidence, describeEvidence, pruneEvidence, rekeyEvidence, swapEvidence } from "./domain/evidence.js";
 import EvidenceLinks from "./components/admin/EvidenceLinks.jsx";
-import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, fetchAdminModelEvidence, linkResearchRun, saveAdminModelEvidence, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
+import SourcePicker, { RESEARCH_SOURCES, sourceLabel as chipLabel } from "./components/admin/SourcePicker.jsx";
+import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, fetchAdminModelEvidence, fetchResearchRun, fetchResearchRuns, linkResearchRun, saveAdminModelEvidence, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
 
 const EMPTY_MODEL = {
   modelId: "", namespace: "", modelName: "", familyKey: "", familyName: "", modelRole: "DERIVED",
@@ -55,8 +56,9 @@ function normalizeForForm(model) {
 }
 
 // `evidence`: evidence rows of this value (AI research), listed right under the input.
-function Field({ label, children, wide = false, evidence = null }) {
-  return <label className={`admin-field${wide ? " admin-field-wide" : ""}`}><span>{label}</span>{children}<EvidenceLinks rows={evidence} /></label>;
+// `picker`: chips to take the value from a research result (see `pk` in AdminApp).
+function Field({ label, children, wide = false, evidence = null, picker = null }) {
+  return <label className={`admin-field${wide ? " admin-field-wide" : ""}`}><span>{label}</span>{picker}{children}<EvidenceLinks rows={evidence} /></label>;
 }
 
 function Input({ field, form, setForm, ...props }) {
@@ -87,6 +89,9 @@ const aibomDerivedFields = ["licenseReported", "artifactFormat", "tensorType", "
 const historyFields = [...mergeFields, ["licenseReported", "License reported (AIBOM)"], ["artifactFormat", "Artifact format (AIBOM)"],
   ["tensorType", "Tensor type (AIBOM)"], ["parameterScale", "Parameter scale (AIBOM)"]];
 const linkedFieldGroups = [["modelId", "namespace", "modelName"], ["familyKey", "familyName"]];
+const identityFields = linkedFieldGroups[0];
+// Catalog fields that research results carry a value for (hierarchy fields are set by the tree, not picked).
+const pickableFields = new Set([...mergeFields.map(([field]) => field), ...aibomDerivedFields.filter((field) => field !== "licenseReported")]);
 const statusLabels = { found: "확인됨", ambiguous: "후보 여러 개", not_found: "찾지 못함" };
 const decisionLabels = { huggingface: "HF 값", paper: "논문 값", combined: "두 결과 결합", none: "값 없음" };
 const formatDateTime = (value) => {
@@ -713,7 +718,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
             </details>;
           })}
 
-          <div className="create-dialog-actions"><button type="button" className="admin-secondary" onClick={resetSearch}>다시 검색</button><button type="button" className="admin-primary" onClick={() => onUseDraft(finalDraft, finalAibom, runId, finalEvidence)}>편집 화면에서 검토</button></div>
+          <div className="create-dialog-actions"><button type="button" className="admin-secondary" onClick={resetSearch}>다시 검색</button><button type="button" className="admin-primary" onClick={() => onUseDraft(finalDraft, finalAibom, runId, finalEvidence, results)}>편집 화면에서 검토</button></div>
         </div>}
       </section>
     </div>
@@ -769,6 +774,12 @@ export default function AdminApp() {
   const [pendingRunId, setPendingRunId] = useState(null);
   const [pendingEvidence, setPendingEvidence] = useState(null);
   const [storedEvidence, setStoredEvidence] = useState(null);
+  const [evidenceDirty, setEvidenceDirty] = useState(false);
+  // Research results ({ huggingface, paper, merged }) whose values the editor can switch between.
+  const [candidates, setCandidates] = useState(null);
+  const [candidateRunId, setCandidateRunId] = useState(null);
+  // Result last picked per catalog field; decides the marked chip when several results agree.
+  const [pickedSource, setPickedSource] = useState({});
   const [historyRunId, setHistoryRunId] = useState(undefined); // undefined: closed, null: open without selection
   const aibomEditorRef = useRef(null);
 
@@ -803,13 +814,63 @@ export default function AdminApp() {
   // Evidence of the researched values: stored rows for a registered model, the draft's rows before that.
   useEffect(() => {
     setStoredEvidence(null);
+    setEvidenceDirty(false);
     if (!selectedId) return undefined;
     let cancelled = false;
     fetchAdminModelEvidence(selectedId).then((rows) => { if (!cancelled) setStoredEvidence(rows); }).catch(() => {});
     return () => { cancelled = true; };
   }, [selectedId, aibomRefresh]);
   const evidenceRows = selectedId ? storedEvidence : pendingEvidence;
+  const updateEvidence = useCallback((change) => {
+    (selectedId ? setStoredEvidence : setPendingEvidence)((rows) => change(rows || []));
+    setEvidenceDirty(true);
+  }, [selectedId]);
   const cev = (field) => evidenceRows?.filter((row) => row.area === "catalog" && row.field === field) || null;
+
+  // A registered model can still be edited against its research: the latest run linked to it (or naming it).
+  useEffect(() => {
+    if (!selectedId) return undefined;
+    let cancelled = false;
+    setCandidates(null); setCandidateRunId(null);
+    fetchResearchRuns({ modelId: selectedId, limit: 1 })
+      .then((runs) => (runs[0] ? fetchResearchRun(runs[0].runId, true) : null))
+      .then((run) => {
+        if (cancelled || !run) return;
+        setCandidates(Object.fromEntries(RESEARCH_SOURCES.map(([key]) => [key, run.results[key]?.result || null])));
+        setCandidateRunId(run.runId);
+      }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedId, aibomRefresh]);
+
+  // Catalog fields: chips to take the value (and its evidence) from a research result.
+  const catalogValue = (value) => (Array.isArray(value) ? value.join(", ") : String(value ?? ""));
+  const pickCatalog = (field, source) => {
+    const draft = candidates?.[source]?.draft;
+    if (!draft) return;
+    // Model ID parts and family key / name only make sense together; a registered model keeps its ID.
+    const group = (linkedFieldGroups.find((items) => items.includes(field)) || [field])
+      .filter((item) => !(selectedId && identityFields.includes(item)));
+    setForm((current) => ({ ...current, ...Object.fromEntries(group.map((item) => [item, draft[item] ?? ""])) }));
+    setPickedSource((current) => ({ ...current, ...Object.fromEntries(group.map((item) => [item, source])) }));
+    updateEvidence((rows) => group.reduce((next, item) => swapEvidence(next, candidates[source].evidence, "catalog", item), rows));
+  };
+  const pk = (field) => {
+    if (!candidates || !pickableFields.has(field) || (selectedId && identityFields.includes(field))) return null;
+    // The merge chip names the input its value came from: the AI's own field decision, or the
+    // catalog parent for an inherited family field.
+    const merged = candidates.merged;
+    const mergeOrigin = merged?.catalogLineage?.inheritedFields?.includes(field) ? "inherited"
+      : merged?.fieldDecisions?.find((item) => item.field === field)?.chosen;
+    const options = RESEARCH_SOURCES.filter(([key]) => candidates[key]?.draft).map(([key, label]) => {
+      const value = candidates[key].draft[field];
+      return { key, label: key === "merged" ? chipLabel(label, mergeOrigin) : label, value,
+               matches: catalogValue(value) === catalogValue(form[field]) };
+    });
+    return <SourcePicker options={options} preferred={pickedSource[field]} onPick={(source) => pickCatalog(field, source)} />;
+  };
+  const pickAibomEvidence = useCallback((area, field, source) => {
+    updateEvidence((rows) => swapEvidence(rows, candidates?.[source]?.evidence, area, field));
+  }, [candidates, updateEvidence]);
 
   const families = useMemo(() => [...new Map(models.map((model) => [model.familyKey, model.familyName])).entries()], [models]);
   const visibleModels = useMemo(() => models.filter((model) => {
@@ -843,19 +904,25 @@ export default function AdminApp() {
     setPendingAibom(null);
     setPendingEvidence(null);
     setNotice(null);
+    if (model.modelId !== selectedId) { setCandidates(null); setCandidateRunId(null); }
+    setPickedSource({});
   }
 
   function startCreate() {
     const family = familyFilter !== "all" ? families.find(([key]) => key === familyFilter) : null;
     const fresh = { ...EMPTY_MODEL, familyKey: family?.[0] || "", familyName: family?.[1] || "" };
-    setSelectedId(null); setForm(normalizeForForm(fresh)); setDetailsText("{}"); setChangeText(""); setLicenseText(""); setNotice(null); setCreateMode(null); setAiDraft(false); setPendingAibom(null); setPendingEvidence(null);
+    setSelectedId(null); setForm(normalizeForForm(fresh)); setDetailsText("{}"); setChangeText(""); setLicenseText(""); setNotice(null); setCreateMode(null); setAiDraft(false); setPendingAibom(null); setPendingEvidence(null); setCandidates(null); setCandidateRunId(null); setPickedSource({});
   }
 
-  function useAiDraft(draft, aibom = null, runId = null, evidence = null) {
+  function useAiDraft(draft, aibom = null, runId = null, evidence = null, results = null) {
     setSelectedId(null);
     setPendingAibom(aibom);
     setPendingRunId(runId);
     setPendingEvidence(evidence);
+    // The three results stay available in the editor, so a value can still be switched there.
+    setCandidates(results);
+    setCandidateRunId(runId);
+    setPickedSource({});
     setForm(normalizeForForm(draft));
     setDetailsText(jsonText(draft.detailsJson || {}));
     setChangeText("");
@@ -904,8 +971,8 @@ export default function AdminApp() {
         // Keep the evidence per model in step with the saved values: rows follow list items whose key was
         // edited and are dropped for items that were removed.
         const kept = pruneEvidence(rekeyEvidence(evidenceRows, evidenceRenames), aibomPayload);
-        if (!selectedId || evidenceRenames.length || kept.length !== evidenceRows.length) {
-          const runId = selectedId ? evidenceRows.find((row) => row.runId)?.runId ?? null : pendingRunId;
+        if (!selectedId || evidenceDirty || evidenceRenames.length || kept.length !== evidenceRows.length) {
+          const runId = selectedId ? evidenceRows.find((row) => row.runId)?.runId ?? candidateRunId : pendingRunId;
           await saveAdminModelEvidence(saved.modelId, kept, runId).catch((error) => { evidenceError = error.message; });
         }
       }
@@ -976,35 +1043,35 @@ export default function AdminApp() {
             <div><p className="eyebrow">{selectedId ? "EDIT MODEL" : "CREATE MODEL"}</p><h2>{selectedId || "새 모델 등록"}</h2></div>
             {selectedId && <span className="admin-depth">Depth {form.hierarchyDepth}</span>}
           </div>
-          {aiDraft && <div className="ai-draft-banner"><span>✦</span><div><strong>AI가 작성한 초안입니다</strong><p>내용과 출처를 확인하고 필요한 항목을 수정한 뒤 등록해 주세요.{pendingAibom ? ` AIBOM(평가 ${pendingAibom.evaluation?.length || 0}건 · 데이터셋 ${pendingAibom.dataset?.length || 0}개 · 근거 ${pendingAibom.reference?.length || 0}개)을 포함한 전체 정보가 한 번에 저장됩니다.` : ""}</p></div><em>검토 필요</em></div>}
+          {aiDraft && <div className="ai-draft-banner"><span>✦</span><div><strong>AI가 작성한 초안입니다</strong><p>내용과 출처를 확인하고 필요한 항목을 수정한 뒤 등록해 주세요. 각 항목 위의 HF / 논문 / AI 병합 칩으로 다른 조사 결과의 값으로 바꿀 수 있습니다.{pendingAibom ? ` AIBOM(평가 ${pendingAibom.evaluation?.length || 0}건 · 데이터셋 ${pendingAibom.dataset?.length || 0}개 · 근거 ${pendingAibom.reference?.length || 0}개)을 포함한 전체 정보가 한 번에 저장됩니다.` : ""}</p></div><em>검토 필요</em></div>}
           <form onSubmit={save}>
             <fieldset><legend>기본 정보</legend><div className="admin-form-grid">
-              <Field label="Model ID" evidence={cev("modelId")}><Input field="modelId" form={form} setForm={setForm} required disabled={Boolean(selectedId)} /></Field>
-              <Field label="Namespace" evidence={cev("namespace")}><Input field="namespace" form={form} setForm={setForm} required /></Field>
-              <Field label="Model name" evidence={cev("modelName")}><Input field="modelName" form={form} setForm={setForm} required /></Field>
-              <Field label="Role" evidence={cev("modelRole")}><select value={form.modelRole} onChange={(e) => setForm({ ...form, modelRole: e.target.value })}><option>BASE</option><option>INSTRUCT</option><option>DERIVED</option></select></Field>
-              <Field label="Family key" evidence={cev("familyKey")}><Input field="familyKey" form={form} setForm={setForm} required /></Field>
-              <Field label="Family name" evidence={cev("familyName")}><Input field="familyName" form={form} setForm={setForm} required /></Field>
-              <Field label="Model URL" wide evidence={cev("modelUrl")}><Input field="modelUrl" form={form} setForm={setForm} type="url" required /></Field>
-              <Field label="Description" wide evidence={cev("description")}><textarea value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} rows="3" /></Field>
+              <Field label="Model ID" evidence={cev("modelId")} picker={pk("modelId")}><Input field="modelId" form={form} setForm={setForm} required disabled={Boolean(selectedId)} /></Field>
+              <Field label="Namespace" evidence={cev("namespace")} picker={pk("namespace")}><Input field="namespace" form={form} setForm={setForm} required /></Field>
+              <Field label="Model name" evidence={cev("modelName")} picker={pk("modelName")}><Input field="modelName" form={form} setForm={setForm} required /></Field>
+              <Field label="Role" evidence={cev("modelRole")} picker={pk("modelRole")}><select value={form.modelRole} onChange={(e) => setForm({ ...form, modelRole: e.target.value })}><option>BASE</option><option>INSTRUCT</option><option>DERIVED</option></select></Field>
+              <Field label="Family key" evidence={cev("familyKey")} picker={pk("familyKey")}><Input field="familyKey" form={form} setForm={setForm} required /></Field>
+              <Field label="Family name" evidence={cev("familyName")} picker={pk("familyName")}><Input field="familyName" form={form} setForm={setForm} required /></Field>
+              <Field label="Model URL" wide evidence={cev("modelUrl")} picker={pk("modelUrl")}><Input field="modelUrl" form={form} setForm={setForm} type="url" required /></Field>
+              <Field label="Description" wide evidence={cev("description")} picker={pk("description")}><textarea value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} rows="3" /></Field>
             </div></fieldset>
 
             <fieldset><legend>계층 구조</legend><p className="admin-help">부모를 바꾸면 현재 모델과 모든 하위 모델의 depth가 자동으로 재계산됩니다.</p><div className="admin-form-grid">
               <Field label="Parent model"><select value={form.parentModelId || ""} onChange={(e) => setForm({ ...form, parentModelId: e.target.value || null })}>
                 <option value="">없음 (Root)</option>{models.filter((model) => !descendants.has(model.modelId) && (!form.familyKey || model.familyKey === form.familyKey)).map((model) => <option value={model.modelId} key={model.modelId}>{model.modelName} — {model.modelId}</option>)}
               </select></Field>
-              <Field label="Relationship type" evidence={cev("relationshipType")}><Input field="relationshipType" form={form} setForm={setForm} disabled={!form.parentModelId} placeholder="fineTunedFrom" required={Boolean(form.parentModelId)} /></Field>
-              <Field label="Sibling order" evidence={cev("siblingOrder")}><Input field="siblingOrder" form={form} setForm={setForm} type="number" min="0" /></Field>
+              <Field label="Relationship type" evidence={cev("relationshipType")} picker={pk("relationshipType")}><Input field="relationshipType" form={form} setForm={setForm} disabled={!form.parentModelId} placeholder="fineTunedFrom" required={Boolean(form.parentModelId)} /></Field>
+              <Field label="Sibling order" evidence={cev("siblingOrder")} picker={pk("siblingOrder")}><Input field="siblingOrder" form={form} setForm={setForm} type="number" min="0" /></Field>
               <Field label="Change details JSON" wide><textarea className="code-input" value={changeText} onChange={(e) => setChangeText(e.target.value)} rows="5" placeholder={'{\n  "added_task": "..."\n}'} /></Field>
             </div></fieldset>
 
             <fieldset><legend>모델 메타데이터</legend><div className="admin-form-grid">
-              <Field label="Family release date" evidence={cev("familyReleaseDate")}><Input field="familyReleaseDate" form={form} setForm={setForm} type="date" /></Field>
-              {textFields.map(([field, label]) => <Field label={label} key={field} wide={field === "packageUrl"} evidence={cev(field)}><Input field={field} form={form} setForm={setForm} /></Field>)}
+              <Field label="Family release date" evidence={cev("familyReleaseDate")} picker={pk("familyReleaseDate")}><Input field="familyReleaseDate" form={form} setForm={setForm} type="date" /></Field>
+              {textFields.map(([field, label]) => <Field label={label} key={field} wide={field === "packageUrl"} evidence={cev(field)} picker={pk(field)}><Input field={field} form={form} setForm={setForm} /></Field>)}
               <Field label="License reported JSON" wide><textarea className="code-input" value={licenseText} onChange={(e) => setLicenseText(e.target.value)} rows="3" placeholder='"apache-2.0" 또는 ["license-a"]' /></Field>
             </div></fieldset>
 
-            {(selectedId || pendingAibom) && <AibomEditor ref={aibomEditorRef} modelId={selectedId} initialAibom={pendingAibom} refreshKey={aibomRefresh} disabled={saving} evidence={evidenceRows} />}
+            {(selectedId || pendingAibom) && <AibomEditor ref={aibomEditorRef} modelId={selectedId} initialAibom={pendingAibom} refreshKey={aibomRefresh} disabled={saving} evidence={evidenceRows} candidates={candidates} onPickEvidence={pickAibomEvidence} />}
 
             <div className="admin-form-actions">
               {selectedId && <button type="button" className="admin-danger" onClick={remove} disabled={saving}>삭제</button>}

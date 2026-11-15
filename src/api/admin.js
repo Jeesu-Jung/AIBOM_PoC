@@ -80,7 +80,8 @@ export const fetchResearchRuns = ({ modelName, modelId, limit } = {}) => {
   const query = params.toString();
   return request(`/api/v1/admin/research-runs${query ? `?${query}` : ""}`);
 };
-export const fetchResearchRun = (runId) => request(`/api/v1/admin/research-runs/${runId}`);
+// resolve: results placed in the current catalog tree with evidence rows (what the editor needs).
+export const fetchResearchRun = (runId, resolve = false) => request(`/api/v1/admin/research-runs/${runId}${resolve ? "?resolve=true" : ""}`);
 export const linkResearchRun = (runId, modelId) => request(`/api/v1/admin/research-runs/${runId}/model`, {
   method: "PUT", body: JSON.stringify({ modelId })
 });

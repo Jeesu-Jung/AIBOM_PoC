@@ -142,3 +142,12 @@ export function rekeyEvidence(rows, renames) {
     return to === undefined ? row : { ...row, itemKey: to };
   });
 }
+
+/**
+ * Take the evidence of one value from another research result: drop the current rows of
+ * `area` (only those of `field` when given) and add that result's rows for the same value.
+ */
+export function swapEvidence(rows, sourceRows, area, field = null) {
+  const hit = (row) => row.area === area && (field == null || coversField(row.field, field));
+  return (rows || []).filter((row) => !hit(row)).concat((sourceRows || []).filter(hit));
+}

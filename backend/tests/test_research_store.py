@@ -148,3 +148,23 @@ def test_results_endpoints_save_load_and_delete() -> None:
         assert client.post("/api/v1/admin/model-research/results", json={"modelName": "org/model", "results": {}}).status_code == 422
     finally:
         main.app.dependency_overrides.clear()
+
+
+def test_run_endpoint_can_return_results_ready_for_the_editor() -> None:
+    db = session()
+    saved = save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": "org/model", "replacePrevious": True,
+        "results": {"huggingface": result("huggingface") | {
+            "fieldEvidence": [{"fields": ["familyName"], "confidence": "high", "urls": ["https://example.test/card"]}]}},
+    }))
+    main.app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(main.app)
+        stored = client.get(f"/api/v1/admin/research-runs/{saved['runId']}").json()
+        resolved = client.get(f"/api/v1/admin/research-runs/{saved['runId']}?resolve=true").json()
+    finally:
+        main.app.dependency_overrides.clear()
+
+    assert "evidence" not in stored["results"]["huggingface"]["result"]
+    assert [(row["field"], row["url"]) for row in resolved["results"]["huggingface"]["result"]["evidence"]] == [
+        ("familyName", "https://example.test/card")]
