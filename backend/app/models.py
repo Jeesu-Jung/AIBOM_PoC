@@ -218,3 +218,22 @@ class ModelResearchResult(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow)
 
     run: Mapped[ModelResearchRun] = relationship(back_populates="results")
+
+
+class ModelEvidence(Base):
+    """One evidence URL for one researched value of one model (sql/007)."""
+
+    __tablename__ = "model_evidence"
+
+    id: Mapped[int] = mapped_column(_BIGINT, primary_key=True, autoincrement=True)
+    model_id: Mapped[str] = mapped_column(String(512), ForeignKey("model_info.model_id"))
+    area: Mapped[str] = mapped_column(String(30))
+    item_key: Mapped[str] = mapped_column(String(512), default="")
+    field: Mapped[str] = mapped_column(String(150), default="*")
+    url: Mapped[str] = mapped_column(String(1000))
+    locator: Mapped[str | None] = mapped_column(String(500))
+    confidence: Mapped[str | None] = mapped_column(String(10))
+    note: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str | None] = mapped_column(String(20))
+    run_id: Mapped[int | None] = mapped_column(_BIGINT, ForeignKey("model_research_run.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow)

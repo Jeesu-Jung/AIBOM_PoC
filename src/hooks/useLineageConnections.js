@@ -12,13 +12,16 @@ function drawConnections(context) {
 
   const boardRect = board.getBoundingClientRect();
   svg.setAttribute("viewBox", `0 0 ${boardRect.width} ${boardRect.height}`);
+  const rootIds = new Set(context.rootNodes.map((node) => node.id));
   const connections = [
     ...context.rootNodes.map((node) => ({
       from: context.documentNode.id,
       to: node.id,
       type: "document"
     })),
-    ...context.derivedNodes.map((node) => ({
+    // Deeper descendants sit indented under their parent card (CSS guide line), so only
+    // root -> first-level edges are drawn as curves.
+    ...context.derivedNodes.filter((node) => rootIds.has(node.parent)).map((node) => ({
       from: node.parent,
       to: node.id,
       type: "root"

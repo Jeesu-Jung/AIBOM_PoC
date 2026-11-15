@@ -3,7 +3,9 @@ import AibomEditor from "./components/admin/AibomEditor.jsx";
 import ResearchHistoryDialog, { ModelResearchRuns } from "./components/admin/ResearchHistory.jsx";
 import AibomAreas from "./components/aibom/AibomAreas.jsx";
 import { aibomDraftToView } from "./domain/aibomView.js";
-import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, linkResearchRun, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
+import { composeEvidence, describeEvidence, pruneEvidence, rekeyEvidence } from "./domain/evidence.js";
+import EvidenceLinks from "./components/admin/EvidenceLinks.jsx";
+import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, fetchAdminModelEvidence, linkResearchRun, saveAdminModelEvidence, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
 
 const EMPTY_MODEL = {
   modelId: "", namespace: "", modelName: "", familyKey: "", familyName: "", modelRole: "DERIVED",
@@ -52,8 +54,9 @@ function normalizeForForm(model) {
   return next;
 }
 
-function Field({ label, children, wide = false }) {
-  return <label className={`admin-field${wide ? " admin-field-wide" : ""}`}><span>{label}</span>{children}</label>;
+// `evidence`: evidence rows of this value (AI research), listed right under the input.
+function Field({ label, children, wide = false, evidence = null }) {
+  return <label className={`admin-field${wide ? " admin-field-wide" : ""}`}><span>{label}</span>{children}<EvidenceLinks rows={evidence} /></label>;
 }
 
 function Input({ field, form, setForm, ...props }) {
@@ -96,6 +99,8 @@ const isEmptyValue = (value) => value == null || value === "" || (Array.isArray(
 const sameValue = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const displayValue = (value) => (isEmptyValue(value) ? null : Array.isArray(value) ? value.join(", ") : String(value));
 const evidenceFor = (result, field) => result?.fieldEvidence?.find((item) => item.fields?.includes(field)) || null;
+// Family fields taken from the catalog parent instead of the research sources (backend: resolve_catalog_lineage).
+const isInherited = (result, field) => Boolean(result?.catalogLineage?.inheritedFields?.includes(field));
 
 function ResearchStreamLog({ events, partialContent, live = false }) {
   const publicEvents = events.filter((item) => item.type !== "provider_event");
@@ -194,9 +199,14 @@ function AibomFullComparison({ results, columns, overrides, fieldOverrides, onSe
           const value = Array.isArray(area) ? area.map((item) => item?.[field]) : area?.[field];
           const source = areaOnly ? overrides[key] : (fieldOverrides[fieldKey] || overrides[key]);
           const selected = source === option.value || (!source && option.value === "merged");
+          // REFERENCE rows are the sources themselves; every other value shows the URLs behind it.
+          const evidence = key === "reference" ? { label: null, tooltip: null }
+            : describeEvidence(results[option.value]?.evidence, key, field, { listArea: areaOnly });
+          const action = option.label + (areaOnly ? " " + key.toUpperCase() + " 영역" : " " + field) + "을 저장값으로 선택";
           return <button type="button" key={option.value} className={"ai-aibom-value-card" + (selected ? " is-selected" : "") + (option.value === "merged" ? " is-merged" : "")}
-            onClick={() => areaOnly ? onSelect(key, option.value) : onFieldSelect(fieldKey, option.value)} title={option.label + (areaOnly ? " " + key.toUpperCase() + " 영역" : " " + field) + "을 저장값으로 선택"}>
+            onClick={() => areaOnly ? onSelect(key, option.value) : onFieldSelect(fieldKey, option.value)} title={evidence.tooltip ? action + "\n\n" + evidence.tooltip : action}>
             {selected && <span className="ai-aibom-card-check" aria-label="선택됨">✓</span>}<pre>{aibomValue(value)}</pre>
+            {evidence.label && <small className="ai-aibom-evidence">{evidence.label}</small>}
           </button>;
         })}</>;
         })()}</div>)}
@@ -231,9 +241,20 @@ function AibomDraftSummary({ results, chosenKey, overrides, fieldOverrides, onSe
 function ValueCell({ result, run, field, state, onSelect, sourceName }) {
   if (!result) return <div className="ai-merge-cell is-unavailable" data-source={sourceName}><span>{run.status === "error" ? "조사 실패" : "결과 없음"}</span></div>;
   const value = displayValue(result.draft?.[field]);
-  const evidence = evidenceFor(result, field);
-  return <button type="button" className={`ai-merge-cell${state ? ` is-${state}` : ""}${value ? "" : " is-empty"}`} data-source={sourceName} onClick={onSelect} aria-pressed={state === "selected"} title={state === "selected" ? "현재 병합 값과 동일" : "이 값으로 바꾸기"}>
+  const inherited = isInherited(result, field);
+  // An inherited value was not researched: the URLs the AI gave backed the family it suggested instead.
+  const evidence = inherited ? null : evidenceFor(result, field);
+  const lineage = result.catalogLineage || {};
+  // Native tooltip: the action hint, then the evidence URLs (and the AI's note) behind "출처 N".
+  const hint = [
+    state === "selected" ? "현재 병합 값과 동일" : "이 값으로 바꾸기",
+    inherited ? `부모 모델 ${lineage.parentModelId} 에서 상속한 값입니다.\nAI가 제안한 값: ${displayValue(lineage.suggestedFamily?.[field]) || "없음"}` : null,
+    evidence?.urls?.length ? `출처 ${evidence.urls.length}개 (근거 ${evidence.confidence})\n${evidence.urls.map((url) => `• ${url}`).join("\n")}` : null,
+    evidence?.note ? `메모: ${evidence.note}` : null
+  ].filter(Boolean).join("\n\n");
+  return <button type="button" className={`ai-merge-cell${state ? ` is-${state}` : ""}${value ? "" : " is-empty"}`} data-source={sourceName} onClick={onSelect} aria-pressed={state === "selected"} title={hint}>
     <strong>{value || "값 없음"}</strong>
+    {inherited && <small className="is-inherited">부모 모델에서 상속</small>}
     {evidence && <small>근거 {evidence.confidence}{evidence.urls?.length ? ` · 출처 ${evidence.urls.length}` : ""}</small>}
   </button>;
 }
@@ -354,6 +375,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
     const controller = new AbortController();
     abortRef.current = controller;
 
+    const failures = {};
     const runSource = async (key) => {
       try {
         const payload = await streamAdminModelResearch(modelName, streamHandler(key), controller.signal, key);
@@ -361,7 +383,8 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
         setResults((current) => ({ ...current, [key]: payload }));
         return payload;
       } catch (error) {
-        updateRun(key, { status: "error", error: error.name === "AbortError" ? "취소됨" : error.message });
+        failures[key] = error.name === "AbortError" ? "취소됨" : error.message;
+        updateRun(key, { status: "error", error: failures[key] });
         return null;
       }
     };
@@ -370,7 +393,8 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
     if (controller.signal.aborted) return;
     if (!huggingface && !paper) {
       abortRef.current = null;
-      setSearchError("두 조사 방식 모두 결과를 얻지 못했습니다. 모델명을 확인하고 다시 시도해 주세요.");
+      // Show why each route failed: a bad model name and a server / provider problem need different fixes.
+      setSearchError(`두 조사 방식 모두 결과를 얻지 못했습니다. ${sourceKeys.map((key) => `${sourceLabel(key)}: ${failures[key] || "알 수 없는 오류"}`).join(" / ")}`);
       setStage("input");
       return;
     }
@@ -521,6 +545,15 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
     return draft;
   }, [stage, baseResult, overrides, results, aibomKey]);
 
+  const finalEvidence = useMemo(() => {
+    if (stage !== "review" || !baseResult) return [];
+    const baseKey = results.merged ? "merged" : results.huggingface ? "huggingface" : "paper";
+    return composeEvidence({
+      results, baseKey, aibomKey, catalogFields: mergeFields.map(([field]) => field),
+      overrides, aibomOverrides, aibomFieldOverrides
+    });
+  }, [stage, baseResult, results, aibomKey, overrides, aibomOverrides, aibomFieldOverrides]);
+
   const overrideCount = Object.keys(overrides).length;
   const workingTitle = runs.merged.status === "loading" ? "두 조사 결과를 AI가 병합하고 있습니다" : `“${query}” 정보를 찾고 있습니다`;
 
@@ -651,7 +684,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
                   {researchSources.map((option) => <ValueCell key={option.value} sourceName={option.label} result={results[option.value]} run={runs[option.value]} field={field} state={cellState(field, option.value)} onSelect={() => setOverride(field, overrides[field] === option.value ? null : option.value)} />)}
                   <div className={`ai-merge-final${overridden ? " is-override" : ""}${value ? "" : " is-empty"}`} data-source="병합 결과">
                     <strong>{value || "값 없음"}</strong>
-                    <small>{overridden ? <b>수동 선택 · {sourceLabel(overrides[field])}</b> : decision ? <><b>{decisionLabels[decision.chosen] || decision.chosen}</b>{decision.rationale ? ` · ${decision.rationale}` : ""}</> : results.merged ? "결정 정보 없음" : sourceLabel(results.huggingface ? "huggingface" : "paper")}</small>
+                    <small>{overridden ? <b>수동 선택 · {sourceLabel(overrides[field])}</b> : isInherited(baseResult, field) ? <><b className="is-inherited">부모 모델에서 상속</b> · {baseResult.catalogLineage.parentModelId}</> : decision ? <><b>{decisionLabels[decision.chosen] || decision.chosen}</b>{decision.rationale ? ` · ${decision.rationale}` : ""}</> : results.merged ? "결정 정보 없음" : sourceLabel(results.huggingface ? "huggingface" : "paper")}</small>
                     {overridden && <button type="button" onClick={() => setOverride(field, null)}>AI 값으로</button>}
                   </div>
                 </div>;
@@ -665,7 +698,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
             onSelect={(area, source) => setAibomOverrides((current) => ({ ...current, [area]: source }))}
             onFieldSelect={(field, source) => setAibomFieldOverrides((current) => ({ ...current, [field]: source }))} />
 
-          {baseResult.parentCandidates?.length > 0 && <div className="ai-result-section"><div className="ai-result-heading"><strong>부모 모델 후보</strong><span>{baseResult.parentCandidates.length}</span></div><ul className="ai-parent-list">{baseResult.parentCandidates.map((candidate) => <li key={`${candidate.modelId}-${candidate.relationshipType}`}><strong>{candidate.modelId}</strong><span>{candidate.relationshipType} · 신뢰도 {candidate.confidence}</span></li>)}</ul></div>}
+          {baseResult.parentCandidates?.length > 0 && <div className="ai-result-section"><div className="ai-result-heading"><strong>부모 모델 후보</strong><span>{baseResult.parentCandidates.length}</span></div><ul className="ai-parent-list">{baseResult.parentCandidates.map((candidate) => <li key={`${candidate.modelId}-${candidate.relationshipType}`}><strong>{candidate.modelId}</strong><span>{candidate.relationshipType} · 신뢰도 {candidate.confidence}{candidate.modelId.toLowerCase() === (finalDraft.parentModelId || "").toLowerCase() ? ` · 부모로 연결됨 (Depth ${finalDraft.hierarchyDepth})` : ""}</span></li>)}</ul></div>}
 
           {baseResult.warnings?.length > 0 && <div className="ai-warning-list"><strong>검토할 항목</strong><ul>{baseResult.warnings.map((warning, index) => <li key={`${index}-${warning}`}>{warning}</li>)}</ul></div>}
 
@@ -680,7 +713,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
             </details>;
           })}
 
-          <div className="create-dialog-actions"><button type="button" className="admin-secondary" onClick={resetSearch}>다시 검색</button><button type="button" className="admin-primary" onClick={() => onUseDraft(finalDraft, finalAibom, runId)}>편집 화면에서 검토</button></div>
+          <div className="create-dialog-actions"><button type="button" className="admin-secondary" onClick={resetSearch}>다시 검색</button><button type="button" className="admin-primary" onClick={() => onUseDraft(finalDraft, finalAibom, runId, finalEvidence)}>편집 화면에서 검토</button></div>
         </div>}
       </section>
     </div>
@@ -734,6 +767,8 @@ export default function AdminApp() {
   const [aibomRefresh, setAibomRefresh] = useState(0);
   const [pendingAibom, setPendingAibom] = useState(null);
   const [pendingRunId, setPendingRunId] = useState(null);
+  const [pendingEvidence, setPendingEvidence] = useState(null);
+  const [storedEvidence, setStoredEvidence] = useState(null);
   const [historyRunId, setHistoryRunId] = useState(undefined); // undefined: closed, null: open without selection
   const aibomEditorRef = useRef(null);
 
@@ -765,6 +800,17 @@ export default function AdminApp() {
     window.history.replaceState({}, "", url);
   }, [selectedId]);
 
+  // Evidence of the researched values: stored rows for a registered model, the draft's rows before that.
+  useEffect(() => {
+    setStoredEvidence(null);
+    if (!selectedId) return undefined;
+    let cancelled = false;
+    fetchAdminModelEvidence(selectedId).then((rows) => { if (!cancelled) setStoredEvidence(rows); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [selectedId, aibomRefresh]);
+  const evidenceRows = selectedId ? storedEvidence : pendingEvidence;
+  const cev = (field) => evidenceRows?.filter((row) => row.area === "catalog" && row.field === field) || null;
+
   const families = useMemo(() => [...new Map(models.map((model) => [model.familyKey, model.familyName])).entries()], [models]);
   const visibleModels = useMemo(() => models.filter((model) => {
     const query = search.trim().toLowerCase();
@@ -795,19 +841,21 @@ export default function AdminApp() {
     setLicenseText(model.licenseReported == null ? "" : jsonText(model.licenseReported));
     setAiDraft(false);
     setPendingAibom(null);
+    setPendingEvidence(null);
     setNotice(null);
   }
 
   function startCreate() {
     const family = familyFilter !== "all" ? families.find(([key]) => key === familyFilter) : null;
     const fresh = { ...EMPTY_MODEL, familyKey: family?.[0] || "", familyName: family?.[1] || "" };
-    setSelectedId(null); setForm(normalizeForForm(fresh)); setDetailsText("{}"); setChangeText(""); setLicenseText(""); setNotice(null); setCreateMode(null); setAiDraft(false); setPendingAibom(null);
+    setSelectedId(null); setForm(normalizeForForm(fresh)); setDetailsText("{}"); setChangeText(""); setLicenseText(""); setNotice(null); setCreateMode(null); setAiDraft(false); setPendingAibom(null); setPendingEvidence(null);
   }
 
-  function useAiDraft(draft, aibom = null, runId = null) {
+  function useAiDraft(draft, aibom = null, runId = null, evidence = null) {
     setSelectedId(null);
     setPendingAibom(aibom);
     setPendingRunId(runId);
+    setPendingEvidence(evidence);
     setForm(normalizeForForm(draft));
     setDetailsText(jsonText(draft.detailsJson || {}));
     setChangeText("");
@@ -842,6 +890,7 @@ export default function AdminApp() {
         familyReleaseDate: form.familyReleaseDate || null
       };
       const aibomPayload = aibomEditorRef.current?.getValue();
+      const evidenceRenames = aibomEditorRef.current?.getEvidenceRenames() || [];
       const savedResult = aibomPayload
         ? await saveAdminModelWithAibom(selectedId, payload, aibomPayload)
         : { model: selectedId ? await updateAdminModel(selectedId, payload) : await createAdminModel(payload) };
@@ -850,11 +899,24 @@ export default function AdminApp() {
         // Remember which research run produced this catalog record (shown in the research history).
         await linkResearchRun(pendingRunId, saved.modelId).catch(() => {});
       }
+      let evidenceError = null;
+      if (evidenceRows?.length && (aibomPayload || !selectedId)) {
+        // Keep the evidence per model in step with the saved values: rows follow list items whose key was
+        // edited and are dropped for items that were removed.
+        const kept = pruneEvidence(rekeyEvidence(evidenceRows, evidenceRenames), aibomPayload);
+        if (!selectedId || evidenceRenames.length || kept.length !== evidenceRows.length) {
+          const runId = selectedId ? evidenceRows.find((row) => row.runId)?.runId ?? null : pendingRunId;
+          await saveAdminModelEvidence(saved.modelId, kept, runId).catch((error) => { evidenceError = error.message; });
+        }
+      }
       setPendingAibom(null);
       setPendingRunId(null);
+      setPendingEvidence(null);
       await reload(saved.modelId);
       setAibomRefresh((value) => value + 1);
-      setNotice({ type: "success", text: selectedId ? "변경사항이 저장되었습니다." : "새 모델이 등록되었습니다." });
+      setNotice(evidenceError
+        ? { type: "error", text: `모델은 저장되었지만 값별 근거를 저장하지 못했습니다: ${evidenceError}` }
+        : { type: "success", text: selectedId ? "변경사항이 저장되었습니다." : "새 모델이 등록되었습니다." });
     } catch (error) {
       setNotice({ type: "error", text: error.message });
     } finally { setSaving(false); }
@@ -917,32 +979,32 @@ export default function AdminApp() {
           {aiDraft && <div className="ai-draft-banner"><span>✦</span><div><strong>AI가 작성한 초안입니다</strong><p>내용과 출처를 확인하고 필요한 항목을 수정한 뒤 등록해 주세요.{pendingAibom ? ` AIBOM(평가 ${pendingAibom.evaluation?.length || 0}건 · 데이터셋 ${pendingAibom.dataset?.length || 0}개 · 근거 ${pendingAibom.reference?.length || 0}개)을 포함한 전체 정보가 한 번에 저장됩니다.` : ""}</p></div><em>검토 필요</em></div>}
           <form onSubmit={save}>
             <fieldset><legend>기본 정보</legend><div className="admin-form-grid">
-              <Field label="Model ID"><Input field="modelId" form={form} setForm={setForm} required disabled={Boolean(selectedId)} /></Field>
-              <Field label="Namespace"><Input field="namespace" form={form} setForm={setForm} required /></Field>
-              <Field label="Model name"><Input field="modelName" form={form} setForm={setForm} required /></Field>
-              <Field label="Role"><select value={form.modelRole} onChange={(e) => setForm({ ...form, modelRole: e.target.value })}><option>BASE</option><option>INSTRUCT</option><option>DERIVED</option></select></Field>
-              <Field label="Family key"><Input field="familyKey" form={form} setForm={setForm} required /></Field>
-              <Field label="Family name"><Input field="familyName" form={form} setForm={setForm} required /></Field>
-              <Field label="Model URL" wide><Input field="modelUrl" form={form} setForm={setForm} type="url" required /></Field>
-              <Field label="Description" wide><textarea value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} rows="3" /></Field>
+              <Field label="Model ID" evidence={cev("modelId")}><Input field="modelId" form={form} setForm={setForm} required disabled={Boolean(selectedId)} /></Field>
+              <Field label="Namespace" evidence={cev("namespace")}><Input field="namespace" form={form} setForm={setForm} required /></Field>
+              <Field label="Model name" evidence={cev("modelName")}><Input field="modelName" form={form} setForm={setForm} required /></Field>
+              <Field label="Role" evidence={cev("modelRole")}><select value={form.modelRole} onChange={(e) => setForm({ ...form, modelRole: e.target.value })}><option>BASE</option><option>INSTRUCT</option><option>DERIVED</option></select></Field>
+              <Field label="Family key" evidence={cev("familyKey")}><Input field="familyKey" form={form} setForm={setForm} required /></Field>
+              <Field label="Family name" evidence={cev("familyName")}><Input field="familyName" form={form} setForm={setForm} required /></Field>
+              <Field label="Model URL" wide evidence={cev("modelUrl")}><Input field="modelUrl" form={form} setForm={setForm} type="url" required /></Field>
+              <Field label="Description" wide evidence={cev("description")}><textarea value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} rows="3" /></Field>
             </div></fieldset>
 
             <fieldset><legend>계층 구조</legend><p className="admin-help">부모를 바꾸면 현재 모델과 모든 하위 모델의 depth가 자동으로 재계산됩니다.</p><div className="admin-form-grid">
               <Field label="Parent model"><select value={form.parentModelId || ""} onChange={(e) => setForm({ ...form, parentModelId: e.target.value || null })}>
                 <option value="">없음 (Root)</option>{models.filter((model) => !descendants.has(model.modelId) && (!form.familyKey || model.familyKey === form.familyKey)).map((model) => <option value={model.modelId} key={model.modelId}>{model.modelName} — {model.modelId}</option>)}
               </select></Field>
-              <Field label="Relationship type"><Input field="relationshipType" form={form} setForm={setForm} disabled={!form.parentModelId} placeholder="fineTunedFrom" required={Boolean(form.parentModelId)} /></Field>
-              <Field label="Sibling order"><Input field="siblingOrder" form={form} setForm={setForm} type="number" min="0" /></Field>
+              <Field label="Relationship type" evidence={cev("relationshipType")}><Input field="relationshipType" form={form} setForm={setForm} disabled={!form.parentModelId} placeholder="fineTunedFrom" required={Boolean(form.parentModelId)} /></Field>
+              <Field label="Sibling order" evidence={cev("siblingOrder")}><Input field="siblingOrder" form={form} setForm={setForm} type="number" min="0" /></Field>
               <Field label="Change details JSON" wide><textarea className="code-input" value={changeText} onChange={(e) => setChangeText(e.target.value)} rows="5" placeholder={'{\n  "added_task": "..."\n}'} /></Field>
             </div></fieldset>
 
             <fieldset><legend>모델 메타데이터</legend><div className="admin-form-grid">
-              <Field label="Family release date"><Input field="familyReleaseDate" form={form} setForm={setForm} type="date" /></Field>
-              {textFields.map(([field, label]) => <Field label={label} key={field} wide={field === "packageUrl"}><Input field={field} form={form} setForm={setForm} /></Field>)}
+              <Field label="Family release date" evidence={cev("familyReleaseDate")}><Input field="familyReleaseDate" form={form} setForm={setForm} type="date" /></Field>
+              {textFields.map(([field, label]) => <Field label={label} key={field} wide={field === "packageUrl"} evidence={cev(field)}><Input field={field} form={form} setForm={setForm} /></Field>)}
               <Field label="License reported JSON" wide><textarea className="code-input" value={licenseText} onChange={(e) => setLicenseText(e.target.value)} rows="3" placeholder='"apache-2.0" 또는 ["license-a"]' /></Field>
             </div></fieldset>
 
-            {(selectedId || pendingAibom) && <AibomEditor ref={aibomEditorRef} modelId={selectedId} initialAibom={pendingAibom} refreshKey={aibomRefresh} disabled={saving} />}
+            {(selectedId || pendingAibom) && <AibomEditor ref={aibomEditorRef} modelId={selectedId} initialAibom={pendingAibom} refreshKey={aibomRefresh} disabled={saving} evidence={evidenceRows} />}
 
             <div className="admin-form-actions">
               {selectedId && <button type="button" className="admin-danger" onClick={remove} disabled={saving}>삭제</button>}

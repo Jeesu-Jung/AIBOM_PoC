@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from .aibom import delete_model_aibom, sync_catalog_lineage
+from .evidence import delete_model_evidence
 from .models import ModelHierarchy, ModelInfo
 
 
@@ -214,6 +215,7 @@ def delete_admin_model(session: Session, model_id: str) -> None:
             detail="Move or delete this model's children before deleting it.",
         )
     delete_model_aibom(session, model_id)
+    delete_model_evidence(session, model_id)
     hierarchy = session.get(ModelHierarchy, model_id)
     if hierarchy:
         session.delete(hierarchy)

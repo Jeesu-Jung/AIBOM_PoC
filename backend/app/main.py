@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from fastapi import Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -23,6 +25,7 @@ from .admin import (
     update_admin_model,
 )
 from .config import settings
+from .evidence import ModelEvidenceWrite, load_model_evidence, replace_model_evidence
 from .database import SessionLocal, get_db
 from pydantic import BaseModel, Field
 
@@ -40,7 +43,9 @@ from .research import (
     CatalogContext,
     MergeResearchRequest,
     ModelResearchRequest,
+    attach_evidence,
     load_catalog_context,
+    resolve_catalog_lineage,
     stream_model_merge,
     stream_model_research,
 )
@@ -162,7 +167,19 @@ def admin_research_results(modelName: str, db: Session = Depends(get_db)) -> dic
     if len(modelName.strip()) < 2:
         raise HTTPException(status_code=422, detail="modelName must be at least 2 characters.")
     try:
-        return load_research_results(db, modelName)
+        data = load_research_results(db, modelName)
+        # Stored drafts predate later catalog changes (e.g. the parent was registered afterwards),
+        # so place them in the current tree again before the dialog shows them.
+        context = load_catalog_context(db)
+        for row in data["results"].values():
+            if row and isinstance(row.get("result"), dict):
+                row["result"] = resolve_catalog_lineage(deepcopy(row["result"]), context)
+        # Evidence rows follow the lineage (inherited fields carry none) and older runs stored none.
+        inputs = {key: (data["results"].get(key) or {}).get("result") for key in ("huggingface", "paper")}
+        for row in data["results"].values():
+            if row and isinstance(row.get("result"), dict):
+                attach_evidence(row["result"], inputs)
+        return data
     except SQLAlchemyError as error:
         raise _database_unavailable() from error
 
@@ -255,6 +272,31 @@ def admin_aibom_options(db: Session = Depends(get_db)) -> dict:
     try:
         return load_aibom_options(db)
     except SQLAlchemyError as error:
+        raise _database_unavailable() from error
+
+
+# Registered before the `{model_id:path}` routes below, which would otherwise swallow `/evidence`.
+@app.get("/api/v1/admin/models/{model_id:path}/evidence", tags=["admin"])
+def admin_model_evidence(model_id: str, db: Session = Depends(get_db)) -> list[dict]:
+    """Evidence URLs recorded for this model's researched values (catalog fields and AIBOM areas)."""
+    try:
+        if load_model_row(db, model_id) is None:
+            raise HTTPException(status_code=404, detail="Model not found.")
+        return load_model_evidence(db, model_id)
+    except SQLAlchemyError as error:
+        raise _database_unavailable() from error
+
+
+@app.put("/api/v1/admin/models/{model_id:path}/evidence", tags=["admin"])
+def admin_save_model_evidence(model_id: str, payload: ModelEvidenceWrite, db: Session = Depends(get_db)) -> list[dict]:
+    """Replace the model's evidence rows (sent when a model is registered from an AI research draft)."""
+    try:
+        return replace_model_evidence(db, model_id, payload)
+    except HTTPException:
+        db.rollback()
+        raise
+    except SQLAlchemyError as error:
+        db.rollback()
         raise _database_unavailable() from error
 
 

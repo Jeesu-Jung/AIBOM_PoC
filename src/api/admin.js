@@ -103,3 +103,7 @@ export const saveAdminModelAibom = (modelId, payload) => request(`/api/v1/admin/
   method: "PUT", body: JSON.stringify(payload)
 });
 export const fetchAdminAibomOptions = () => request("/api/v1/admin/aibom/options");
+export const fetchAdminModelEvidence = (modelId) => request(`/api/v1/admin/models/${modelPath(modelId)}/evidence`);
+export const saveAdminModelEvidence = (modelId, items, runId = null) => request(`/api/v1/admin/models/${modelPath(modelId)}/evidence`, {
+  method: "PUT", body: JSON.stringify({ runId, items: items.map(({ area, itemKey, field, url, locator, confidence, note, source }) => ({ area, itemKey, field, url, locator, confidence, note, source })) })
+});

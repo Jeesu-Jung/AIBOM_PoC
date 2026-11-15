@@ -153,7 +153,16 @@ class EvaluationDraft(_Strict):
     baseline_model: str | None = Field(description="Model the source compares against (e.g. the parent), exact id.")
     baseline_score: float | None
     evaluator_model: str | None = Field(description="Judge / verifier model used to score, if any.")
-    source_url: str = Field(description="URL of the table or card the number comes from.")
+    source_url: str = Field(
+        description="URL of the page that shows this number. Use the most specific page you actually opened: "
+                    "for a paper the full-text page (`https://arxiv.org/html/<id>v<N>` or the PDF) rather than "
+                    "only the abstract page, for a model card the repository page. Never invent a URL or an anchor.")
+    source_locator: str | None = Field(
+        description="Where on that page the number is: the table / figure number with its caption or the section "
+                    "heading, plus the row and column when helpful, e.g. `Table 2 (Main results), row "
+                    "HuatuoGPT-o1-8B, column MedQA`, `Section 4.2, Table 3`, `Appendix C, Table 9`, or "
+                    "`Model card > Evaluation table`. Copy the numbering as printed; null only when the source "
+                    "has no numbered table, figure or section for it.")
     reported_at: date | None = Field(description="Publication date of that source revision when shown.")
 
 
@@ -192,6 +201,19 @@ class ReferenceDraft(_Strict):
     revision: str | None = Field(description="Git commit SHA, arXiv version (`v2`) or document version; null if unknown.")
 
 
+class AibomFieldEvidence(_Strict):
+    area: Literal["model", "provenance", "transformation"]
+    fields: list[str] = Field(
+        description="Field paths inside that area exactly as spelled in this schema, dotted for nested "
+                    "objects: `architecture.parameter_count`, `tokenizer.vocab_size`, `modality.languages`, "
+                    "`artifact.format`, `intended_use`, `capabilities`, `limitations`, `knowledge_cutoff`, "
+                    "`release_date` (model); `origin`, `provider`, `relation` (provenance); `inputs`, `method`, "
+                    "`objective`, `hyperparameters.<name>`, `datasets`, `timestamp` (transformation).")
+    confidence: Literal["high", "medium", "low"]
+    urls: list[str] = Field(description="URLs of the pages that state these values (not a search result page).")
+    note: str | None = Field(description="Optional Korean note about conflicts or caveats for these fields.")
+
+
 class AibomDraft(_Strict):
     """The model's AIBOM: the 8 areas of the AIBOM schema (MODEL, PROVENANCE, TRANSFORMATION, DATASET,
     EVALUATION, SAFETY_ETHICS, LICENSE_POLICY, REFERENCE), separate from the catalog draft. Every list
@@ -208,6 +230,10 @@ class AibomDraft(_Strict):
     license_policy: list[LicenseDraft]
     references: list[ReferenceDraft] = Field(description="Every source document opened, with its revision when shown.")
     unknowns: list[str] = Field(description="English phrases for facts the sources do not disclose.")
+    field_evidence: list[AibomFieldEvidence] = Field(
+        description="Which URLs support which MODEL / PROVENANCE / TRANSFORMATION values: group the fields "
+                    "that share the same sources into one entry, and cover every non-null field of those "
+                    "three areas. The list areas carry their own `evidence_urls` / `source_url` per item.")
 
 
 # --- conversion ------------------------------------------------------------------------------
@@ -323,6 +349,7 @@ def aibom_write_from_draft(draft: AibomDraft | dict[str, Any]) -> dict[str, Any]
             "extensions": _compact({"score_text": ev.score_text, "baseline_model": ev.baseline_model,
                                     "baseline_score": ev.baseline_score, "evaluator_model": ev.evaluator_model,
                                     "reference": (cite([ev.source_url]) or [None])[0],
+                                    "reference_locator": ev.source_locator,
                                     "also_reported_in": [u for u in cite(also_reported.get(index, []))
                                                          if u != ev.source_url]}),
         } for index, ev in enumerate(evaluations)],

@@ -312,6 +312,18 @@ body {
   margin-bottom: 10px;
 }
 
+.derived-branch {
+  display: grid;
+  gap: 12px;
+}
+
+/* Descendants of a derived model: indented under their parent with a guide line. */
+.derived-children {
+  margin-left: 10px;
+  padding-left: 14px;
+  border-left: 2px solid rgba(65, 108, 188, 0.24);
+}
+
 .branch-header h3,
 .focus-card h4 {
   margin: 0;

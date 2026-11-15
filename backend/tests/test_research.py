@@ -59,7 +59,8 @@ def aibom_content() -> dict:
         "evaluations": [{"benchmark": "MMLU", "dataset": "cais/mmlu", "metric": "acc", "score": 70.5,
                          "score_text": None, "shots": 5, "configuration_notes": None, "baseline_model": "org/model-base",
                          "baseline_score": 65.0, "evaluator_model": None,
-                         "source_url": "https://example.test/model", "reported_at": "2026-01-02"}],
+                         "source_url": "https://example.test/model", "source_locator": "Table 2 (Main results)",
+                         "reported_at": "2026-01-02"}],
         "safety_ethics": {"risk_summary": None,
                           "safety_risk": [{"description": "May hallucinate.", "source_url": "https://example.test/model"}],
                           "ethical_considerations": [], "prohibited_use": [], "mitigation": []},
@@ -69,6 +70,10 @@ def aibom_content() -> dict:
                             "source_url": "https://example.test/model"}],
         "references": [{"type": "model_card", "uri": "https://example.test/model", "title": "Card", "revision": "abc123"}],
         "unknowns": ["exact training data mixture"],
+        "field_evidence": [{"area": "model", "fields": ["architecture.parameter_count", "tokenizer.vocab_size"],
+                            "confidence": "high", "urls": ["https://example.test/model/config.json"], "note": None},
+                           {"area": "transformation", "fields": ["inputs", "method"], "confidence": "medium",
+                            "urls": ["https://arxiv.org/abs/2601.00001"], "note": "논문 3장"}],
     }
 
 
@@ -499,3 +504,116 @@ def test_merge_stream_endpoint_reports_missing_configuration(monkeypatch) -> Non
 
     assert response.status_code == 200
     assert "OPENROUTER_API_KEY is not configured." in response.text
+
+
+def _lineage_context() -> CatalogContext:
+    from app.research import CatalogModel
+
+    family = {"family_key": "llama31", "family_name": "Llama 3.1", "family_developer": "Meta",
+              "family_release_date": date(2024, 7, 23), "family_license_name": "Llama 3.1 Community License"}
+    return CatalogContext(models=(
+        CatalogModel(model_id="meta-llama/Llama-3.1-8B-Instruct", **family),
+        CatalogModel(model_id="FreedomIntelligence/HuatuoGPT-o1-8B", depth=1,
+                     parent_model_id="meta-llama/Llama-3.1-8B-Instruct", **family),
+    ))
+
+
+def _grandchild_content() -> dict:
+    content = research_content()
+    content["draft"].update({
+        "modelId": "BrainHealthAI/MedCortex-Huatuo-8B-e1", "namespace": "BrainHealthAI",
+        "modelName": "MedCortex-Huatuo-8B-e1", "modelRole": "DERIVED",
+        "familyKey": "huatuogpto1", "familyName": "HuatuoGPT-o1", "familyDeveloper": "FreedomIntelligence",
+    })
+    content["parentCandidates"] = [
+        {"modelId": "meta-llama/Llama-3.1-8B-Instruct", "relationshipType": "domainFineTunedFrom",
+         "confidence": "low", "evidenceUrls": []},
+        {"modelId": "freedomintelligence/huatuogpt-o1-8b", "relationshipType": "domainFineTunedFrom",
+         "confidence": "high", "evidenceUrls": ["https://example.test/model"]},
+    ]
+    return content
+
+
+def test_derivative_of_a_derivative_joins_the_parent_family_at_depth_two() -> None:
+    upstream = {"choices": [{"message": {"content": json.dumps(_grandchild_content())}}]}
+
+    result = parse_openrouter_response(upstream, context=_lineage_context())
+    draft = result["draft"]
+
+    assert draft["parentModelId"] == "FreedomIntelligence/HuatuoGPT-o1-8B"  # catalog casing, best confidence
+    assert draft["relationshipType"] == "domainFineTunedFrom"
+    assert draft["hierarchyDepth"] == 2
+    assert (draft["familyKey"], draft["familyName"]) == ("llama31", "Llama 3.1")
+    assert (draft["familyDeveloper"], draft["familyReleaseDate"]) == ("Meta", "2024-07-23")
+    assert any("huatuogpto1" in warning and "llama31" in warning for warning in result["warnings"])
+    assert result["catalogLineage"]["suggestedFamily"]["familyKey"] == "huatuogpto1"
+
+
+def test_lineage_is_re_resolved_against_the_current_catalog() -> None:
+    from app.research import resolve_catalog_lineage
+
+    upstream = {"choices": [{"message": {"content": json.dumps(_grandchild_content())}}]}
+    full = _lineage_context()
+    without_parents = CatalogContext(models=(replace(full.models[0], model_id="other/model"),))
+
+    result = parse_openrouter_response(upstream, context=without_parents)
+    assert result["draft"]["parentModelId"] is None
+    assert result["draft"]["familyKey"] == "huatuogpto1"
+    assert any("카탈로그에 등록되어 있지 않아" in warning for warning in result["warnings"])
+
+    resolve_catalog_lineage(result, full)  # the parent was registered afterwards
+    assert result["draft"]["hierarchyDepth"] == 2
+    assert result["draft"]["familyKey"] == "llama31"
+    assert not any("카탈로그에 등록되어 있지 않아" in warning for warning in result["warnings"])
+
+    resolve_catalog_lineage(result, without_parents)  # and removed again
+    assert result["draft"]["parentModelId"] is None
+    assert (result["draft"]["familyKey"], result["draft"]["familyDeveloper"]) == ("huatuogpto1", "FreedomIntelligence")
+    assert sum("카탈로그에 등록되어 있지 않아" in warning for warning in result["warnings"]) == 1
+
+
+def test_prompt_lists_family_and_parent_of_existing_models() -> None:
+    prompt = build_openrouter_payload("org/model", context=_lineage_context())["messages"][1]["content"]
+
+    assert "- FreedomIntelligence/HuatuoGPT-o1-8B | llama31 | meta-llama/Llama-3.1-8B-Instruct" in prompt
+    assert "- meta-llama/Llama-3.1-8B-Instruct | llama31 | root" in prompt
+
+
+def test_upstream_error_carries_openrouter_response_to_the_client() -> None:
+    from app.research import _upstream_error
+
+    body = json.dumps({"error": {"message": "openai/gpt-6.0-luna is not a valid model ID", "code": 400},
+                       "user_id": "user_x"})
+    payload = _upstream_error(400, body.encode(), "openai/gpt-6.0-luna")
+    assert payload["message"] == "OpenRouter HTTP 400: openai/gpt-6.0-luna is not a valid model ID"
+    assert payload["upstream"] == {"status": 400, "code": 400, "model": "openai/gpt-6.0-luna", "metadata": None,
+                                   "message": "openai/gpt-6.0-luna is not a valid model ID"}
+    assert "user_x" not in json.dumps(payload)
+
+    chunk_error = {"code": 502, "message": "Provider returned error",
+                   "metadata": {"provider_name": "OpenAI", "raw": "Invalid schema for response_format"}}
+    payload = _upstream_error(None, chunk_error)
+    assert payload["message"] == ("OpenRouter HTTP 502: Provider returned error | "
+                                  "OpenAI: Invalid schema for response_format")
+
+    assert _upstream_error(503, "<html>Bad gateway</html>")["message"] == "OpenRouter HTTP 503: <html>Bad gateway</html>"
+
+
+def test_stream_passes_openrouter_http_error_through(monkeypatch) -> None:
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, json={"error": {"message": "bad-model is not a valid model ID", "code": 400}})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(research.httpx, "AsyncClient",
+                        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    monkeypatch.setattr(research, "settings", replace(research.settings, openrouter_api_key="test-key"))
+    monkeypatch.setattr(main, "_load_research_context", lambda: CatalogContext())
+
+    response = TestClient(main.app).post("/api/v1/admin/model-research/stream", json={"modelName": "org/model"})
+
+    assert response.status_code == 200
+    assert "event: error" in response.text
+    assert "OpenRouter HTTP 400: bad-model is not a valid model ID" in response.text
+    assert '"upstream"' in response.text

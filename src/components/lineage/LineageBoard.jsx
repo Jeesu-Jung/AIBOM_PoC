@@ -5,11 +5,41 @@ function branchLabel(rootNode) {
   return rootNode.title.toLowerCase().includes("instruct") ? "Instruct branch" : "Base branch";
 }
 
+// Derived models can themselves have descendants, so each branch is drawn as a nested tree.
+function DerivedBranch({ node, childrenByParent, lineage, ...cardProps }) {
+  // `lineage` guards against a parent cycle in bad data.
+  const children = lineage.has(node.id) ? [] : childrenByParent.get(node.id) || [];
+  return (
+    <div className="derived-branch">
+      <NodeCard node={node} {...cardProps} />
+      {children.length > 0 && (
+        <div className="lane-stack derived-children">
+          {children.map((child) => (
+            <DerivedBranch key={child.id} node={child} childrenByParent={childrenByParent}
+              lineage={new Set([...lineage, node.id])} {...cardProps} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function countDescendants(nodeId, childrenByParent, seen = new Set()) {
+  if (seen.has(nodeId)) return 0;
+  seen.add(nodeId);
+  return (childrenByParent.get(nodeId) || []).reduce(
+    (count, child) => count + 1 + countDescendants(child.id, childrenByParent, seen), 0);
+}
+
 export default function LineageBoard({ context, activeNodeId, onSelect, familyRegistry }) {
   const { familyId, family, documentNode, rootNodes, derivedNodes } = context;
   const rootFamily = family.root_family || {};
   const focusLabel = rootFamily.focus_variant?.label || `${rootNodes.length} root model${rootNodes.length === 1 ? "" : "s"}`;
   const releaseLabel = rootFamily.release_date ? formatDate(rootFamily.release_date) : "release date not disclosed";
+  const childrenByParent = new Map();
+  derivedNodes.forEach((node) => {
+    childrenByParent.set(node.parent, [...(childrenByParent.get(node.parent) || []), node]);
+  });
 
   return (
     <section className="family-cluster" data-family-cluster={familyId}>
@@ -46,20 +76,22 @@ export default function LineageBoard({ context, activeNodeId, onSelect, familyRe
           <div className="lane-header"><span className="lane-title">Derived models</span></div>
           <div className="derived-grid">
             {rootNodes.map((rootNode) => {
-              const children = derivedNodes.filter((node) => node.parent === rootNode.id);
+              const children = childrenByParent.get(rootNode.id) || [];
+              const total = countDescendants(rootNode.id, childrenByParent);
               return (
                 <section className="derived-column" key={rootNode.id}>
                   <header className="branch-header">
                     <h3>{branchLabel(rootNode)}</h3>
                     <p>
-                      {children.length
-                        ? `${children.length} example descendant${children.length > 1 ? "s" : ""} from this root.`
+                      {total
+                        ? `${total} example descendant${total > 1 ? "s" : ""} from this root.`
                         : "No example descendants added for this root yet."}
                     </p>
                   </header>
                   <div className="lane-stack">
                     {children.map((node) => (
-                      <NodeCard key={node.id} node={node} activeNodeId={activeNodeId} onSelect={onSelect} familyRegistry={familyRegistry} />
+                      <DerivedBranch key={node.id} node={node} childrenByParent={childrenByParent} lineage={new Set()}
+                        activeNodeId={activeNodeId} onSelect={onSelect} familyRegistry={familyRegistry} />
                     ))}
                   </div>
                 </section>

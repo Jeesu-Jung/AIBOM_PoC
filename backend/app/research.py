@@ -21,6 +21,7 @@ from .aibom_research import (
     summarize_aibom,
 )
 from .config import settings
+from .evidence import build_result_evidence
 from .models import Dataset, ModelHierarchy, ModelInfo
 
 
@@ -80,7 +81,10 @@ class ResearchDraft(BaseModel):
             "Short lowercase slug that groups every checkpoint of one model family, letters and "
             "digits only, e.g. `llama31`, `qwen25`, `gemma3`. Reuse an existing family key from the "
             "catalog context whenever the model belongs to that family, even for third-party "
-            "derivatives. Coin a new key only when no listed family matches."
+            "derivatives. The family is the one of the lineage ROOT: a fine-tune of a fine-tune keeps "
+            "the original family (a model trained from `FreedomIntelligence/HuatuoGPT-o1-8B`, itself "
+            "derived from Llama 3.1, is `llama31`), never a family named after the intermediate "
+            "parent. Coin a new key only when no listed family matches."
         ),
     )
     family_name: str = Field(
@@ -253,12 +257,27 @@ class CatalogFamily:
 
 
 @dataclass(frozen=True)
+class CatalogModel:
+    """One catalog record with the facts a new descendant inherits from it."""
+
+    model_id: str
+    family_key: str
+    family_name: str
+    family_developer: str | None = None
+    family_release_date: date | None = None
+    family_license_name: str | None = None
+    parent_model_id: str | None = None
+    depth: int = 0
+
+
+@dataclass(frozen=True)
 class CatalogContext:
     """Existing catalog facts injected into the prompt so drafts reuse established keys."""
 
     families: tuple[CatalogFamily, ...] = ()
     relationship_types: tuple[str, ...] = ()
     model_ids: tuple[str, ...] = ()
+    models: tuple[CatalogModel, ...] = ()  # same records as model_ids, with family and tree position
     datasets: tuple[tuple[str, str], ...] = ()  # (identity, name) from the AIBOM dataset table
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
@@ -288,7 +307,28 @@ def load_catalog_context(session: Session) -> CatalogContext:
         )
         if value
     )
-    model_ids = tuple(session.scalars(select(ModelInfo.model_id).order_by(ModelInfo.model_id)))
+    models = tuple(
+        CatalogModel(
+            model_id=row.model_id,
+            family_key=row.family_key,
+            family_name=row.family_name,
+            family_developer=row.family_developer,
+            family_release_date=row.family_release_date,
+            family_license_name=row.family_license_name,
+            parent_model_id=row.parent_model_id,
+            depth=row.hierarchy_depth or 0,
+        )
+        for row in session.execute(
+            select(
+                ModelInfo.model_id, ModelInfo.family_key, ModelInfo.family_name, ModelInfo.family_developer,
+                ModelInfo.family_release_date, ModelInfo.family_license_name,
+                ModelHierarchy.parent_model_id, ModelHierarchy.hierarchy_depth,
+            )
+            .outerjoin(ModelHierarchy, ModelHierarchy.model_id == ModelInfo.model_id)
+            .order_by(ModelInfo.model_id)
+        )
+    )
+    model_ids = tuple(model.model_id for model in models)
     warnings: tuple[str, ...] = ()
     try:
         datasets = tuple(
@@ -304,6 +344,7 @@ def load_catalog_context(session: Session) -> CatalogContext:
         families=tuple(families.values()),
         relationship_types=relationship_types,
         model_ids=model_ids,
+        models=models,
         datasets=datasets,
         warnings=warnings,
     )
@@ -336,12 +377,16 @@ Research rules:
    Do not fabricate commit SHAs, dates, or parameter counts.
 6. Preserve exact casing for model ids, revisions, license identifiers, and relationship names.
 7. Family grouping: reuse an existing familyKey/familyName pair from the catalog context whenever
-   the model descends from that family, including third-party derivatives. Coin a new key only when
-   no listed family matches, and say so in warnings.
+   the model descends from that family, including third-party derivatives. Family membership
+   follows the lineage root, not the immediate parent: when the immediate parent is itself a
+   derivative (the catalog context shows each model's family and parent), use the parent's family
+   and never coin a family named after the intermediate model. Coin a new key only when no listed
+   family matches, and say so in warnings.
 8. Lineage has two views that must not be mixed up:
    - Catalog tree (`parentCandidates`): empty for BASE and INSTRUCT roles, because the catalog UI
      shows official checkpoints as roots. For DERIVED, list the immediate technical parent, not
-     merely the family root, and only when a source explicitly states the relationship. Use
+     merely the family root, and only when a source explicitly states the relationship. The parent
+     may itself be a DERIVED model (the tree can be any number of levels deep). Use
      relationshipType values from the camelCase vocabulary in the catalog context; if none fits,
      coin a camelCase verb ending in `From` and flag it in warnings.
    - AIBOM (`aibom.transformation.inputs`, `aibom.provenance.relation`): the real technical lineage
@@ -353,14 +398,24 @@ Research rules:
 9. Every non-null draft field except modelId, namespace, and modelName must be covered by at least
    one fieldEvidence entry whose fields list uses the draft's exact key names. In `aibom`, put the
    supporting URLs in the `evidence_urls` / `source_url` fields and list every opened source in
-   `aibom.references` with its revision (commit SHA, arXiv version) when shown.
+   `aibom.references` with its revision (commit SHA, arXiv version) when shown. In addition, every
+   non-null value of `aibom.model`, `aibom.provenance`, and `aibom.transformation` must be covered
+   by an `aibom.field_evidence` entry naming the exact page that states it, so a human reviewer can
+   open the URL and check that value. Cite the page that states the value, never a search page, and
+   do not attach a URL to a value it does not state.
 10. AIBOM content: record only what the sources state for THIS model.
     - Training and evaluation datasets: reuse the catalog's dataset identities when they match;
       otherwise use the Hugging Face dataset id, or `slug:<name>` for datasets without one. Describe
       undisclosed training corpora as one dataset with disclosure_status `undisclosed` or
       `partially_disclosed` instead of inventing names, and link derived datasets through `parents`.
     - Evaluations: copy this model's own reported benchmark numbers exactly (value, metric, shots,
-      baseline the source compares against). Never copy a parent's or sibling's numbers.
+      baseline the source compares against). Never copy a parent's or sibling's numbers. A human
+      will check every number against its source, so each evaluation needs `source_url` (the page
+      that shows the number, as specific as the page you actually opened) and `source_locator`
+      (the table or figure number with its caption, or the section heading, and the row / column
+      of the number, e.g. `Table 2 (Main results), row HuatuoGPT-o1-8B, column MedQA`). Rows from
+      different tables or sections must carry their own locator even when they share one URL. Do
+      not guess a table number you did not see; use the section heading or null instead.
     - Safety / ethics and license policy: take risks, prohibited uses, mitigations, usage policies,
       and restrictions from the model card, paper, license, or acceptable-use policy.
     - Put what the sources do not disclose in `aibom.unknowns`.
@@ -419,7 +474,8 @@ SOURCE_PROMPTS: dict[str, str] = {
   `arXiv:2407.21783`) in description.
 - AIBOM focus for this strategy: TRANSFORMATION (ordered training stages, objectives, stated
   hyperparameters, training datasets), DATASET (composition, sizes, processing, parent datasets),
-  EVALUATION (the paper's result tables for this exact model size and variant, with the baseline
+  EVALUATION (the paper's result tables for this exact model size and variant, each row with the
+  table number and caption or section it comes from in `source_locator`, and with the baseline
   the paper compares against), and SAFETY_ETHICS (safety evaluations, risks, mitigations). Record
   the arXiv version you read as the paper reference revision.
 - Do not copy leaderboard numbers from third-party sites, and do not copy numbers the paper reports
@@ -462,7 +518,16 @@ def _format_catalog_context(context: CatalogContext) -> str:
         lines.append("Existing families: none recorded yet.")
     lines.append("relationshipType vocabulary (catalog tree, camelCase): " + ", ".join(context.relationship_vocabulary))
     lines.append("AIBOM relation vocabulary (aibom.provenance.relation, snake_case): " + ", ".join(RELATION_VOCABULARY))
-    if context.model_ids:
+    if context.models:
+        lines.append(
+            "Existing model ids (preferred parent candidates when they are the true parent; "
+            "modelId | familyKey | catalog parent):"
+        )
+        lines.extend(
+            f"- {model.model_id} | {model.family_key} | {model.parent_model_id or 'root'}"
+            for model in context.models
+        )
+    elif context.model_ids:
         lines.append("Existing model ids (preferred parent candidates when they are the true parent):")
         lines.extend(f"- {model_id}" for model_id in context.model_ids)
     else:
@@ -628,6 +693,100 @@ STATUS_WARNINGS = {
 }
 
 
+FAMILY_FIELDS: tuple[str, ...] = (
+    "familyKey", "familyName", "familyDeveloper", "familyReleaseDate", "familyLicenseName",
+)
+_CONFIDENCE_RANK = {"high": 0, "medium": 1, "low": 2}
+
+
+def resolve_catalog_lineage(result: dict[str, Any], context: CatalogContext | None) -> dict[str, Any]:
+    """Place a research draft in the catalog tree, in place, from its parent candidates.
+
+    The research model only names parent candidates. The first candidate (best confidence first)
+    that is already a catalog record becomes `parentModelId`; the draft then takes that record's
+    depth + 1 and its family, so a derivative of a derivative stays in the root's family instead
+    of starting a new one. Safe to call again on a stored result: the family the research model
+    suggested is kept in `catalogLineage` and restored first, so the outcome always reflects the
+    current catalog (e.g. after the parent was registered).
+    """
+    draft = result.get("draft")
+    if not isinstance(draft, dict) or context is None or not context.models:
+        return result
+
+    previous = result.get("catalogLineage") if isinstance(result.get("catalogLineage"), dict) else {}
+    suggested = previous.get("suggestedFamily") or {name: draft.get(name) for name in FAMILY_FIELDS}
+    stale = set(previous.get("warnings") or [])
+    warnings = [item for item in (result.get("warnings") or []) if item not in stale]
+    draft.update({name: suggested.get(name) for name in FAMILY_FIELDS})
+    draft.update({"parentModelId": None, "relationshipType": None, "hierarchyDepth": 0})
+
+    by_id = {model.model_id: model for model in context.models}
+    by_folded = {model.model_id.casefold(): model for model in context.models}
+    own_id = str(draft.get("modelId") or "")
+    candidates = [
+        item for item in (result.get("parentCandidates") or [])
+        if isinstance(item, dict) and item.get("modelId") and item.get("relationshipType")
+        and str(item["modelId"]).casefold() != own_id.casefold()
+    ]
+    candidates.sort(key=lambda item: _CONFIDENCE_RANK.get(item.get("confidence"), len(_CONFIDENCE_RANK)))
+
+    notes: list[str] = []
+    parent: CatalogModel | None = None
+    if draft.get("modelRole") == "DERIVED":
+        for candidate in candidates:
+            parent = by_id.get(candidate["modelId"]) or by_folded.get(str(candidate["modelId"]).casefold())
+            if parent is not None:
+                draft["parentModelId"] = parent.model_id
+                draft["relationshipType"] = candidate["relationshipType"]
+                draft["hierarchyDepth"] = parent.depth + 1
+                break
+        if parent is None and candidates:
+            notes.append(
+                f"부모 후보 `{candidates[0]['modelId']}` 가 카탈로그에 등록되어 있지 않아 Root 초안으로 만들었습니다. "
+                "부모 모델을 먼저 등록한 뒤 저장된 조사 결과를 다시 불러오면 계층과 패밀리가 자동으로 연결됩니다."
+            )
+
+    if parent is not None:
+        if suggested.get("familyKey") != parent.family_key:
+            notes.append(
+                f"부모 모델 `{parent.model_id}` 의 패밀리 `{parent.family_key}` ({parent.family_name}) 를 상속했습니다. "
+                f"AI가 제안한 패밀리 `{suggested.get('familyKey')}` ({suggested.get('familyName')}) 는 사용하지 않았습니다."
+            )
+        draft["familyKey"] = parent.family_key
+        draft["familyName"] = parent.family_name
+        inherited = {
+            "familyDeveloper": parent.family_developer,
+            "familyReleaseDate": parent.family_release_date.isoformat() if parent.family_release_date else None,
+            "familyLicenseName": parent.family_license_name,
+        }
+        draft.update({name: value for name, value in inherited.items() if value is not None})
+    inherited_fields = [name for name in FAMILY_FIELDS if parent is not None and draft.get(name) != suggested.get(name)]
+
+    result["warnings"] = warnings + notes
+    result["catalogLineage"] = {
+        "parentModelId": draft["parentModelId"],
+        "relationshipType": draft["relationshipType"],
+        "hierarchyDepth": draft["hierarchyDepth"],
+        "familyInherited": parent is not None,
+        # Fields whose value now comes from the catalog parent, not from the research sources.
+        "inheritedFields": inherited_fields,
+        "suggestedFamily": suggested,
+        "warnings": notes,
+    }
+    return result
+
+
+def attach_evidence(result: dict[str, Any],
+                    inputs: dict[str, dict[str, Any] | None] | None = None) -> dict[str, Any]:
+    """Set `result["evidence"]`: the per-value evidence rows the admin reviews and stores (app/evidence.py).
+
+    Call after `resolve_catalog_lineage`, which decides the inherited family fields. A merged result
+    needs the two research `inputs` its field decisions point at.
+    """
+    result["evidence"] = build_result_evidence(result, inputs)
+    return result
+
+
 def parse_openrouter_response(
     payload: dict[str, Any],
     context: CatalogContext | None = None,
@@ -687,7 +846,7 @@ def parse_openrouter_response(
                         if sources else "OpenRouter 응답에 URL 인용 정보가 없습니다.")
 
     aibom = aibom_write_from_draft(content.aibom)
-    return {
+    return attach_evidence(resolve_catalog_lineage({
         "status": content.status,
         "source": source,
         "draft": draft,
@@ -706,7 +865,7 @@ def parse_openrouter_response(
             "webSearchRequests": web_search_count(payload.get("usage")),
             "usage": payload.get("usage") or {},
         },
-    }
+    }, context))
 
 
 class MergeResearchRequest(BaseModel):
@@ -794,7 +953,9 @@ Merge rules:
    - Family facts come from `paper` when it states them explicitly: familyDeveloper,
      familyReleaseDate, familyName, familyLicenseName. Otherwise keep the `huggingface` value.
    - familyKey must be identical to the familyName's key; reuse a key from the catalog context
-     when the family is listed there, otherwise keep the key both inputs agree on.
+     when the family is listed there, otherwise keep the key both inputs agree on. The family is
+     the one of the lineage root: when a parent candidate is listed in the catalog context, use
+     that model's family rather than a family named after the intermediate parent.
    - modelRole follows the definitions in the schema; when the inputs disagree, prefer the input
      whose lineage evidence is stronger.
 3. Take a value from one input unchanged; never average, reformat, or invent. The only field you
@@ -814,8 +975,13 @@ Merge rules:
      `huggingface` for inputs when it has base_model metadata. Keep the roles as given.
    - datasets, evaluations, references: union of both inputs. Deduplicate datasets by identity,
      evaluations by benchmark + metric + source_url, references by uri. Never change a number.
+     Keep each evaluation's `source_url` and `source_locator` as given; when both inputs report
+     the same number, keep the row whose `source_locator` is more specific.
    - safety_ethics: union of the items, dropping exact duplicates.
    - unknowns: keep only items that neither input resolved.
+   - field_evidence: for each model / provenance / transformation field, keep the entries of the
+     input its value was taken from (both inputs' entries when the value is the same in both).
+     Copy urls, confidence, and note unchanged; drop entries for values you did not keep.
    Use only values present in the inputs; if an area is empty in both, keep it empty and mark `none`.
    When an input has no aibom (older stored results), build the area from the other input only.
 9. Language: description and aibom texts in English; rationale and warnings in Korean.
@@ -965,7 +1131,7 @@ def parse_merge_response(
     warnings.extend(content.warnings)
 
     aibom = aibom_write_from_draft(content.aibom)
-    return {
+    return attach_evidence(resolve_catalog_lineage({
         "status": content.status,
         "source": "merged",
         "draft": draft,
@@ -984,7 +1150,7 @@ def parse_merge_response(
             "runs": runs,
             "usage": payload.get("usage") or {},
         },
-    }
+    }, context), results)
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -1007,15 +1173,43 @@ def _public_chunk(value: Any) -> Any:
 def _stream_error_message(error: Exception) -> str:
     if isinstance(error, httpx.TimeoutException):
         return "OpenRouter model research timed out."
-    if isinstance(error, httpx.HTTPStatusError):
-        if error.response.status_code == 429:
-            return "OpenRouter rate limit was reached."
-        if error.response.status_code in (401, 403):
-            return "OpenRouter rejected the configured API key."
-        return "OpenRouter could not complete model research."
     if isinstance(error, httpx.RequestError):
         return "OpenRouter is currently unreachable."
     return str(error)
+
+
+def _upstream_error(status_code: int | None, body: Any, model: str | None = None) -> dict[str, Any]:
+    """SSE `error` payload that passes OpenRouter's own error on to the admin API client.
+
+    `body` is the HTTP error body (text or parsed JSON) or the `error` object of a stream chunk.
+    `message` stays a single readable line for the UI; `upstream` carries the details as received
+    (status, code, message, provider metadata) so the cause is visible without reading server logs.
+    """
+    parsed: Any = body
+    if isinstance(body, (str, bytes)):
+        text = body.decode("utf-8", "replace") if isinstance(body, bytes) else body
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = text.strip()
+    error = parsed.get("error", parsed) if isinstance(parsed, dict) else parsed
+    if isinstance(error, dict):
+        detail = error.get("message")
+        metadata = error.get("metadata") if isinstance(error.get("metadata"), dict) else None
+        code = error.get("code")
+    else:
+        detail, metadata, code = (str(error)[:2000] if error else None), None, None
+    # Providers put their own explanation (e.g. a schema validation message) under metadata.raw.
+    raw = metadata.get("raw") if metadata else None
+    provider = metadata.get("provider_name") if metadata else None
+    status = status_code if status_code is not None else (code if isinstance(code, int) else None)
+    parts = [f"OpenRouter{f' HTTP {status}' if status else ''}: {detail or 'request failed without a message.'}"]
+    if raw and str(raw) not in (detail or ""):
+        parts.append(f"{provider or 'provider'}: {str(raw)[:1500]}")
+    return {
+        "message": " | ".join(parts),
+        "upstream": {"status": status, "code": code, "message": detail, "metadata": metadata, "model": model},
+    }
 
 
 async def _stream_completion(
@@ -1050,7 +1244,12 @@ async def _stream_completion(
             headers=headers,
             json=request_payload,
         ) as response:
-            response.raise_for_status()
+            if response.status_code >= 400:
+                # Pass OpenRouter's error body through instead of a generic message.
+                sink["failed"] = True
+                yield _sse("error", _upstream_error(response.status_code, await response.aread(),
+                                                    request_payload.get("model")))
+                return
             yield _sse("status", working_status)
             async for line in response.aiter_lines():
                 if not line.startswith("data:"):
@@ -1066,9 +1265,8 @@ async def _stream_completion(
 
                 yield _sse("provider_event", _public_chunk(chunk))
                 if isinstance(chunk.get("error"), dict):
-                    upstream_message = chunk["error"].get("message")
                     sink["failed"] = True
-                    yield _sse("error", {"message": upstream_message or "OpenRouter streaming failed."})
+                    yield _sse("error", _upstream_error(None, chunk["error"], response_model))
                     return
                 response_model = chunk.get("model") or response_model
                 if isinstance(chunk.get("usage"), dict):
