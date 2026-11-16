@@ -48,6 +48,10 @@
 .admin-modal-copy .eyebrow { margin-bottom:5px; }
 .admin-modal.error .eyebrow { color:#a33b3b; }
 .admin-modal > button { grid-column:2; justify-self:end; min-width:86px; margin-top:16px; }
+.admin-modal:focus { outline:none; }
+.admin-modal.confirm .admin-modal-icon { color:#2f5fb8; background:#e6eefc; }
+.admin-modal-actions { display:flex; grid-column:2; justify-content:flex-end; gap:8px; margin-top:16px; }
+.admin-modal-actions button { min-width:86px; }
 @keyframes admin-fade-in { from { opacity:0; } }
 @keyframes admin-modal-in { from { opacity:0; transform:translateY(8px) scale(.98); } }
 .create-backdrop { overflow:auto; }

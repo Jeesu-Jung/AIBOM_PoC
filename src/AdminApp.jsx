@@ -781,6 +781,48 @@ function NoticeModal({ notice, onClose }) {
   );
 }
 
+// Asked before every save of the editor form. Enter in a form input submits the form, so without this
+// a stray Enter saved the model. Enter does nothing here: the choice has to be clicked.
+function ConfirmSaveModal({ open, title, message, confirmLabel, onConfirm, onCancel }) {
+  const dialogRef = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const previousFocus = document.activeElement;
+    const onKey = (event) => {
+      if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); }
+      else if (event.key === "Escape") onCancel();
+    };
+    document.body.style.overflow = "hidden";
+    // Focus leaves the form input (and stays off the buttons, which Enter would press).
+    dialogRef.current?.focus();
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKey, true);
+      previousFocus?.focus?.();
+    };
+  }, [open, onCancel]);
+
+  if (!open) return null;
+  return (
+    <div className="admin-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
+      <section ref={dialogRef} tabIndex={-1} className="admin-modal confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-save-title" aria-describedby="admin-modal-message">
+        <div className="admin-modal-icon" aria-hidden="true">?</div>
+        <div className="admin-modal-copy">
+          <p className="eyebrow">CONFIRM</p>
+          <h2 id="confirm-save-title">{title}</h2>
+          <p id="admin-modal-message">{message}</p>
+        </div>
+        <div className="admin-modal-actions">
+          <button type="button" className="admin-secondary" onClick={onCancel}>취소</button>
+          <button type="button" className="admin-primary" onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function AdminApp() {
   const [models, setModels] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -793,6 +835,8 @@ export default function AdminApp() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState(null);
+  const [confirmingSave, setConfirmingSave] = useState(false);
+  const cancelSave = useCallback(() => setConfirmingSave(false), []);
   const [createMode, setCreateMode] = useState(null);
   const [aiDraft, setAiDraft] = useState(false);
   const [aibomRefresh, setAibomRefresh] = useState(0);
@@ -1005,8 +1049,14 @@ export default function AdminApp() {
     try { return JSON.parse(value); } catch { throw new Error(`${label} JSON 형식이 올바르지 않습니다.`); }
   }
 
-  async function save(event) {
+  // Submitting the form (the save button, or Enter in an input) only asks; `save` runs once confirmed.
+  function requestSave(event) {
     event.preventDefault();
+    if (!saving) setConfirmingSave(true);
+  }
+
+  async function save() {
+    setConfirmingSave(false);
     setSaving(true); setNotice(null);
     try {
       const parentId = form.parentModelId || null;
@@ -1078,6 +1128,10 @@ export default function AdminApp() {
   return (
     <div className="admin-shell">
       <NoticeModal notice={notice} onClose={() => setNotice(null)} />
+      <ConfirmSaveModal open={confirmingSave} onConfirm={save} onCancel={cancelSave}
+        title={selectedId ? "변경사항을 저장할까요?" : "모델을 등록할까요?"}
+        message={selectedId ? `'${selectedId}' 모델에 지금 편집한 내용을 저장합니다.` : `'${form.modelId}' 모델을 카탈로그에 새로 등록합니다.`}
+        confirmLabel={selectedId ? "저장" : "등록"} />
       {createMode && <CreateModelDialog mode={createMode} onModeChange={setCreateMode} onManual={startCreate} onUseDraft={(...draft) => { setAssignee(null); setReviewedBy(""); useAiDraft(...draft); }} onClose={() => setCreateMode(null)} />}
       <header className="admin-header">
         <div><p className="eyebrow">AIBOM ADMIN</p><h1>Model catalog</h1><p>등록된 모델 정보와 모델 간 연결 관계를 조회하고 수정할 수 있습니다.</p></div>
@@ -1130,7 +1184,7 @@ export default function AdminApp() {
             <small>{reviewedBy ? `저장할 때 AI 조사 #${activeReviewRunId}의 검토자로 ${assignee.name}이(가) 기록됩니다.` : `저장해도 AI 조사 #${activeReviewRunId}에 검토자를 기록하지 않습니다.`}</small></label>}
           {selectedId && activeReviewRunId && <div className="ai-draft-banner"><span>✦</span><div><strong>AI 조사 #{activeReviewRunId} 결과를 검토하고 있습니다</strong><p>이미 등록된 모델이라 새로 만들지 않고 이 모델에 반영합니다. 각 항목 위의 HF / 논문 / AI 병합 칩으로 조사 값을 골라 넣고 저장하면, 이 조사 실행이 검토 완료로 표시됩니다.</p></div><em>검토 중</em></div>}
           {aiDraft && <div className="ai-draft-banner"><span>✦</span><div><strong>AI가 작성한 초안입니다</strong><p>내용과 출처를 확인하고 필요한 항목을 수정한 뒤 등록해 주세요. 각 항목 위의 HF / 논문 / AI 병합 칩으로 다른 조사 결과의 값으로 바꿀 수 있습니다.{pendingAibom ? ` AIBOM(평가 ${pendingAibom.evaluation?.length || 0}건 · 데이터셋 ${pendingAibom.dataset?.length || 0}개 · 근거 ${pendingAibom.reference?.length || 0}개)을 포함한 전체 정보가 한 번에 저장됩니다.` : ""}</p></div><em>검토 필요</em></div>}
-          <form onSubmit={save}>
+          <form onSubmit={requestSave}>
             <fieldset><legend>기본 정보</legend><div className="admin-form-grid">
               <Field label="Model ID" evidence={cev("modelId")} picker={pk("modelId")}><Input field="modelId" form={form} setForm={setForm} required disabled={Boolean(selectedId)} /></Field>
               <Field label="Namespace" evidence={cev("namespace")} picker={pk("namespace")}><Input field="namespace" form={form} setForm={setForm} required /></Field>
