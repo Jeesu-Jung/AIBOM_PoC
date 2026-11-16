@@ -205,3 +205,15 @@ def test_family_release_date_is_the_release_date_of_its_root_models() -> None:
 
     assert index["items"][0]["releaseDate"] == date(2024, 7, 23)
     assert index["summary"]["latestRelease"] == date(2024, 7, 23)
+
+
+def test_evaluation_without_a_date_takes_the_model_release_date() -> None:
+    db = session()
+    create_admin_model(db, catalog_payload("org/base", releaseDate="2024-07-23"))
+
+    result = save_model_aibom(db, "org/base", AibomWrite.model_validate({
+        "evaluation": [{"metric": "acc", "score": 61.5},
+                       {"metric": "f1", "score": 70, "timestamp": "2025-01-02"}],
+    }))
+
+    assert [str(item["timestamp"]) for item in result["evaluation"]] == ["2024-07-23", "2025-01-02"]

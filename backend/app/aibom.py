@@ -372,8 +372,9 @@ def save_model_aibom(session: Session, model_id: str, payload: AibomWrite, *, co
             hyperparameters=tr.hyperparameters, datasets=[d.model_dump() for d in tr.datasets] or None,
             timestamp=tr.timestamp, extensions=tr.extensions))
     for ev in payload.evaluation:
+        # An evaluation without a date is taken to have been run for the model's release.
         session.add(Evaluation(model=model_id, dataset=ev.dataset, configuration=ev.configuration, metric=ev.metric,
-                               score=ev.score, timestamp=ev.timestamp, extensions=ev.extensions))
+                               score=ev.score, timestamp=ev.timestamp or info.release_date, extensions=ev.extensions))
     if payload.safety_ethics is not None:
         s = payload.safety_ethics
         session.add(SafetyEthics(subject=model_id, safety_risk=s.safety_risk or None,

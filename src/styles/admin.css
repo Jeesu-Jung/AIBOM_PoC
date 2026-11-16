@@ -349,6 +349,10 @@
 .aibom-field { display:grid; align-content:start; gap:8px; min-width:0; }
 .aibom-field > span { color:#4b5e76; font-size:.84rem; font-weight:750; }
 .aibom-field small { font-size:.8rem; }
+.field-help { position:relative; display:inline-grid; place-items:center; width:16px; height:16px; margin-left:6px; border:1px solid #b9c5d6; border-radius:50%; background:#f4f7fb; color:#5a6b82; font-size:.68rem; font-style:normal; font-weight:800; line-height:1; cursor:help; vertical-align:middle; }
+.field-help:hover,.field-help:focus-visible { border-color:#527ee1; background:#edf3ff; color:#2251cc; outline:none; }
+.field-help::after { content:attr(data-tip); position:absolute; left:-6px; bottom:calc(100% + 8px); z-index:30; width:max-content; max-width:300px; padding:9px 11px; border-radius:9px; background:#1f2a3a; color:#fff; font-size:.78rem; font-weight:500; line-height:1.55; text-align:left; white-space:normal; box-shadow:0 8px 22px rgba(20,32,52,.22); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .12s; }
+.field-help:hover::after,.field-help:focus-visible::after { opacity:1; visibility:visible; }
 .aibom-field input,.aibom-field select,.aibom-field textarea { width:100%; border:1px solid #cad4e1; border-radius:9px; background:#fff; color:var(--text); font:inherit; }
 .aibom-field input,.aibom-field select { min-height:43px; padding:10px 12px; font-size:.95rem; }
 .aibom-field textarea { min-height:92px; padding:11px 12px; overflow-y:hidden; field-sizing:content; font-size:.92rem; line-height:1.55; }
