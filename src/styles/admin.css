@@ -126,6 +126,10 @@
 .ai-merge-cell.is-selected strong::before { content:"✓ "; color:#2251cc; }
 .ai-merge-cell.is-unavailable { color:#98a4b5; background:#f7f9fc; border-style:dashed; cursor:default; font-size:.74rem; align-content:center; }
 .ai-merge-hint { margin:0; padding:10px 14px; border-top:1px solid var(--line); color:#7c899a; font-size:.72rem; line-height:1.45; }
+.ai-pick-guide { display:flex; align-items:baseline; gap:12px; padding:11px 14px; border:1px solid #c7d7f5; border-radius:10px; background:#eef4ff; color:#2f4670; font-size:.8rem; line-height:1.5; }
+.ai-pick-guide strong { flex:none; padding:2px 9px; border-radius:99px; color:#fff; background:#2f6fed; font-size:.72rem; }
+.ai-pick-guide p { margin:0; }
+.ai-next-step { border:1px solid var(--line); border-radius:10px; }
 .ai-result-details > summary { cursor:pointer; list-style:none; }
 .ai-result-details > summary::-webkit-details-marker { display:none; }
 .ai-result-details > summary::before { content:"▸"; margin-right:8px; color:#718096; }

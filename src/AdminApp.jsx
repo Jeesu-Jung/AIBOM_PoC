@@ -205,7 +205,7 @@ function AibomFullComparison({ results, columns, overrides, fieldOverrides, onSe
   return <div className="ai-aibom-full-comparison">
     {aibomComparisonFields.map(([label, key, fields]) => <details key={key} open>
       <summary>{label} <span>{fields.length} fields</span></summary>
-      <div className="ai-aibom-area-actions"><span>이 영역의 저장값</span>{columns.map((option) => <button type="button" key={option.value} className={overrides[key] === option.value ? "is-selected" : ""} onClick={() => onSelect(key, overrides[key] === option.value ? null : option.value)}>{overrides[key] === option.value ? "✓ " : ""}{option.label}</button>)}{overrides[key] && <button type="button" onClick={() => onSelect(key, null)}>AI 병합으로</button>}</div>
+      <div className="ai-aibom-area-actions"><span>이 영역 전체를 한 결과로 고르기</span>{columns.map((option) => <button type="button" key={option.value} className={overrides[key] === option.value ? "is-selected" : ""} onClick={() => onSelect(key, overrides[key] === option.value ? null : option.value)}>{overrides[key] === option.value ? "✓ " : ""}{option.label}</button>)}{overrides[key] && <button type="button" onClick={() => onSelect(key, null)}>AI 병합으로</button>}</div>
       <div className="ai-aibom-full-table" style={{ "--aibom-columns": columns.length }}>
         <div className="ai-aibom-full-row is-head"><span>Field</span>{columns.map((option) => <span key={option.value}>{option.label}</span>)}</div>
         {fields.map((field) => <div className="ai-aibom-full-row" key={field}>{(() => {
@@ -242,7 +242,7 @@ function AibomDraftSummary({ results, chosenKey, overrides, fieldOverrides, onSe
   }
   const decisions = results.merged?.areaDecisions || [];
   return <div className="ai-result-section">
-    <div className="ai-result-heading"><strong>AIBOM 초안</strong><span>검토 화면에서 모델 정보와 함께 수정·등록됩니다</span></div>
+    <div className="ai-result-heading"><strong>AIBOM 값 고르기</strong><span>칸을 누르면 그 값이 초안에 들어갑니다</span></div>
     <AibomFullComparison results={results} columns={columns} overrides={overrides} fieldOverrides={fieldOverrides} onSelect={onSelect} onFieldSelect={onFieldSelect} />
     {decisions.length > 0 && <ul className="ai-area-decisions">{decisions.map((item) => <li key={item.area}><b>{aibomAreaLabels[item.area] || item.area}</b> {decisionLabels[item.chosen] || item.chosen} · {item.rationale}</li>)}</ul>}
     {chosen?.aibom && <div className="ai-aibom-preview">
@@ -251,7 +251,7 @@ function AibomDraftSummary({ results, chosenKey, overrides, fieldOverrides, onSe
       </button>
       {preview && <AibomAreas aibom={aibomDraftToView(chosen.aibom, chosen.draft?.modelId)} />}
     </div>}
-    <p className="ai-merge-hint">모델 정보와 AIBOM을 하나의 검토 화면에서 함께 수정할 수 있습니다.</p>
+    <p className="ai-merge-hint">“필드 선택 가능” 항목은 칸마다, “영역 선택” 항목(DATASET · EVALUATION · LICENSE_POLICY · REFERENCE)은 영역 전체를 한 결과로 고릅니다.</p>
   </div>;
 }
 
@@ -320,6 +320,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
     setResults({ huggingface: null, paper: null, merged: null });
     setOverrides({});
     setAibomOverrides({});
+    setAibomFieldOverrides({});
     setSearchError(null);
     setStored(null);
     setLoadedFromStore(false);
@@ -387,6 +388,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
     setResults({ huggingface: null, paper: null, merged: null });
     setOverrides({});
     setAibomOverrides({});
+    setAibomFieldOverrides({});
     setRuns({ huggingface: { ...emptyRun(), status: "loading" }, paper: { ...emptyRun(), status: "loading" }, merged: emptyRun() });
     setStage("working");
     const controller = new AbortController();
@@ -443,6 +445,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
     setSaveState({ status: "idle", message: "" });
     setOverrides({});
     setAibomOverrides({});
+    setAibomFieldOverrides({});
     setRuns({
       huggingface: { ...emptyRun(), status: huggingface ? "done" : "error", error: huggingface ? null : "저장된 결과 없음" },
       paper: { ...emptyRun(), status: paper ? "done" : "error", error: paper ? null : "저장된 결과 없음" },
@@ -571,6 +574,12 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
     });
   }, [stage, baseResult, results, aibomKey, overrides, aibomOverrides, aibomFieldOverrides]);
 
+  // The dialog only prepares a draft: the heading says which step this is, so the review step is not
+  // mistaken for the registration itself.
+  const dialogHead = mode !== "ai" ? { eyebrow: "CREATE MODEL", title: "새 모델을 어떻게 등록할까요?" }
+    : stage === "review" ? { eyebrow: "CREATE MODEL · 2/3 값 고르기", title: results.merged ? "항목별로 초안에 쓸 값을 고르세요" : "조사 결과를 확인하세요" }
+    : stage === "working" ? { eyebrow: "CREATE MODEL · 1/3 AI 조사", title: "AI가 모델 정보를 조사하고 있습니다" }
+    : { eyebrow: "CREATE MODEL · 1/3 AI 조사", title: "어떤 모델을 조사할까요?" };
   const overrideCount = Object.keys(overrides).length;
   const workingTitle = runs.merged.status === "loading" ? "두 조사 결과를 AI가 병합하고 있습니다" : `“${query}” 정보를 찾고 있습니다`;
 
@@ -578,7 +587,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
     <div className="admin-modal-backdrop create-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && stage !== "working") onClose(); }}>
       <section className={`create-dialog ${mode === "ai" ? "is-ai" : ""}`} role="dialog" aria-modal="true" aria-labelledby="create-dialog-title">
         <div className="create-dialog-head">
-          <div><p className="eyebrow">CREATE MODEL</p><h2 id="create-dialog-title">새 모델을 어떻게 등록할까요?</h2></div>
+          <div><p className="eyebrow">{dialogHead.eyebrow}</p><h2 id="create-dialog-title">{dialogHead.title}</h2></div>
           {stage !== "working" && <button type="button" className="create-close" aria-label="닫기" onClick={onClose}>×</button>}
         </div>
 
@@ -663,6 +672,10 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
             <p>{loadedFromStore ? `저장된 조사 결과(${formatDateTime(stored?.latestCreatedAt)})를 불러왔습니다. ` : ""}{results.merged ? `충돌한 항목 ${conflicts.size}개를 AI가 근거 기준으로 정리했습니다. 다른 쪽 값을 누르면 바꿀 수 있습니다.` : "다른 경로는 결과를 얻지 못했습니다. 편집 화면에서 빈 항목을 채워 주세요."}{overrideCount ? ` 수동으로 바꾼 항목 ${overrideCount}개.` : ""}</p>
           </div><em>{loadedFromStore ? "SAVED" : results.merged ? "AI MERGED" : "AI DRAFT"}</em></div>
 
+          <div className="ai-pick-guide"><strong>값 고르기</strong>{results.merged
+            ? <p>항목마다 <b>HF · 논문 · AI 병합</b> 값을 나란히 보여줍니다. <b>칸을 누르면 그 값이 초안에 들어가고</b>, 강조(✓)된 칸이 지금 선택된 값입니다. 아무것도 누르지 않은 항목은 AI 병합 값을 씁니다.</p>
+            : <p>한 경로의 결과만 있어 비교해서 고를 값이 없습니다. 내용을 확인한 뒤 편집 화면에서 직접 고쳐 주세요.</p>}</div>
+
           <PipelineSteps runs={runs} results={results} />
           {saveState.status !== "idle" && <p className={`ai-save-state is-${saveState.status}`}>{saveState.message}</p>}
 
@@ -684,14 +697,14 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
           </div>
 
           <div className="ai-result-section">
-            <div className="ai-result-heading"><strong>항목별 병합 결과</strong>
+            <div className="ai-result-heading"><strong>모델 정보 값 고르기</strong>
               <div className="ai-merge-actions">
                 {overrideCount > 0 && <button type="button" onClick={() => setOverrides({})}>AI 병합값으로 되돌리기</button>}
                 {results.merged && sourceKeys.map((key) => <button key={key} type="button" disabled={!results[key]} onClick={() => { const next = {}; mergeFields.forEach(([field]) => { next[field] = key; }); setOverrides(next); }}>모두 {sourceLabel(key)}</button>)}
               </div>
             </div>
             <div className="ai-merge-table is-three" role="table">
-              <div className="ai-merge-row is-head" role="row"><span>항목</span>{researchSources.map((option) => <span key={option.value}>{option.label}</span>)}<span>병합 결과</span></div>
+              <div className="ai-merge-row is-head" role="row"><span>항목</span>{researchSources.map((option) => <span key={option.value}>{option.label}</span>)}<span>선택된 값</span></div>
               {mergeFields.map(([field, label]) => {
                 const decision = decisions[field];
                 const value = displayValue(finalValue(field));
@@ -699,7 +712,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
                 return <div key={field} className={`ai-merge-row${conflicts.has(field) ? " is-conflict" : ""}`} role="row">
                   <span className="ai-merge-label">{label}{conflicts.has(field) && <em>충돌</em>}</span>
                   {researchSources.map((option) => <ValueCell key={option.value} sourceName={option.label} result={results[option.value]} run={runs[option.value]} field={field} state={cellState(field, option.value)} onSelect={() => setOverride(field, overrides[field] === option.value ? null : option.value)} />)}
-                  <div className={`ai-merge-final${overridden ? " is-override" : ""}${value ? "" : " is-empty"}`} data-source="병합 결과">
+                  <div className={`ai-merge-final${overridden ? " is-override" : ""}${value ? "" : " is-empty"}`} data-source="선택된 값">
                     <strong>{value || "값 없음"}</strong>
                     <small>{overridden ? <b>수동 선택 · {sourceLabel(overrides[field])}</b> : isInherited(baseResult, field) ? <><b className="is-inherited">부모 모델에서 상속</b> · {baseResult.catalogLineage.parentModelId}</> : decision ? <><b>{decisionLabels[decision.chosen] || decision.chosen}</b>{decision.rationale ? ` · ${decision.rationale}` : ""}</> : results.merged ? "결정 정보 없음" : sourceLabel(results.huggingface ? "huggingface" : "paper")}</small>
                     {overridden && <button type="button" onClick={() => setOverride(field, null)}>AI 값으로</button>}
@@ -707,7 +720,7 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
                 </div>;
               })}
             </div>
-            <p className="ai-merge-hint">Model ID·Namespace·Model name, Family key·Family name은 함께 바뀝니다. 병합 결과 열의 이유는 AI가 남긴 선택 근거입니다.</p>
+            <p className="ai-merge-hint">HF · 논문 칸을 누르면 “선택된 값”이 그 값으로 바뀌고, 다시 누르면 AI 병합 값으로 돌아갑니다. Model ID·Namespace·Model name, Family key·Family name은 함께 바뀝니다. “선택된 값” 열의 이유는 AI가 남긴 선택 근거입니다.</p>
           </div>
 
           <AibomDraftSummary results={results} chosenKey={aibomKey} overrides={aibomOverrides}
@@ -730,7 +743,8 @@ function CreateModelDialog({ mode, onModeChange, onManual, onUseDraft, onClose }
             </details>;
           })}
 
-          <div className="create-dialog-actions"><button type="button" className="admin-secondary" onClick={resetSearch}>다시 검색</button><button type="button" className="admin-primary" onClick={() => onUseDraft(finalDraft, finalAibom, runId, finalEvidence, results)}>편집 화면에서 검토</button></div>
+          <p className="ai-merge-hint ai-next-step"><b>아직 카탈로그에 등록되지 않았습니다.</b> 여기서 고른 값이 편집 화면(3/3)의 초기값이 되고, 편집 화면에서도 항목마다 HF / 논문 / AI 병합 값으로 다시 바꾸거나 직접 고칠 수 있습니다. 모델은 편집 화면에서 저장할 때 등록됩니다. 조사 결과 자체는 AI 조사 이력에 이미 저장되어 있어, 창을 닫아도 다시 불러올 수 있습니다.</p>
+          <div className="create-dialog-actions"><button type="button" className="admin-secondary" onClick={resetSearch}>다시 검색</button><button type="button" className="admin-primary" onClick={() => onUseDraft(finalDraft, finalAibom, runId, finalEvidence, results)}>이 초안으로 편집 화면 열기 →</button></div>
         </div>}
       </section>
     </div>
