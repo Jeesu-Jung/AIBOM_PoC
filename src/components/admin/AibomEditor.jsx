@@ -2,6 +2,7 @@ import { createContext, forwardRef, useCallback, useContext, useEffect, useImper
 import { fetchAdminAibomOptions, fetchAdminModelAibom, saveAdminModelAibom } from "../../api/admin.js";
 import { areaEvidence, evaluationKey } from "../../domain/evidence.js";
 import EvidenceLinks from "./EvidenceLinks.jsx";
+import { focusInputOnLabelClick } from "../../utils/labelClick.js";
 import SourcePicker, { MANUAL, RESEARCH_SOURCES, sourceLabel } from "./SourcePicker.jsx";
 
 const INPUT_ROLES = ["base", "merge_source", "teacher", "generator", "verifier", "reward_model"];
@@ -134,7 +135,7 @@ function Picker({ target }) {
 // `evidence`: the evidence rows of this value, listed right under its input.
 // It is either a row list or `{ rows, label }` from `areaEvidence().under()`.
 // `pick`: `[area, field, value]` when the value can be taken from a research result.
-function Field({ label, hint, children, evidence, evidenceTarget = "field", pick }) { const shown = Array.isArray(evidence) || !evidence ? { rows: evidence, label: "근거" } : evidence; return <label className="aibom-field"><span>{label}</span>{hint && <small>{hint}</small>}<Picker target={pick} />{children}<EvidenceLinks rows={shown.rows} label={shown.label} target={evidenceTarget} hideField={label} /></label>; }
+function Field({ label, hint, children, evidence, evidenceTarget = "field", pick }) { const shown = Array.isArray(evidence) || !evidence ? { rows: evidence, label: "근거" } : evidence; return <label className="aibom-field" onClick={focusInputOnLabelClick}><span>{label}</span>{hint && <small>{hint}</small>}<Picker target={pick} />{children}<EvidenceLinks rows={shown.rows} label={shown.label} target={evidenceTarget} hideField={label} /></label>; }
 // `evidence`: rows that back the whole area or values without an input of their own.
 // `pick`: `[area, null, value]` to take the whole area from a research result.
 function Area({ title, description, children, action, evidence, pick }) { return <section className="aibom-area"><header><div><h3>{title}</h3><p>{description}</p></div>{action}</header>{pick && <div className="aibom-area-picker"><Picker target={pick} /></div>}{children}<EvidenceLinks rows={evidence} label="영역 근거" target="field" /></section>; }

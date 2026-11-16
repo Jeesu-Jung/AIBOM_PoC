@@ -6,6 +6,7 @@ import AibomAreas from "./components/aibom/AibomAreas.jsx";
 import { aibomDraftToView } from "./domain/aibomView.js";
 import { composeEvidence, describeEvidence, pruneEvidence, rekeyEvidence, swapEvidence } from "./domain/evidence.js";
 import EvidenceLinks from "./components/admin/EvidenceLinks.jsx";
+import { focusInputOnLabelClick } from "./utils/labelClick.js";
 import SourcePicker, { MANUAL, RESEARCH_SOURCES, sourceLabel as chipLabel } from "./components/admin/SourcePicker.jsx";
 import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, fetchAdminModelEvidence, fetchResearchRun, fetchResearchRuns, linkResearchRun, saveAdminModelEvidence, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
 
@@ -59,7 +60,7 @@ function normalizeForForm(model) {
 // `evidence`: evidence rows of this value (AI research), listed right under the input.
 // `picker`: chips to take the value from a research result (see `pk` in AdminApp).
 function Field({ label, children, wide = false, evidence = null, picker = null }) {
-  return <label className={`admin-field${wide ? " admin-field-wide" : ""}`}><span>{label}</span>{picker}{children}<EvidenceLinks rows={evidence} /></label>;
+  return <label className={`admin-field${wide ? " admin-field-wide" : ""}`} onClick={focusInputOnLabelClick}><span>{label}</span>{picker}{children}<EvidenceLinks rows={evidence} /></label>;
 }
 
 function Input({ field, form, setForm, ...props }) {
