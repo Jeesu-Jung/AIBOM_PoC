@@ -442,7 +442,7 @@
 .reviewer-manager li { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
 .reviewer-manager li strong { font-size:.84rem; }
 .reviewer-manager li small { flex:1; color:var(--text-soft); }
-.reviewer-manager li.is-inactive strong { color:#9aa6b5; text-decoration:line-through; }
+.reviewer-manager button.is-danger { border-color:#f0c4c4; color:#b42318; }
 .reviewer-manager form { display:flex; flex:1; gap:6px; }
 .reviewer-manager input { flex:1; min-width:0; min-height:34px; padding:6px 9px; border:1px solid #cad4e1; border-radius:8px; font:inherit; font-size:.82rem; }
 .reviewer-manager .admin-help { margin:8px 0 0; font-size:.74rem; }

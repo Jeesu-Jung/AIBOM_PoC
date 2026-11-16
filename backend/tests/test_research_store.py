@@ -197,8 +197,11 @@ def test_runs_report_whether_they_were_reviewed_and_saved() -> None:
 
 def test_runs_are_assigned_distributed_and_record_who_reviewed_them() -> None:
     from app.admin import AdminModelWrite, create_admin_model
-    from app.research_store import (AssignRunsRequest, ReviewerWrite, assign_runs, distribute_runs, get_research_run,
-                                    link_research_run, list_reviewers, save_reviewer)
+    import pytest
+    from fastapi import HTTPException
+
+    from app.research_store import (AssignRunsRequest, ReviewerWrite, assign_runs, delete_reviewer, distribute_runs,
+                                    get_research_run, link_research_run, list_reviewers, save_reviewer)
 
     db = session()
     run_ids = [save_research_results(db, SaveResearchResultsRequest.model_validate({
@@ -206,9 +209,10 @@ def test_runs_are_assigned_distributed_and_record_who_reviewed_them() -> None:
         "results": {"merged": result("merged", f"org/model-{index}")}}))["runId"] for index in range(5)]
     save_reviewer(db, ReviewerWrite(name="  Kim   Review "))
     save_reviewer(db, ReviewerWrite(name="Lee"))
-    reviewers = {row["name"]: row["id"] for row in save_reviewer(db, ReviewerWrite(name="Park", isActive=False))}
+    reviewers = {row["name"]: row["id"] for row in save_reviewer(db, ReviewerWrite(name="Park"))}
     assert set(reviewers) == {"Kim Review", "Lee", "Park"}  # whitespace is normalised
     kim, lee, park = reviewers["Kim Review"], reviewers["Lee"], reviewers["Park"]
+    assert {row["name"] for row in delete_reviewer(db, park)} == {"Kim Review", "Lee"}  # soft-deleted: hidden
 
     # Kim already has two runs; the three unassigned ones go to the least loaded active reviewer.
     assert assign_runs(db, AssignRunsRequest(runIds=run_ids[:2], reviewerId=kim)) == {"assigned": 2}
@@ -216,7 +220,9 @@ def test_runs_are_assigned_distributed_and_record_who_reviewed_them() -> None:
     assert shared["assigned"] == 3
     assert {row["name"]: row["assigned"] for row in shared["byReviewer"]} == {"Lee": 2, "Kim Review": 1}
     load = {row["name"]: row["pendingCount"] for row in list_reviewers(db)}
-    assert load == {"Kim Review": 3, "Lee": 2, "Park": 0}  # the inactive reviewer gets nothing
+    assert load == {"Kim Review": 3, "Lee": 2}  # the deleted reviewer gets nothing
+    with pytest.raises(HTTPException):
+        assign_runs(db, AssignRunsRequest(runIds=[run_ids[4]], reviewerId=park))
     assert get_research_run(db, run_ids[0])["reviewerName"] == "Kim Review"
 
     create_admin_model(db, AdminModelWrite.model_validate({
@@ -226,9 +232,18 @@ def test_runs_are_assigned_distributed_and_record_who_reviewed_them() -> None:
     assert (saved["reviewStatus"], saved["reviewerName"], saved["reviewedByName"]) == ("saved", "Kim Review", "Lee")
     assert saved["reviewedAt"] is not None
     # A saved run is not reassigned, and the reviewer's counts follow.
-    assert assign_runs(db, AssignRunsRequest(runIds=[run_ids[0]], reviewerId=park)) == {"assigned": 0}
+    assert assign_runs(db, AssignRunsRequest(runIds=[run_ids[0]], reviewerId=lee)) == {"assigned": 0}
     counts = {row["name"]: (row["pendingCount"], row["reviewedCount"]) for row in list_reviewers(db)}
-    assert counts == {"Kim Review": (2, 0), "Lee": (2, 1), "Park": (0, 0)}
+    assert counts == {"Kim Review": (2, 0), "Lee": (2, 1)}
+
+    # Deleting Lee frees the runs still waiting for Lee but keeps the review Lee did.
+    delete_reviewer(db, lee)
+    assert get_research_run(db, run_ids[0])["reviewedByName"] == "Lee"
+    waiting = [get_research_run(db, run_id) for run_id in run_ids[1:]]
+    assert sorted(run["reviewerName"] or "-" for run in waiting) == ["-", "-", "Kim Review", "Kim Review"]
+    # Adding the same name again restores the same reviewer with that history.
+    restored = {row["name"]: row for row in save_reviewer(db, ReviewerWrite(name="lee" if False else "Lee"))}
+    assert (restored["Lee"]["id"], restored["Lee"]["pendingCount"], restored["Lee"]["reviewedCount"]) == (lee, 0, 1)
 
     # Without a reviewer nobody is recorded, even though the run is assigned.
     anonymous = link_research_run(db, run_ids[0], "org/model-0")
@@ -247,11 +262,16 @@ def test_reviewer_endpoints_validate_names_and_targets() -> None:
         assert created.status_code == 201 and created.json()[0]["name"] == "Kim"
         assert client.post("/api/v1/admin/reviewers", json={"name": "Kim"}).status_code == 409
         reviewer_id = created.json()[0]["id"]
-        renamed = client.put(f"/api/v1/admin/reviewers/{reviewer_id}", json={"name": "Kim J", "isActive": False}).json()
-        assert (renamed[0]["name"], renamed[0]["isActive"]) == ("Kim J", False)
+        renamed = client.put(f"/api/v1/admin/reviewers/{reviewer_id}", json={"name": "Kim J"}).json()
+        assert renamed[0]["name"] == "Kim J"
+        assert client.delete(f"/api/v1/admin/reviewers/{reviewer_id}").json() == []
+        assert client.delete(f"/api/v1/admin/reviewers/{reviewer_id}").status_code == 404
+        assert client.put(f"/api/v1/admin/reviewers/{reviewer_id}", json={"name": "Kim K"}).status_code == 404
+        assert client.post("/api/v1/admin/research-runs/distribute").status_code == 422  # nobody left to assign to
+        restored = client.post("/api/v1/admin/reviewers", json={"name": "Kim J"})
+        assert restored.status_code == 201 and restored.json()[0]["id"] == reviewer_id
         assert client.put("/api/v1/admin/reviewers/999", json={"name": "Nobody"}).status_code == 404
         assert client.post("/api/v1/admin/research-runs/assign", json={"runIds": [1], "reviewerId": 999}).status_code == 422
-        assert client.post("/api/v1/admin/research-runs/distribute").status_code == 422  # nobody active
         assert client.get("/api/v1/admin/reviewers").json()[0]["pendingCount"] == 0
     finally:
         main.app.dependency_overrides.clear()

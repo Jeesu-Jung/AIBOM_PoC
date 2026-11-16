@@ -92,6 +92,8 @@ export const updateReviewer = (reviewerId, reviewer) => request(`/api/v1/admin/r
   method: "PUT", body: JSON.stringify(reviewer)
 });
 // reviewerId null removes the assignment; runs that are already saved are skipped.
+// Soft delete: hidden and unassigned from pending runs; adding the same name again restores the reviewer.
+export const deleteReviewer = (reviewerId) => request(`/api/v1/admin/reviewers/${reviewerId}`, { method: "DELETE" });
 export const assignResearchRuns = (runIds, reviewerId) => request("/api/v1/admin/research-runs/assign", {
   method: "POST", body: JSON.stringify({ runIds, reviewerId })
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { assignResearchRuns, createReviewer, deleteResearchRun, distributeResearchRuns, fetchResearchRun, fetchResearchRuns, fetchReviewers, updateReviewer } from "../../api/admin.js";
+import { assignResearchRuns, createReviewer, deleteResearchRun, deleteReviewer, distributeResearchRuns, fetchResearchRun, fetchResearchRuns, fetchReviewers, updateReviewer } from "../../api/admin.js";
 import { aibomDraftToView } from "../../domain/aibomView.js";
 import { historyFields } from "../../constants/researchFields.js";
 import { downloadJson, jsonFilename } from "../../utils/download.js";
@@ -148,7 +148,8 @@ function RunReviewer({ run }) {
   return <span className={`research-run-reviewer${run.reviewerName ? "" : " is-unassigned"}`}>{run.reviewerName ? `담당 ${run.reviewerName}` : "미배정"}</span>;
 }
 
-/** Add, rename and (de)activate reviewers. They are never deleted, so past reviews keep their name. */
+/** Add, rename and delete reviewers. Deleting is soft: past reviews keep the name, and adding the
+ *  same name again brings the reviewer back. */
 function ReviewerManager({ reviewers, onChange, onError }) {
   const [name, setName] = useState("");
   const [editing, setEditing] = useState(null); // { id, name }
@@ -161,23 +162,27 @@ function ReviewerManager({ reviewers, onChange, onError }) {
   const rename = (event) => {
     event.preventDefault();
     const reviewer = reviewers.find((item) => item.id === editing.id);
-    run(updateReviewer(editing.id, { name: editing.name, email: reviewer.email, isActive: reviewer.isActive })).then(() => setEditing(null));
+    run(updateReviewer(editing.id, { name: editing.name, email: reviewer.email })).then(() => setEditing(null));
+  };
+  const remove = (reviewer) => {
+    const waiting = reviewer.pendingCount ? ` 담당 중인 검토 대기 ${reviewer.pendingCount}건은 미배정으로 돌아갑니다.` : "";
+    if (window.confirm(`검토 작업자 '${reviewer.name}'을(를) 삭제할까요?${waiting} 이미 검토한 기록은 그대로 남고, 같은 이름으로 다시 추가하면 복구됩니다.`)) run(deleteReviewer(reviewer.id));
   };
   return <details className="reviewer-manager">
-    <summary>검토 작업자 관리 <small>{reviewers.filter((item) => item.isActive).length}명 활성</small></summary>
-    <ul>{reviewers.map((reviewer) => <li key={reviewer.id} className={reviewer.isActive ? "" : "is-inactive"}>
+    <summary>검토 작업자 관리 <small>{reviewers.length}명</small></summary>
+    <ul>{reviewers.map((reviewer) => <li key={reviewer.id}>
       {editing?.id === reviewer.id
         ? <form onSubmit={rename}><input autoFocus value={editing.name} maxLength="100" onChange={(event) => setEditing({ ...editing, name: event.target.value })} aria-label="작업자 이름" /><button type="submit">저장</button><button type="button" onClick={() => setEditing(null)}>취소</button></form>
         : <>
           <strong>{reviewer.name}</strong>
-          <small>대기 {reviewer.pendingCount} · 검토 {reviewer.reviewedCount}{reviewer.isActive ? "" : " · 비활성"}</small>
+          <small>대기 {reviewer.pendingCount} · 검토 {reviewer.reviewedCount}</small>
           <button type="button" onClick={() => setEditing({ id: reviewer.id, name: reviewer.name })}>이름 변경</button>
-          <button type="button" onClick={() => run(updateReviewer(reviewer.id, { name: reviewer.name, email: reviewer.email, isActive: !reviewer.isActive }))}>{reviewer.isActive ? "비활성화" : "활성화"}</button>
+          <button type="button" className="is-danger" onClick={() => remove(reviewer)}>삭제</button>
         </>}
     </li>)}</ul>
     {!reviewers.length && <p className="admin-help">등록된 검토 작업자가 없습니다. 이름을 추가하면 조사 실행을 배정할 수 있습니다.</p>}
     <form className="reviewer-add" onSubmit={add}><input value={name} maxLength="100" placeholder="새 작업자 이름" onChange={(event) => setName(event.target.value)} aria-label="새 작업자 이름" /><button type="submit" disabled={!name.trim()}>추가</button></form>
-    <p className="admin-help">비활성화한 작업자는 새로 배정받지 않지만, 이미 맡은 실행과 검토 기록은 그대로 남습니다.</p>
+    <p className="admin-help">삭제한 작업자는 목록에서 사라지고 맡고 있던 검토 대기 실행은 미배정이 됩니다. 이미 검토한 기록에는 이름이 남으며, 같은 이름을 다시 추가하면 복구됩니다.</p>
   </details>;
 }
 
@@ -207,7 +212,7 @@ export default function ResearchHistoryPage() {
   const loadRuns = () => fetchResearchRuns({ limit: 500 }).then(setRuns).catch((err) => setError(err.message));
   const loadReviewers = () => fetchReviewers().then(setReviewers).catch((err) => setError(err.message));
   useEffect(() => { loadRuns(); loadReviewers(); }, []);
-  const activeReviewers = useMemo(() => reviewers.filter((reviewer) => reviewer.isActive), [reviewers]);
+  const activeReviewers = reviewers; // the API lists only reviewers that can be given work
 
   // The reviewer filter follows the run's current owner: the assignee while pending, the reviewer once saved.
   const ownerId = (run) => (run.reviewStatus === "saved" ? run.reviewedById : run.reviewerId);
@@ -332,7 +337,7 @@ export default function ResearchHistoryPage() {
           <select className="research-reviewer-filter" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} aria-label="검토 작업자로 찾기">
             <option value="all">모든 검토 작업자</option>
             <option value={UNASSIGNED}>미배정 / 검토자 기록 없음</option>
-            {reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name}{reviewer.isActive ? "" : " (비활성)"} · 대기 {reviewer.pendingCount}</option>)}
+            {reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name} · 대기 {reviewer.pendingCount}</option>)}
           </select>
 
           <div className="research-assign-bar">
@@ -355,7 +360,7 @@ export default function ResearchHistoryPage() {
               : !rangeRuns.length ? "이 범위에 해당하는 조사 실행이 없습니다."
                 : `범위 안의 실행 ${rangeRuns.length}건 중 검토 대기 ${rangePendingIds.length}건이 배정됩니다${rangeRuns.length > rangePendingIds.length ? ` (저장된 ${rangeRuns.length - rangePendingIds.length}건은 제외)` : ""}.${assignTo ? "" : " 위에서 작업자를 선택하세요."}`}</small>}
             <button type="button" className="research-distribute" disabled={!counts.unassigned || !activeReviewers.length} onClick={distribute}
-              title="미배정 검토 대기 실행을 활성 작업자에게, 대기 건이 적은 사람부터 고르게 나눕니다.">미배정 {counts.unassigned}건 자동 분배</button>
+              title="미배정 검토 대기 실행을 검토 작업자에게, 대기 건이 적은 사람부터 고르게 나눕니다.">미배정 {counts.unassigned}건 자동 분배</button>
           </div>
           <ReviewerManager reviewers={reviewers} onChange={() => refresh()} onError={setError} />
 
@@ -394,7 +399,7 @@ export default function ResearchHistoryPage() {
                 <div className="research-review-actions">
                   <label>담당 <select value={detail.reviewerId ?? ""} onChange={(event) => assign([detail.runId], event.target.value ? Number(event.target.value) : null)}>
                     <option value="">미배정</option>
-                    {reviewers.filter((reviewer) => reviewer.isActive || reviewer.id === detail.reviewerId).map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
+                    {reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
                   </select></label>
                   <a className="admin-primary" href={reviewLink(detail.runId)}>{detail.catalogModelId ? "기존 모델에 반영하며 검토 →" : "검토 후 저장 →"}</a>
                 </div>

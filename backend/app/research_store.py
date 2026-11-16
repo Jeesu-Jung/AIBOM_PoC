@@ -262,7 +262,6 @@ class ReviewerWrite(BaseModel):
 
     name: str = Field(min_length=1, max_length=100)
     email: str | None = Field(default=None, max_length=255)
-    is_active: bool = Field(default=True, alias="isActive")
 
 
 class AssignRunsRequest(BaseModel):
@@ -282,14 +281,16 @@ def _pending_load(session: Session) -> dict[int, int]:
 
 
 def list_reviewers(session: Session) -> list[dict[str, Any]]:
+    """Reviewers that can be given work. Deleted ones (`is_active` false) are left out; their rows
+    stay so the runs they reviewed keep showing their name."""
     pending = _pending_load(session)
     reviewed: dict[int, int] = {}
     for (reviewer_id,) in session.execute(select(ModelResearchRun.reviewed_by).where(
             ModelResearchRun.reviewed_by.is_not(None))):
         reviewed[reviewer_id] = reviewed.get(reviewer_id, 0) + 1
-    return [{"id": row.id, "name": row.name, "email": row.email, "isActive": bool(row.is_active),
+    return [{"id": row.id, "name": row.name, "email": row.email,
              "pendingCount": pending.get(row.id, 0), "reviewedCount": reviewed.get(row.id, 0)}
-            for row in session.scalars(select(Reviewer).order_by(Reviewer.name))]
+            for row in session.scalars(select(Reviewer).where(Reviewer.is_active.is_(True)).order_by(Reviewer.name))]
 
 
 def save_reviewer(session: Session, payload: ReviewerWrite, reviewer_id: int | None = None) -> list[dict[str, Any]]:
@@ -297,21 +298,53 @@ def save_reviewer(session: Session, payload: ReviewerWrite, reviewer_id: int | N
     if not name:
         raise HTTPException(status_code=422, detail="Reviewer name is required.")
     row = session.get(Reviewer, reviewer_id) if reviewer_id is not None else Reviewer()
-    if row is None:
+    if row is None or (reviewer_id is not None and not row.is_active):
         raise HTTPException(status_code=404, detail="Reviewer not found.")
     duplicate = session.scalar(select(Reviewer).where(Reviewer.name == name))
     if duplicate is not None and duplicate.id != row.id:
-        raise HTTPException(status_code=409, detail="A reviewer with this name already exists.")
-    row.name, row.email, row.is_active = name, (payload.email or "").strip() or None, payload.is_active
+        if reviewer_id is None and not duplicate.is_active:
+            # Adding the name of a deleted reviewer brings that reviewer back, history included.
+            row = duplicate
+        elif not duplicate.is_active:
+            raise HTTPException(status_code=409, detail="A deleted reviewer has this name. Add the name again to restore that reviewer.")
+        else:
+            raise HTTPException(status_code=409, detail="A reviewer with this name already exists.")
+    row.name, row.is_active = name, True
+    if payload.email is not None or reviewer_id is not None:
+        row.email = (payload.email or "").strip() or None
     session.add(row)
     session.commit()
     return list_reviewers(session)
 
 
+def delete_reviewer(session: Session, reviewer_id: int) -> list[dict[str, Any]]:
+    """Soft delete: the reviewer disappears from the lists and gets no more work.
+
+    The row stays (`is_active` false) so runs they reviewed keep their name; runs still waiting
+    for them go back to unassigned. Adding the same name again restores the reviewer.
+    """
+    row = session.get(Reviewer, reviewer_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=404, detail="Reviewer not found.")
+    row.is_active = False
+    for run in session.scalars(select(ModelResearchRun).where(
+            ModelResearchRun.reviewer_id == reviewer_id, ModelResearchRun.model_id.is_(None))):
+        run.reviewer_id, run.assigned_at = None, None
+    session.commit()
+    return list_reviewers(session)
+
+
+def _active_reviewer(session: Session, reviewer_id: int) -> Reviewer:
+    row = session.get(Reviewer, reviewer_id)
+    if row is None or not row.is_active:
+        raise HTTPException(status_code=422, detail="The reviewer does not exist.")
+    return row
+
+
 def assign_runs(session: Session, payload: AssignRunsRequest) -> dict[str, Any]:
     """Assign runs to a reviewer (or unassign them). Runs that are already saved are left alone."""
-    if payload.reviewer_id is not None and session.get(Reviewer, payload.reviewer_id) is None:
-        raise HTTPException(status_code=422, detail="The reviewer does not exist.")
+    if payload.reviewer_id is not None:
+        _active_reviewer(session, payload.reviewer_id)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     changed = 0
     for run in session.scalars(select(ModelResearchRun).where(ModelResearchRun.id.in_(payload.run_ids))):

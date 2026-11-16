@@ -34,6 +34,7 @@ from .research_store import (
     ReviewerWrite,
     SaveResearchResultsRequest,
     assign_runs,
+    delete_reviewer,
     distribute_runs,
     list_reviewers,
     save_reviewer,
@@ -256,8 +257,15 @@ def admin_create_reviewer(payload: ReviewerWrite, db: Session = Depends(get_db))
 
 @app.put("/api/v1/admin/reviewers/{reviewer_id}", tags=["admin"])
 def admin_update_reviewer(reviewer_id: int, payload: ReviewerWrite, db: Session = Depends(get_db)) -> list[dict]:
-    """Rename a reviewer or (de)activate them. Reviewers are not deleted so their history stays."""
+    """Rename a reviewer."""
     return _store_call(db, lambda: save_reviewer(db, payload, reviewer_id))
+
+
+@app.delete("/api/v1/admin/reviewers/{reviewer_id}", tags=["admin"])
+def admin_delete_reviewer(reviewer_id: int, db: Session = Depends(get_db)) -> list[dict]:
+    """Soft-delete a reviewer: hidden and unassigned from pending runs, past reviews keep the name.
+    Creating a reviewer with the same name restores them."""
+    return _store_call(db, lambda: delete_reviewer(db, reviewer_id))
 
 
 @app.post("/api/v1/admin/research-runs/assign", tags=["admin"])
