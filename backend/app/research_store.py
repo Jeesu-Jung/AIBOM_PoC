@@ -76,6 +76,13 @@ def _cost(result: dict[str, Any]) -> Decimal | None:
         return None
 
 
+def _metric(result: dict[str, Any], key: str) -> int | None:
+    """A call measurement the research stream attached (`research.metrics`); None for older results."""
+    research = result.get("research") if isinstance(result.get("research"), dict) else {}
+    value = (research.get("metrics") or {}).get(key) if isinstance(research.get("metrics"), dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
 def _row_to_dict(row: ModelResearchResult, include_result: bool = True) -> dict[str, Any]:
     result = row.result_json or {}
     summary = {
@@ -87,6 +94,9 @@ def _row_to_dict(row: ModelResearchResult, include_result: bool = True) -> dict[
         "researchModel": row.research_model,
         "webSearchRequests": row.web_search_requests,
         "costUsd": float(row.cost_usd) if row.cost_usd is not None else None,
+        "responseTimeMs": row.response_time_ms,
+        "eventCount": row.event_count,
+        "contentCharacters": row.content_characters,
         "createdAt": _iso(row.created_at),
         "aibomSummary": result.get("aibomSummary") or {},
         "hasAibom": bool(result.get("aibom")),
@@ -198,6 +208,9 @@ def save_research_results(session: Session, payload: SaveResearchResultsRequest)
         row.research_model = research.get("model")
         row.web_search_requests = _web_searches(result)
         row.cost_usd = _cost(result)
+        row.response_time_ms = _metric(result, "responseTimeMs")
+        row.event_count = _metric(result, "eventCount")
+        row.content_characters = _metric(result, "contentCharacters")
         row.result_json = result
         row.created_at = now
     run.updated_at = now

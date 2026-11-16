@@ -18,6 +18,9 @@ const formatDateTime = (value) => {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" });
 };
 const formatCost = (value) => (value == null ? "-" : `$${value.toFixed(4)}`);
+const formatDuration = (ms) => (ms == null ? "-" : ms < 60000 ? `${(ms / 1000).toFixed(1)}초`
+  : `${Math.floor(ms / 60000)}분 ${Math.round((ms % 60000) / 1000)}초`);
+const formatCount = (value, unit) => (value == null ? "-" : `${value.toLocaleString()}${unit}`);
 const display = (value) => (value == null || value === "" || (Array.isArray(value) && !value.length)
   ? null : Array.isArray(value) ? value.join(", ") : String(value));
 
@@ -75,6 +78,9 @@ function SourceDetail({ item, fields, sourceKey }) {
         <div><dt>Research model</dt><dd>{item.researchModel || "-"}</dd></div>
         <div><dt>웹 검색</dt><dd>{item.webSearchRequests ?? "-"}</dd></div>
         <div><dt>비용</dt><dd>{formatCost(item.costUsd)}</dd></div>
+        <div><dt>응답 시간</dt><dd>{formatDuration(item.responseTimeMs)}</dd></div>
+        <div><dt>이벤트 수</dt><dd>{formatCount(item.eventCount, "개")}</dd></div>
+        <div><dt title="모델이 생성한 답변 본문의 문자 수">생성 문자 수</dt><dd>{formatCount(item.contentCharacters, "자")}</dd></div>
         <div><dt>저장 시각</dt><dd>{formatDateTime(item.createdAt)}</dd></div>
       </dl>
 

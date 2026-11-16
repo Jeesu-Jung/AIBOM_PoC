@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, AsyncIterator, Literal
@@ -1225,6 +1226,9 @@ async def _stream_completion(
 
     `sink["assembled"]` holds a non-streaming-shaped payload when the stream ends normally;
     `sink["failed"]` is set when the upstream stream reported an error (already yielded).
+    `sink["metrics"]` measures the call: `responseTimeMs` (request sent -> stream finished),
+    `eventCount` (events OpenRouter sent, the "OpenRouter 원본 이벤트" count of the admin UI) and
+    `contentCharacters` (characters of the generated answer, the "N자 생성됨" of the admin UI).
     """
     headers = {
         "Authorization": f"Bearer {settings.openrouter_api_key}",
@@ -1240,6 +1244,8 @@ async def _stream_completion(
     annotations: list[dict[str, Any]] = []
     usage: dict[str, Any] = {}
     response_model = request_payload.get("model") or settings.openrouter_model
+    started = time.perf_counter()
+    event_count = 0
 
     async with httpx.AsyncClient(timeout=settings.openrouter_timeout_seconds) as client:
         async with client.stream(
@@ -1261,6 +1267,7 @@ async def _stream_completion(
                 data = line[5:].strip()
                 if not data or data == "[DONE]":
                     continue
+                event_count += 1
                 try:
                     chunk = json.loads(data)
                 except json.JSONDecodeError:
@@ -1303,6 +1310,11 @@ async def _stream_completion(
         "choices": [{"message": {"content": "".join(content_parts), "annotations": annotations}}],
         "usage": usage,
     }
+    sink["metrics"] = {
+        "responseTimeMs": round((time.perf_counter() - started) * 1000),
+        "eventCount": event_count,
+        "contentCharacters": sum(map(len, content_parts)),
+    }
 
 
 async def stream_model_research(
@@ -1326,6 +1338,7 @@ async def stream_model_research(
             return
         yield _sse("status", {"stage": "validating", "message": "수집한 정보를 검증하고 초안을 정리하고 있습니다."})
         result = parse_openrouter_response(sink["assembled"], context=context, source=source)
+        result["research"]["metrics"] = sink["metrics"]
         yield _sse("complete", {"result": result})
     except (RuntimeError, ValueError, httpx.HTTPError) as error:
         yield _sse("error", {"message": _stream_error_message(error)})
@@ -1354,6 +1367,7 @@ async def stream_model_merge(
             return
         yield _sse("status", {"stage": "validating", "message": "병합 결과를 검증하고 초안을 정리하고 있습니다."})
         result = parse_merge_response(sink["assembled"], request.results, context=context)
+        result["research"]["metrics"] = sink["metrics"]
         yield _sse("complete", {"result": result})
     except (RuntimeError, ValueError, httpx.HTTPError) as error:
         yield _sse("error", {"message": _stream_error_message(error)})

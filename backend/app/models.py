@@ -231,6 +231,9 @@ class ModelResearchResult(Base):
     research_model: Mapped[str | None] = mapped_column(String(255))
     web_search_requests: Mapped[int | None]
     cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    response_time_ms: Mapped[int | None]
+    event_count: Mapped[int | None]
+    content_characters: Mapped[int | None]
     result_json: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow)
 

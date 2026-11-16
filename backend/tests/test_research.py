@@ -617,3 +617,34 @@ def test_stream_passes_openrouter_http_error_through(monkeypatch) -> None:
     assert "event: error" in response.text
     assert "OpenRouter HTTP 400: bad-model is not a valid model ID" in response.text
     assert '"upstream"' in response.text
+
+
+def test_stream_completion_measures_the_openrouter_call(monkeypatch) -> None:
+    import asyncio
+
+    import httpx
+
+    chunks = [
+        json.dumps({"model": "m", "choices": [{"delta": {"content": "ab"}}]}),
+        "not json",
+        json.dumps({"choices": [{"delta": {"content": "cde"}}], "usage": {"cost": 0.01}}),
+    ]
+    body = "".join(f"data: {chunk}\n\n" for chunk in chunks) + "data: [DONE]\n\n"
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(research.httpx, "AsyncClient", lambda **kwargs: real_client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, text=body)), **kwargs))
+    monkeypatch.setattr(research, "settings", replace(research.settings, openrouter_api_key="test-key"))
+
+    async def run() -> tuple[dict, list[str]]:
+        sink: dict = {}
+        events = [event async for event in research._stream_completion({"model": "m"}, {"stage": "researching"}, sink)]
+        return sink, events
+
+    sink, events = asyncio.run(run())
+
+    metrics = sink["metrics"]
+    # eventCount is what the admin UI shows as "OpenRouter 원본 이벤트 N개".
+    assert metrics["eventCount"] == sum(event.startswith("event: provider_event") for event in events) == 3
+    assert "responseCharacters" not in metrics
+    assert metrics["contentCharacters"] == 5  # "ab" + "cde": the generated answer only
+    assert isinstance(metrics["responseTimeMs"], int) and metrics["responseTimeMs"] >= 0

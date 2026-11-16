@@ -84,7 +84,9 @@ def test_new_runs_keep_the_history_and_run_id_targets_a_run() -> None:
         "modelName": "org/model", "replacePrevious": True,
         "results": {"huggingface": {**result("huggingface", "org/old"),
                                     "research": {"model": "m", "usage": {"cost": 0.1,
-                                                 "server_tool_use_details": {"web_search_requests": 7}}}}},
+                                                 "server_tool_use_details": {"web_search_requests": 7}},
+                                                 "metrics": {"responseTimeMs": 41250, "eventCount": 312,
+                                                             "contentCharacters": 12000}}}},
     }))
     second = save_research_results(db, SaveResearchResultsRequest.model_validate({
         "modelName": "org/model", "replacePrevious": True, "results": {"paper": result("paper", "org/new")},
@@ -100,6 +102,9 @@ def test_new_runs_keep_the_history_and_run_id_targets_a_run() -> None:
     assert old["results"]["merged"]["resultModelId"] == "org/old"
     assert old["results"]["huggingface"]["webSearchRequests"] == 7
     assert old["totalCostUsd"] == 0.1
+    measured = old["results"]["huggingface"]
+    assert (measured["responseTimeMs"], measured["eventCount"], measured["contentCharacters"]) == (41250, 312, 12000)
+    assert old["results"]["merged"]["responseTimeMs"] is None  # results stored without measurements
     assert "result" not in runs[1]["results"]["huggingface"]  # summaries omit the full payload
     assert [run["runId"] for run in list_research_runs(db, model_id="org/new")] == [second["runId"]]
 
