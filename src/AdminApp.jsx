@@ -203,11 +203,20 @@ const aibomValue = (value) => {
 // EVALUATION as one table: a row per reported result (benchmark, metric, shots), a column per research
 // result. The per-field view showed each field as a separate JSON array, so a score could not be read
 // next to its benchmark and dataset. The area is still picked as a whole, by column.
+// The values inside one table cell, each under its field name, so a value is never shown without it.
+function CellFields({ fields, title }) {
+  return <dl className="ai-cell-fields" title={title || undefined}>{fields.map(([label, value]) => <div key={label}>
+    <dt>{label}</dt>
+    <dd>{value == null || value === "" || (Array.isArray(value) && !value.length) ? <i>—</i>
+      : Array.isArray(value) ? <ul>{value.map((text, index) => <li key={index}>{text}</li>)}</ul> : value}</dd>
+  </div>)}</dl>;
+}
+
 // Column headings of those tables: one button per research result, picking the whole area from it.
 function AibomSourceHeads({ results, columns, area, selected, onSelect }) {
   return columns.map((option) => {
     const count = results[option.value]?.aibom ? (results[option.value].aibom[area] || []).length : null;
-    return <th key={option.value} className={selected === option.value ? "is-selected" : ""}>
+    return <th key={option.value} className={`ai-source-head${selected === option.value ? " is-selected" : ""}`}>
       <button type="button" disabled={count === null} aria-pressed={selected === option.value} onClick={() => onSelect(option.value)}
         title={`${option.label}의 ${area.toUpperCase()} 전체를 초안에 쓰기`}>{selected === option.value ? "✓ " : ""}{option.label}<small>{count === null ? "AIBOM 없음" : `${count}건`}</small></button>
     </th>;
@@ -234,7 +243,7 @@ function AibomDatasetTable({ results, columns, selected, onSelect }) {
           ["version", item.version], ["license", item.license], ["size", item.extensions?.size],
           ["disclosure", item.provenance?.extensions?.disclosure_status],
           ["parent", parents.length ? `${item.provenance.relation || "derived"} ← ${parents.map((parent) => parent.replace(/^dataset:/, "")).join(", ")}` : null]
-        ].filter(([, value]) => value != null && value !== ""),
+        ],
         processing: item.processing || [],
         description: item.extensions?.description
       };
@@ -259,12 +268,12 @@ function AibomDatasetTable({ results, columns, selected, onSelect }) {
         {columns.map((option) => {
           const cell = row.cells[option.value];
           return <td key={option.value} className={`ai-eval-cell ai-dataset-cell${selected === option.value ? " is-selected" : ""}${cell ? "" : " is-missing"}`}>
-            {cell ? <div title={cell.description || undefined}>
-              <strong>{cell.name}</strong>
-              <small className="ai-dataset-uses">{cell.uses.length ? cell.uses.map((use) => <b key={use}>{use}</b>) : <i>사용처 없음</i>}</small>
-              {cell.facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}
-              {cell.processing.length > 0 && <small title={cell.processing.join("\n")}>processing: {cell.processing.length}단계</small>}
-            </div> : <span>없음</span>}
+            {cell ? <CellFields title={cell.description} fields={[
+              ["name", cell.name],
+              ["사용처", cell.uses.length ? <span className="ai-dataset-uses">{cell.uses.map((use) => <b key={use}>{use}</b>)}</span> : null],
+              ...cell.facts,
+              ["processing", cell.processing]
+            ]} /> : <span>없음</span>}
           </td>;
         })}
       </tr>)}</tbody>
@@ -301,7 +310,7 @@ function AibomReferenceTable({ results, columns, selected, onSelect }) {
     <p className="ai-eval-summary">참조 자료 <b>{rows.length}</b>개 · 유형·리비전이 서로 다른 행 <b>{marked.filter((row) => row.differs).length}</b> · 일부 결과에만 있는 행 <b>{marked.filter((row) => row.partial).length}</b>. 열 제목을 누르면 REFERENCE 영역 전체가 그 결과의 값으로 정해집니다.</p>
     <table className="ai-eval-table">
       <thead><tr>
-        <th>Source</th>
+        <th className="is-wide">Source</th>
         <AibomSourceHeads results={results} columns={columns} area="reference" selected={selected} onSelect={onSelect} />
       </tr></thead>
       <tbody>{marked.map((row) => <tr key={row.id} className={row.differs ? "is-diff" : ""}>
@@ -309,11 +318,49 @@ function AibomReferenceTable({ results, columns, selected, onSelect }) {
         {columns.map((option) => {
           const cell = row.cells[option.value];
           return <td key={option.value} className={`ai-eval-cell ai-dataset-cell${selected === option.value ? " is-selected" : ""}${cell ? "" : " is-missing"}`}>
-            {cell ? <div>
-              <small className="ai-dataset-uses"><b>{cell.type}</b></small>
-              {cell.revision && <small>revision: {cell.revision}</small>}
-              <small>{cell.cited ? `값 근거 ${cell.cited}곳에서 인용` : "값 근거로 인용되지 않음"}</small>
-            </div> : <span>없음</span>}
+            {cell ? <CellFields fields={[["type", cell.type], ["revision", cell.revision], ["인용", cell.cited ? `값 근거 ${cell.cited}곳` : "인용되지 않음"]]} /> : <span>없음</span>}
+          </td>;
+        })}
+      </tr>)}</tbody>
+    </table>
+  </div>;
+}
+
+// LICENSE_POLICY as one table: a row per license name, a column per research result.
+function AibomLicenseTable({ results, columns, selected, onSelect }) {
+  const rows = [];
+  const byId = new Map();
+  [...columns].sort((a, b) => (b.value === "merged") - (a.value === "merged")).forEach((option) => {
+    (results[option.value]?.aibom?.license_policy || []).forEach((item) => {
+      const id = evaluationToken(item.license);
+      if (!byId.has(id)) { byId.set(id, { id, license: item.license || "-", cells: {} }); rows.push(byId.get(id)); }
+      const extensions = item.extensions || {};
+      byId.get(id).cells[option.value] = {
+        fields: [["spdx_id", extensions.spdx_id], ["kind", extensions.kind], ["commercial_use", extensions.commercial_use],
+                 ["usage_policy", item.usage_policy], ["restrictions", item.restrictions || []]],
+        tooltip: [extensions.scope_note, extensions.license_uri, extensions.usage_policy_uri, extensions.source].filter(Boolean).join("\n")
+      };
+    });
+  });
+  const marked = rows.map((row) => ({
+    ...row,
+    differs: new Set(columns.map((option) => row.cells[option.value]).filter(Boolean).map((cell) => JSON.stringify(cell.fields))).size > 1,
+    partial: columns.some((option) => results[option.value]?.aibom && !row.cells[option.value])
+  }));
+  if (!rows.length) return <p className="ai-result-empty">어느 조사 결과에도 라이선스 정보가 없습니다.</p>;
+  return <div className="ai-eval-table-wrap">
+    <p className="ai-eval-summary">라이선스 <b>{rows.length}</b>개 · 내용이 서로 다른 행 <b>{marked.filter((row) => row.differs).length}</b> · 일부 결과에만 있는 행 <b>{marked.filter((row) => row.partial).length}</b>. 열 제목을 누르면 LICENSE_POLICY 영역 전체가 그 결과의 값으로 정해집니다.</p>
+    <table className="ai-eval-table">
+      <thead><tr>
+        <th>License</th>
+        <AibomSourceHeads results={results} columns={columns} area="license_policy" selected={selected} onSelect={onSelect} />
+      </tr></thead>
+      <tbody>{marked.map((row) => <tr key={row.id} className={row.differs ? "is-diff" : ""}>
+        <th scope="row">{row.license}{row.differs && <em>내용 다름</em>}</th>
+        {columns.map((option) => {
+          const cell = row.cells[option.value];
+          return <td key={option.value} className={`ai-eval-cell ai-dataset-cell${selected === option.value ? " is-selected" : ""}${cell ? "" : " is-missing"}`}>
+            {cell ? <CellFields fields={cell.fields} title={cell.tooltip} /> : <span>없음</span>}
           </td>;
         })}
       </tr>)}</tbody>
@@ -352,7 +399,7 @@ function AibomEvaluationTable({ results, columns, selected, onSelect }) {
     <p className="ai-eval-summary">평가 결과 <b>{rows.length}</b>행 · 점수가 서로 다른 행 <b>{marked.filter((row) => row.scoreDiffers).length}</b> · 일부 결과에만 있는 행 <b>{marked.filter((row) => row.partial).length}</b>. 열 제목을 누르면 EVALUATION 영역 전체가 그 결과의 값으로 정해집니다.</p>
     <table className="ai-eval-table">
       <thead><tr>
-        <th>Benchmark</th><th>Metric</th><th>Shots</th>
+        <th>Benchmark</th><th className="is-narrow">Metric</th><th className="is-tiny">Shots</th>
         <AibomSourceHeads results={results} columns={columns} area="evaluation" selected={selected} onSelect={onSelect} />
       </tr></thead>
       <tbody>{marked.map((row) => <tr key={row.id} className={row.scoreDiffers ? "is-diff" : ""}>
@@ -364,7 +411,7 @@ function AibomEvaluationTable({ results, columns, selected, onSelect }) {
           return <td key={option.value} className={`ai-eval-cell${selected === option.value ? " is-selected" : ""}${items ? "" : " is-missing"}`}>
             {items ? items.map((item, index) => <div key={index} title={[item.configuration?.notes, item.extensions?.reference, item.extensions?.reference_locator].filter(Boolean).join("\n") || undefined}>
               <strong>{String(evaluationScore(item))}</strong>
-              <small>{item.dataset || "데이터셋 미연결"}</small>
+              <small>dataset: {item.dataset || "미연결"}</small>
             </div>) : <span>없음</span>}
           </td>;
         })}
@@ -373,7 +420,7 @@ function AibomEvaluationTable({ results, columns, selected, onSelect }) {
   </div>;
 }
 
-const AIBOM_TABLES = { evaluation: AibomEvaluationTable, dataset: AibomDatasetTable, reference: AibomReferenceTable };
+const AIBOM_TABLES = { evaluation: AibomEvaluationTable, dataset: AibomDatasetTable, reference: AibomReferenceTable, license_policy: AibomLicenseTable };
 const AIBOM_AREA_ONLY = new Set(["dataset", "evaluation", "license_policy", "reference"]);
 function AibomFullComparison({ results, columns, overrides, fieldOverrides, onSelect, onFieldSelect }) {
   return <div className="ai-aibom-full-comparison">
