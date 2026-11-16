@@ -222,7 +222,7 @@ def admin_delete_research_results(modelName: str, db: Session = Depends(get_db))
 class ResearchRunLink(BaseModel):
     model_id: str | None = Field(alias="modelId", default=None, max_length=512)
     reviewed_by: int | None = Field(alias="reviewedBy", default=None,
-                                    description="Reviewer who reviewed and saved the run; defaults to the assignee.")
+                                    description="Reviewer who reviewed and saved the run; null records nobody.")
 
 
 def _store_call(db: Session, action):

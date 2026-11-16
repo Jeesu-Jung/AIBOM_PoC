@@ -230,6 +230,10 @@ def test_runs_are_assigned_distributed_and_record_who_reviewed_them() -> None:
     counts = {row["name"]: (row["pendingCount"], row["reviewedCount"]) for row in list_reviewers(db)}
     assert counts == {"Kim Review": (2, 0), "Lee": (2, 1), "Park": (0, 0)}
 
+    # Without a reviewer nobody is recorded, even though the run is assigned.
+    anonymous = link_research_run(db, run_ids[0], "org/model-0")
+    assert (anonymous["reviewStatus"], anonymous["reviewerName"], anonymous["reviewedByName"]) == ("saved", "Kim Review", None)
+
     undone = link_research_run(db, run_ids[0], None)
     assert (undone["reviewStatus"], undone["reviewedByName"], undone["reviewedAt"]) == ("pending", None, None)
 

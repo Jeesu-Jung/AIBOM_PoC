@@ -82,7 +82,7 @@ export const fetchResearchRuns = ({ modelName, modelId, limit } = {}) => {
 };
 // resolve: results placed in the current catalog tree with evidence rows (what the editor needs).
 export const fetchResearchRun = (runId, resolve = false) => request(`/api/v1/admin/research-runs/${runId}${resolve ? "?resolve=true" : ""}`);
-// reviewedBy: reviewer who did the review (defaults to the reviewer the run is assigned to).
+// reviewedBy: reviewer who did the review; null records nobody.
 export const linkResearchRun = (runId, modelId, reviewedBy = null) => request(`/api/v1/admin/research-runs/${runId}/model`, {
   method: "PUT", body: JSON.stringify({ modelId, reviewedBy })
 });

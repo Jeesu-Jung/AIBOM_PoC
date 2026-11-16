@@ -48,7 +48,8 @@ export function ModelResearchRuns({ modelId, refreshKey }) {
             : <ul className="research-run-list is-compact">{runs.map((run) => (
               <li key={run.runId}><a href={`/admin/research?run=${run.runId}`}>
                 <strong>#{run.runId}</strong><span>{formatDateTime(run.createdAt)}</span><SourceBadges run={run} />
-                <em>{run.modelId === modelId ? "검토 완료 · 이 실행으로 저장" : run.reviewStatus === "saved" ? `저장됨 → ${run.modelId}` : "검토 대기"}</em>
+                <em>{run.modelId === modelId ? "검토 완료 · 이 실행으로 저장" : run.reviewStatus === "saved" ? `저장됨 → ${run.modelId}` : "검토 대기"}
+                  {" · "}{run.reviewStatus === "saved" ? `검토자 ${run.reviewedByName || "기록 없음"}` : `담당 ${run.reviewerName || "미배정"}`}</em>
               </a></li>
             ))}</ul>}
     </fieldset>

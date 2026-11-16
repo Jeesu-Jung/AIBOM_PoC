@@ -8,7 +8,7 @@ import { composeEvidence, describeEvidence, pruneEvidence, rekeyEvidence, swapEv
 import EvidenceLinks from "./components/admin/EvidenceLinks.jsx";
 import { focusInputOnLabelClick } from "./utils/labelClick.js";
 import SourcePicker, { MANUAL, RESEARCH_SOURCES, sourceLabel as chipLabel } from "./components/admin/SourcePicker.jsx";
-import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, fetchAdminModelEvidence, fetchResearchRun, fetchResearchRuns, fetchReviewers, linkResearchRun, saveAdminModelEvidence, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
+import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, fetchAdminModelEvidence, fetchResearchRun, fetchResearchRuns, linkResearchRun, saveAdminModelEvidence, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
 
 const EMPTY_MODEL = {
   modelId: "", namespace: "", modelName: "", familyKey: "", familyName: "", modelRole: "DERIVED",
@@ -790,14 +790,16 @@ export default function AdminApp() {
   // Research results ({ huggingface, paper, merged }) whose values the editor can switch between.
   const [candidates, setCandidates] = useState(null);
   const [candidateRunId, setCandidateRunId] = useState(null);
+  // Review state of that run ({ runId, reviewStatus, reviewerName, reviewedByName }), shown next to the model title.
+  const [modelRun, setModelRun] = useState(null);
   // Result last picked per catalog field; decides the marked chip when several results agree.
   const [pickedSource, setPickedSource] = useState({});
   // A stored run opened from the research history for review: { runId, modelId } once its catalog model is known.
   const [reviewRun, setReviewRun] = useState(null);
-  // Who is reviewing the run on screen; recorded with the run when it is saved.
-  const [reviewers, setReviewers] = useState([]);
+  // The reviewer the run on screen is assigned to ({ id, name }), and whether to record them as the
+  // person who reviewed it when it is saved ("" = record nobody).
+  const [assignee, setAssignee] = useState(null);
   const [reviewedBy, setReviewedBy] = useState("");
-  useEffect(() => { fetchReviewers().then(setReviewers).catch(() => {}); }, []);
   const aibomEditorRef = useRef(null);
 
   const reload = async (preferredId = selectedId) => {
@@ -847,7 +849,8 @@ export default function AdminApp() {
   async function openRunForReview(runId, catalog = models) {
     const run = await fetchResearchRun(runId, true);
     const results = Object.fromEntries(RESEARCH_SOURCES.map(([key]) => [key, run.results[key]?.result || null]));
-    setReviewedBy(run.reviewerId ? String(run.reviewerId) : ""); // the assignee reviews it unless changed
+    setAssignee(run.reviewerId ? { id: run.reviewerId, name: run.reviewerName } : null);
+    setReviewedBy(run.reviewerId ? String(run.reviewerId) : ""); // the assignee is recorded unless switched off
     const existing = catalog.find((model) => model.modelId === run.catalogModelId);
     if (existing) {
       setReviewRun({ runId, modelId: existing.modelId });
@@ -879,7 +882,7 @@ export default function AdminApp() {
   useEffect(() => {
     if (!selectedId) return undefined;
     let cancelled = false;
-    setCandidates(null); setCandidateRunId(null);
+    setCandidates(null); setCandidateRunId(null); setModelRun(null);
     const reviewing = reviewRun?.modelId === selectedId ? reviewRun.runId : null;
     (reviewing ? Promise.resolve([{ runId: reviewing }]) : fetchResearchRuns({ modelId: selectedId, limit: 1 }))
       .then((runs) => (runs[0] ? fetchResearchRun(runs[0].runId, true) : null))
@@ -887,6 +890,7 @@ export default function AdminApp() {
         if (cancelled || !run) return;
         setCandidates(Object.fromEntries(RESEARCH_SOURCES.map(([key]) => [key, run.results[key]?.result || null])));
         setCandidateRunId(run.runId);
+        setModelRun({ runId: run.runId, reviewStatus: run.reviewStatus, reviewerName: run.reviewerName, reviewedByName: run.reviewedByName });
       }).catch(() => {});
     return () => { cancelled = true; };
   }, [selectedId, aibomRefresh, reviewRun]);
@@ -1060,7 +1064,7 @@ export default function AdminApp() {
   return (
     <div className="admin-shell">
       <NoticeModal notice={notice} onClose={() => setNotice(null)} />
-      {createMode && <CreateModelDialog mode={createMode} onModeChange={setCreateMode} onManual={startCreate} onUseDraft={useAiDraft} onClose={() => setCreateMode(null)} />}
+      {createMode && <CreateModelDialog mode={createMode} onModeChange={setCreateMode} onManual={startCreate} onUseDraft={(...draft) => { setAssignee(null); setReviewedBy(""); useAiDraft(...draft); }} onClose={() => setCreateMode(null)} />}
       <header className="admin-header">
         <div><p className="eyebrow">AIBOM ADMIN</p><h1>Model catalog</h1><p>등록된 모델 정보와 모델 간 연결 관계를 조회하고 수정할 수 있습니다.</p></div>
         <div className="admin-header-actions"><a href="/" className="admin-secondary">메인으로</a><a href="/admin/research" className="admin-secondary">AI 조사 이력</a><button type="button" className="admin-primary" onClick={() => setCreateMode("method")}>+ 새 모델</button></div>
@@ -1093,14 +1097,23 @@ export default function AdminApp() {
         <section className="admin-editor">
           <div className="admin-editor-title">
             <div><p className="eyebrow">{selectedId ? "EDIT MODEL" : "CREATE MODEL"}</p><h2>{selectedId || "새 모델 등록"}</h2></div>
-            {selectedId && <span className="admin-depth">Depth {form.hierarchyDepth}</span>}
+            {selectedId && <div className="admin-title-badges">
+              {modelRun && <a className={`admin-owner is-${modelRun.reviewStatus}`} href={`/admin/research?run=${modelRun.runId}`}
+                title={`AI 조사 #${modelRun.runId} · ${modelRun.reviewStatus === "saved" ? "검토 완료 · 저장됨" : "검토 대기"} (눌러서 조사 이력 보기)`}>
+                {modelRun.reviewStatus === "saved"
+                  ? <>검토자 <b>{modelRun.reviewedByName || "기록 없음"}</b></>
+                  : <>담당 <b>{modelRun.reviewerName || "미배정"}</b></>}
+                <small>AI 조사 #{modelRun.runId}</small>
+              </a>}
+              <span className="admin-depth">Depth {form.hierarchyDepth}</span>
+            </div>}
           </div>
-          {activeReviewRunId && reviewers.length > 0 && <label className="review-by"><span>검토자</span>
+          {activeReviewRunId && assignee && <label className="review-by"><span>검토자</span>
             <select value={reviewedBy} onChange={(event) => setReviewedBy(event.target.value)}>
-              <option value="">선택 안 함 (배정된 작업자로 기록)</option>
-              {reviewers.filter((reviewer) => reviewer.isActive || String(reviewer.id) === reviewedBy).map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
+              <option value={assignee.id}>{assignee.name}</option>
+              <option value="">선택 안 함</option>
             </select>
-            <small>AI 조사 #{activeReviewRunId}을(를) 검토한 사람으로 저장할 때 함께 기록됩니다.</small></label>}
+            <small>{reviewedBy ? `저장할 때 AI 조사 #${activeReviewRunId}의 검토자로 ${assignee.name}이(가) 기록됩니다.` : `저장해도 AI 조사 #${activeReviewRunId}에 검토자를 기록하지 않습니다.`}</small></label>}
           {selectedId && activeReviewRunId && <div className="ai-draft-banner"><span>✦</span><div><strong>AI 조사 #{activeReviewRunId} 결과를 검토하고 있습니다</strong><p>이미 등록된 모델이라 새로 만들지 않고 이 모델에 반영합니다. 각 항목 위의 HF / 논문 / AI 병합 칩으로 조사 값을 골라 넣고 저장하면, 이 조사 실행이 검토 완료로 표시됩니다.</p></div><em>검토 중</em></div>}
           {aiDraft && <div className="ai-draft-banner"><span>✦</span><div><strong>AI가 작성한 초안입니다</strong><p>내용과 출처를 확인하고 필요한 항목을 수정한 뒤 등록해 주세요. 각 항목 위의 HF / 논문 / AI 병합 칩으로 다른 조사 결과의 값으로 바꿀 수 있습니다.{pendingAibom ? ` AIBOM(평가 ${pendingAibom.evaluation?.length || 0}건 · 데이터셋 ${pendingAibom.dataset?.length || 0}개 · 근거 ${pendingAibom.reference?.length || 0}개)을 포함한 전체 정보가 한 번에 저장됩니다.` : ""}</p></div><em>검토 필요</em></div>}
           <form onSubmit={save}>

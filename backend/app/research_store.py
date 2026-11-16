@@ -236,8 +236,7 @@ def link_research_run(session: Session, run_id: int, model_id: str | None,
                       reviewed_by: int | None = None) -> dict[str, Any]:
     """Mark the run as reviewed and saved to `model_id` (None undoes it).
 
-    `reviewed_by` is the reviewer who did the review; without it the reviewer the run is assigned
-    to is recorded.
+    `reviewed_by` is the reviewer who did the review; None records nobody.
     """
     run = session.get(ModelResearchRun, run_id)
     if run is None:
@@ -250,7 +249,7 @@ def link_research_run(session: Session, run_id: int, model_id: str | None,
     if model_id is None:
         run.reviewed_by, run.reviewed_at = None, None
     else:
-        run.reviewed_by = reviewed_by if reviewed_by is not None else run.reviewer_id
+        run.reviewed_by = reviewed_by
         run.reviewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     session.commit()
     return get_research_run(session, run_id)
