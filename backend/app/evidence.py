@@ -118,6 +118,10 @@ def build_result_evidence(result: dict[str, Any],
         rows.extend(_catalog_rows(result.get("fieldEvidence") or [], source, skip=inherited))
     if isinstance(result.get("aibomDraft"), dict):
         rows.extend(_aibom_rows(result["aibomDraft"], source))
+    # The catalog's release date is the one researched in the AIBOM (`catalog_fields_from_aibom`),
+    # so its evidence is listed for the catalog field as well.
+    rows.extend({**row, "area": "catalog", "field": "releaseDate"} for row in list(rows)
+                if row["area"] == "model" and row["field"] == "release_date")
 
     unique: dict[tuple, dict[str, Any]] = {}
     for row in rows:

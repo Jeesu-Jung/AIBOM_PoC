@@ -64,14 +64,14 @@ def test_inherited_family_fields_carry_no_research_evidence() -> None:
     result = parse_openrouter_response({"choices": [{"message": {"content": json.dumps(content)}}]},
                                        context=_lineage_context())
 
-    assert set(result["catalogLineage"]["inheritedFields"]) >= {"familyKey", "familyName", "familyDeveloper"}
+    assert set(result["catalogLineage"]["inheritedFields"]) >= {"familyKey", "familyName"}
     assert {row["field"] for row in rows(result, "catalog")} == {"supplier"}
 
 
 def test_merged_result_takes_catalog_evidence_from_the_chosen_input() -> None:
     def research(source: str, url: str) -> dict:
         content = research_content()
-        content["fieldEvidence"] = [{"fields": ["supplier", "familyDeveloper"], "confidence": "high",
+        content["fieldEvidence"] = [{"fields": ["supplier", "primaryPurpose"], "confidence": "high",
                                      "urls": [url], "note": None}]
         return parse_openrouter_response({"choices": [{"message": {"content": json.dumps(content)}}]}, source=source)
 
@@ -81,7 +81,7 @@ def test_merged_result_takes_catalog_evidence_from_the_chosen_input() -> None:
     merge_content = {
         "status": "found", "draft": merged["draft"], "parentCandidates": [], "aibom": merged["aibom"],
         "fieldDecisions": [{"field": "supplier", "chosen": "huggingface", "rationale": "저장소 기준"},
-                           {"field": "familyDeveloper", "chosen": "combined", "rationale": "일치"},
+                           {"field": "primaryPurpose", "chosen": "combined", "rationale": "일치"},
                            {"field": "description", "chosen": "none", "rationale": "없음"}],
         "areaDecisions": [], "warnings": [],
     }
@@ -89,8 +89,8 @@ def test_merged_result_takes_catalog_evidence_from_the_chosen_input() -> None:
 
     assert {(row["field"], row["source"], row["url"]) for row in rows(result, "catalog")} == {
         ("supplier", "huggingface", "https://example.test/hf"),
-        ("familyDeveloper", "huggingface", "https://example.test/hf"),
-        ("familyDeveloper", "paper", "https://example.test/paper")}
+        ("primaryPurpose", "huggingface", "https://example.test/hf"),
+        ("primaryPurpose", "paper", "https://example.test/paper")}
     assert all(row["source"] == "merged" for row in rows(result, "model"))
 
 
@@ -136,3 +136,26 @@ def test_evidence_endpoints_round_trip() -> None:
 
 def test_build_result_evidence_tolerates_results_stored_before_field_evidence() -> None:
     assert build_result_evidence({"source": "paper", "draft": {}, "aibomDraft": {"model": {"evidence_urls": ["x"]}}}) == []
+
+
+def test_release_date_is_the_models_own_and_keeps_its_aibom_evidence() -> None:
+    content = research_content()
+    content["aibom"]["field_evidence"].append({"area": "model", "fields": ["release_date"], "confidence": "high",
+                                               "urls": ["https://example.test/model/commits"], "note": None})
+    result = parse_openrouter_response({"choices": [{"message": {"content": json.dumps(content)}}]})
+
+    assert result["draft"]["releaseDate"] == content["aibom"]["model"]["release_date"]
+    assert [(row["field"], row["url"]) for row in rows(result, "catalog") if row["field"] == "releaseDate"] == [
+        ("releaseDate", "https://example.test/model/commits")]
+
+
+def test_results_stored_with_family_facts_are_brought_to_the_current_draft_shape() -> None:
+    from app.research import resolve_catalog_lineage
+
+    stored = {"draft": {"modelId": "org/model", "modelRole": "BASE", "familyDeveloper": "Org",
+                        "familyReleaseDate": "2024-01-01", "familyLicenseName": "Apache-2.0"},
+              "aibomDraft": {"model": {"release_date": "2025-03-04"}}}
+
+    draft = resolve_catalog_lineage(stored, None)["draft"]
+
+    assert draft == {"modelId": "org/model", "modelRole": "BASE", "releaseDate": "2025-03-04"}

@@ -110,29 +110,8 @@ class ResearchDraft(BaseModel):
         description=(
             "Organization or user that publishes this exact repository, normally the Hugging Face "
             "namespace owner as displayed on the model page, e.g. `meta-llama`, `Nous Research`, "
-            "`mlx-community`. For third-party derivatives this differs from familyDeveloper."
+            "`mlx-community`. For third-party derivatives this differs from the family's developer."
         )
-    )
-    family_developer: str | None = Field(
-        alias="familyDeveloper",
-        description=(
-            "Organization that created the original model family, e.g. `Meta`, "
-            "`Qwen Team (Alibaba Cloud)`, `Google DeepMind`. Same value for every member of a family."
-        ),
-    )
-    family_release_date: date | None = Field(
-        alias="familyReleaseDate",
-        description=(
-            "ISO date (YYYY-MM-DD) of the family's original public release announced by the family "
-            "developer, not the upload date of this derivative. Null unless a source states a full date."
-        ),
-    )
-    family_license_name: str | None = Field(
-        alias="familyLicenseName",
-        description=(
-            "Human-readable name of the license governing the family's original weights, e.g. "
-            "`Llama 3.1 Community License`, `Apache-2.0`, `Gemma Terms of Use`."
-        ),
     )
     primary_purpose: str | None = Field(
         alias="primaryPurpose",
@@ -202,7 +181,7 @@ class FieldEvidence(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     fields: list[str] = Field(
-        description="Draft field names exactly as spelled in the draft object, e.g. `familyReleaseDate`."
+        description="Draft field names exactly as spelled in the draft object, e.g. `primaryPurpose`."
     )
     confidence: Literal["high", "medium", "low"]
     urls: list[str] = Field(description="Source URLs that support these fields.")
@@ -255,7 +234,6 @@ DEFAULT_RELATIONSHIP_TYPES: tuple[str, ...] = (
 class CatalogFamily:
     key: str
     name: str
-    developer: str | None = None
 
 
 @dataclass(frozen=True)
@@ -265,9 +243,6 @@ class CatalogModel:
     model_id: str
     family_key: str
     family_name: str
-    family_developer: str | None = None
-    family_release_date: date | None = None
-    family_license_name: str | None = None
     parent_model_id: str | None = None
     depth: int = 0
 
@@ -292,13 +267,13 @@ class CatalogContext:
 
 def load_catalog_context(session: Session) -> CatalogContext:
     family_rows = session.execute(
-        select(ModelInfo.family_key, ModelInfo.family_name, ModelInfo.family_developer)
+        select(ModelInfo.family_key, ModelInfo.family_name)
         .distinct()
         .order_by(ModelInfo.family_key)
     ).all()
     families: dict[str, CatalogFamily] = {}
-    for key, name, developer in family_rows:
-        families.setdefault(key, CatalogFamily(key=key, name=name, developer=developer))
+    for key, name in family_rows:
+        families.setdefault(key, CatalogFamily(key=key, name=name))
     relationship_types = tuple(
         value
         for value in session.scalars(
@@ -314,16 +289,12 @@ def load_catalog_context(session: Session) -> CatalogContext:
             model_id=row.model_id,
             family_key=row.family_key,
             family_name=row.family_name,
-            family_developer=row.family_developer,
-            family_release_date=row.family_release_date,
-            family_license_name=row.family_license_name,
             parent_model_id=row.parent_model_id,
             depth=row.hierarchy_depth or 0,
         )
         for row in session.execute(
             select(
-                ModelInfo.model_id, ModelInfo.family_key, ModelInfo.family_name, ModelInfo.family_developer,
-                ModelInfo.family_release_date, ModelInfo.family_license_name,
+                ModelInfo.model_id, ModelInfo.family_key, ModelInfo.family_name,
                 ModelHierarchy.parent_model_id, ModelHierarchy.hierarchy_depth,
             )
             .outerjoin(ModelHierarchy, ModelHierarchy.model_id == ModelInfo.model_id)
@@ -444,8 +415,9 @@ SOURCE_PROMPTS: dict[str, str] = {
   domain, or preference relationship according to the card's own description; map `adapter` to
   `adapterTrainedFrom`, `quantized` to `quantizedFrom`, `merge` to `mergedFrom`, and format-only
   conversions (GGUF, MLX, ONNX, AWQ re-uploads without training) to `convertedFrom`.
-- familyReleaseDate, familyDeveloper, and familyLicenseName still describe the original family, so
-  follow the card's link to the base repository or the developer's announcement for them.
+- aibom.model.release_date is the release date of this exact repository: the date the model card
+  or its release announcement states, else the repository's creation date (first commit). For a
+  derivative never copy the release date of its base model.
 - If the repository is gated, private, or removed, say so in warnings and lower confidence.
 - AIBOM focus for this strategy: MODEL (config.json: layers, hidden size, heads, KV heads, context
   length, vocab size, tokenizer; safetensors parameter count), PROVENANCE and TRANSFORMATION.inputs
@@ -460,10 +432,9 @@ SOURCE_PROMPTS: dict[str, str] = {
   developer's own blog or report page. Search with the model name plus `arXiv`, `technical report`,
   or `paper`. Prefer the latest version of the paper by the model's own authors; treat third-party
   papers that merely evaluate the model as corroborating sources only.
-- From the paper derive: familyDeveloper (author affiliations or the organization named in the
-  abstract), familyReleaseDate (first arXiv submission date or the official announcement date the
-  paper itself states), familyName, primaryPurpose, familyLicenseName only when the paper states
-  the license, and lineage (which base model or prior version the paper says it was trained,
+- From the paper derive: familyName, primaryPurpose, aibom.model.release_date (the release date of
+  the requested model that the paper or its official announcement states; the first arXiv
+  submission date when the paper introduces exactly this model), and lineage (which base model or prior version the paper says it was trained,
   fine-tuned, distilled, or extended from). Parameter count, license and artifact facts go into the
   aibom only when the paper states them.
 - Identity: if the paper names the released repository (Hugging Face, GitHub release, or a model
@@ -511,9 +482,9 @@ RESEARCHING_MESSAGES: dict[str, str] = {
 def _format_catalog_context(context: CatalogContext) -> str:
     lines = ["Catalog context (existing records; reuse these identifiers when they apply):"]
     if context.families:
-        lines.append("Existing families (familyKey | familyName | familyDeveloper):")
+        lines.append("Existing families (familyKey | familyName):")
         lines.extend(
-            f"- {family.key} | {family.name} | {family.developer or 'unknown'}"
+            f"- {family.key} | {family.name}"
             for family in context.families
         )
     else:
@@ -695,9 +666,9 @@ STATUS_WARNINGS = {
 }
 
 
-FAMILY_FIELDS: tuple[str, ...] = (
-    "familyKey", "familyName", "familyDeveloper", "familyReleaseDate", "familyLicenseName",
-)
+FAMILY_FIELDS: tuple[str, ...] = ("familyKey", "familyName")
+# Draft fields of results stored before the family developer / release date / license were dropped (sql/012).
+LEGACY_FAMILY_FIELDS: tuple[str, ...] = ("familyDeveloper", "familyReleaseDate", "familyLicenseName")
 _CONFIDENCE_RANK = {"high": 0, "medium": 1, "low": 2}
 
 
@@ -715,6 +686,13 @@ def resolve_catalog_lineage(result: dict[str, Any], context: CatalogContext | No
     if isinstance(draft, dict) and draft.get("modelRole") == "INSTRUCT":
         # Results stored before the INSTRUCT role was folded into BASE (sql/009).
         draft["modelRole"] = "BASE"
+    if isinstance(draft, dict):
+        for name in LEGACY_FAMILY_FIELDS:
+            draft.pop(name, None)
+        if "releaseDate" not in draft:
+            # Older results researched the model's release date in the AIBOM only.
+            aibom_model = (result.get("aibomDraft") or {}).get("model") if isinstance(result.get("aibomDraft"), dict) else None
+            draft["releaseDate"] = (aibom_model or {}).get("release_date")
     if not isinstance(draft, dict) or context is None or not context.models:
         return result
 
@@ -759,12 +737,6 @@ def resolve_catalog_lineage(result: dict[str, Any], context: CatalogContext | No
             )
         draft["familyKey"] = parent.family_key
         draft["familyName"] = parent.family_name
-        inherited = {
-            "familyDeveloper": parent.family_developer,
-            "familyReleaseDate": parent.family_release_date.isoformat() if parent.family_release_date else None,
-            "familyLicenseName": parent.family_license_name,
-        }
-        draft.update({name: value for name, value in inherited.items() if value is not None})
     inherited_fields = [name for name in FAMILY_FIELDS if parent is not None and draft.get(name) != suggested.get(name)]
 
     result["warnings"] = warnings + notes
@@ -955,8 +927,8 @@ Merge rules:
    source, explicit statement). When evidence is equal, use these defaults:
    - Repository facts come from `huggingface`: modelId, namespace, modelName, modelUrl, packageUrl,
      modelVersion, primaryPurpose, supplier.
-   - Family facts come from `paper` when it states them explicitly: familyDeveloper,
-     familyReleaseDate, familyName, familyLicenseName. Otherwise keep the `huggingface` value.
+   - familyName comes from `paper` when it states it explicitly. Otherwise keep the `huggingface`
+     value.
    - familyKey must be identical to the familyName's key; reuse a key from the catalog context
      when the family is listed there, otherwise keep the key both inputs agree on. The family is
      the one of the lineage root: when a parent candidate is listed in the catalog context, use

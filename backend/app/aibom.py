@@ -489,11 +489,22 @@ def sync_catalog_lineage(session: Session, info: ModelInfo, parent_id: str | Non
     if session.get(AibomModel, model_id) is None:
         # primary_purpose is a pipeline tag (e.g. text-generation), not MODEL.intended_use; leave it empty.
         session.add(AibomModel(identity=model_id, provenance=provenance.id))
-    if created and info.family_license_name and not session.scalar(
+    license_name = _reported_license(info.license_reported)
+    if created and license_name and not session.scalar(
             select(LicensePolicy).where(LicensePolicy.subject == subject)):
-        session.add(LicensePolicy(subject=subject, license=info.family_license_name[:200],
+        session.add(LicensePolicy(subject=subject, license=license_name[:200],
                                   extensions={"source": "catalog"}))
     session.flush()
+
+
+def _reported_license(value: Any) -> str | None:
+    """First license named by the catalog's free-form `license_reported` (a string, a list of strings,
+    or CycloneDX-style `[{"license": {"id" | "name": ...}}]`)."""
+    first = value[0] if isinstance(value, list) and value else value
+    if isinstance(first, dict):
+        inner = first.get("license") if isinstance(first.get("license"), dict) else first
+        first = inner.get("id") or inner.get("name")
+    return first.strip() or None if isinstance(first, str) else None
 
 
 def count_relation_types(session: Session) -> int:

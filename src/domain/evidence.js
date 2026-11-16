@@ -3,6 +3,8 @@
 // The backend builds them for every research result (backend/app/evidence.py) and stores the ones
 // of the registered values in `model_evidence`.
 
+import { aibomDerivedFields } from "../constants/researchFields.js";
+
 const AIBOM_AREAS = ["model", "provenance", "transformation", "dataset", "evaluation", "safety_ethics", "license_policy"];
 export const WHOLE = "*";
 
@@ -65,6 +67,8 @@ export function composeEvidence({ results, baseKey, aibomKey, catalogFields, ove
   catalogFields.forEach((field) => {
     rows.push(...rowsOf(overrides[field] || baseKey).filter((row) => row.area === "catalog" && row.field === field));
   });
+  // Catalog fields copied from the AIBOM (the release date) follow the result the AIBOM came from.
+  if (aibomKey) rows.push(...rowsOf(aibomKey).filter((row) => row.area === "catalog" && aibomDerivedFields.includes(row.field)));
   AIBOM_AREAS.forEach((area) => {
     const areaSource = aibomOverrides[area] || aibomKey;
     if (!areaSource) return;

@@ -26,9 +26,8 @@ class AdminModelWrite(BaseModel):
     family_name: str = Field(alias="familyName", min_length=1, max_length=255)
     model_role: Literal["BASE", "DERIVED"] = Field(alias="modelRole")
     supplier: str | None = Field(default=None, max_length=255)
-    family_developer: str | None = Field(default=None, alias="familyDeveloper", max_length=255)
-    family_release_date: date | None = Field(default=None, alias="familyReleaseDate")
-    family_license_name: str | None = Field(default=None, alias="familyLicenseName", max_length=255)
+    release_date: date | None = Field(default=None, alias="releaseDate",
+                                      description="Release date of this model (not of its family).")
     primary_purpose: str | None = Field(default=None, alias="primaryPurpose", max_length=255)
     model_version: str | None = Field(default=None, alias="modelVersion", max_length=255)
     package_url: str | None = Field(default=None, alias="packageUrl", max_length=1000)
@@ -116,7 +115,7 @@ def _validate_parent(
 
 MODEL_COLUMNS = (
     "namespace", "model_name", "family_key", "family_name", "model_role", "supplier",
-    "family_developer", "family_release_date", "family_license_name", "primary_purpose",
+    "release_date", "primary_purpose",
     "model_version", "package_url", "model_url", "license_reported", "artifact_format",
     "tensor_type", "parameter_scale", "artifact_revision", "description", "bom_format",
     "bom_spec_version", "bom_serial_number", "bom_version", "checklist_present_fields",
@@ -228,8 +227,7 @@ def admin_model_to_dict(row: ModelInfo) -> dict[str, Any]:
     result = {"modelId": row.model_id}
     aliases = {
         "model_name": "modelName", "family_key": "familyKey", "family_name": "familyName",
-        "model_role": "modelRole", "family_developer": "familyDeveloper",
-        "family_release_date": "familyReleaseDate", "family_license_name": "familyLicenseName",
+        "model_role": "modelRole", "release_date": "releaseDate",
         "primary_purpose": "primaryPurpose", "model_version": "modelVersion",
         "package_url": "packageUrl", "model_url": "modelUrl", "license_reported": "licenseReported",
         "artifact_format": "artifactFormat", "tensor_type": "tensorType",

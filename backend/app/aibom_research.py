@@ -73,7 +73,10 @@ class ModelAreaDraft(_Strict):
     capabilities: list[str] = Field(description="Short phrases for documented capabilities.")
     limitations: list[str] = Field(description="Short phrases for documented limitations.")
     knowledge_cutoff: str | None = Field(description="Knowledge / data cutoff as stated, e.g. `2023-12`; null if unstated.")
-    release_date: date | None = Field(description="Release date of THIS model (not the family), ISO date, only when stated.")
+    release_date: date | None = Field(
+        description="ISO date (YYYY-MM-DD) THIS exact model was first publicly released: the date its model card, "
+                    "paper or official announcement states, else the creation date of its repository. Never the "
+                    "release date of the base model or of the family. Null unless a source gives a full date.")
     evidence_urls: list[str] = Field(description="URLs supporting the MODEL fields above.")
 
 
@@ -399,6 +402,7 @@ def catalog_fields_from_aibom(draft: AibomDraft) -> dict[str, Any]:
         "tensorType": draft.model.artifact.tensor_type,
         "parameterScale": parameter_scale(draft.model.architecture.parameter_count),
         "artifactRevision": None,
+        "releaseDate": draft.model.release_date.isoformat() if draft.model.release_date else None,
     }
 
 

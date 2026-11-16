@@ -12,11 +12,13 @@ def load_family_index(session: Session) -> dict[str, Any]:
     root_count = func.sum(case((ModelHierarchy.hierarchy_depth == 0, 1), else_=0))
     derived_count = func.sum(case((ModelHierarchy.hierarchy_depth > 0, 1), else_=0))
     first_root = func.min(case((ModelHierarchy.hierarchy_depth == 0, ModelInfo.model_id)))
+    # A family's release date is that of its root models (derivatives are released later).
+    root_release = func.max(case((ModelHierarchy.hierarchy_depth == 0, ModelInfo.release_date)))
     statement = (
         select(
             ModelInfo.family_key,
             func.max(ModelInfo.family_name).label("family_name"),
-            func.max(ModelInfo.family_release_date).label("release_date"),
+            root_release.label("release_date"),
             func.count(ModelInfo.model_id).label("model_count"),
             root_count.label("root_count"),
             derived_count.label("derived_count"),
@@ -24,7 +26,7 @@ def load_family_index(session: Session) -> dict[str, Any]:
         )
         .join(ModelHierarchy, ModelHierarchy.model_id == ModelInfo.model_id)
         .group_by(ModelInfo.family_key)
-        .order_by(func.max(ModelInfo.family_release_date), ModelInfo.family_key)
+        .order_by(root_release, ModelInfo.family_key)
     )
     rows = session.execute(statement).all()
 
@@ -92,7 +94,7 @@ def load_model_rows(session: Session, family_key: str | None = None) -> list[Mod
     statement = (
         select(ModelInfo)
         .options(selectinload(ModelInfo.hierarchy))
-        .order_by(ModelInfo.family_release_date, ModelInfo.family_key, ModelInfo.model_id)
+        .order_by(ModelInfo.family_key, ModelInfo.model_id)
     )
     if family_key is not None:
         statement = statement.where(ModelInfo.family_key == family_key)
@@ -199,9 +201,7 @@ def model_to_dict(row: ModelInfo) -> dict[str, Any]:
         "familyName": row.family_name,
         "modelRole": row.model_role,
         "supplier": row.supplier,
-        "familyDeveloper": row.family_developer,
-        "familyReleaseDate": row.family_release_date,
-        "familyLicenseName": row.family_license_name,
+        "releaseDate": row.release_date,
         "primaryPurpose": row.primary_purpose,
         "modelVersion": row.model_version,
         "packageUrl": row.package_url,

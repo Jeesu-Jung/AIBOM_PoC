@@ -12,7 +12,7 @@ import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearc
 
 const EMPTY_MODEL = {
   modelId: "", namespace: "", modelName: "", familyKey: "", familyName: "", modelRole: "DERIVED",
-  supplier: "", familyDeveloper: "", familyReleaseDate: "", familyLicenseName: "", primaryPurpose: "",
+  supplier: "", releaseDate: "", primaryPurpose: "",
   modelVersion: "", packageUrl: "", modelUrl: "", licenseReported: null, artifactFormat: "", tensorType: "",
   parameterScale: "", artifactRevision: "", description: "", bomFormat: null, bomSpecVersion: null,
   bomSerialNumber: null, bomVersion: null, checklistPresentFields: null, checklistTotalFields: null,
@@ -21,7 +21,7 @@ const EMPTY_MODEL = {
 };
 
 const textFields = [
-  ["supplier", "Supplier"], ["familyDeveloper", "Family developer"], ["familyLicenseName", "Family license"],
+  ["supplier", "Supplier"],
   ["primaryPurpose", "Primary purpose"], ["modelVersion", "Model version"], ["artifactFormat", "Artifact format"],
   ["tensorType", "Tensor type"], ["parameterScale", "Parameter scale"], ["artifactRevision", "Artifact revision"],
   ["packageUrl", "Package URL"]
@@ -1009,7 +1009,7 @@ export default function AdminApp() {
         checklistScore: form.checklistScore === "" ? null : Number(form.checklistScore),
         checklistPenaltyFactor: form.checklistPenaltyFactor === "" ? null : Number(form.checklistPenaltyFactor),
         sourceGeneratedAt: form.sourceGeneratedAt || null,
-        familyReleaseDate: form.familyReleaseDate || null
+        releaseDate: form.releaseDate || null
       };
       const aibomPayload = aibomEditorRef.current?.getValue();
       const evidenceRenames = aibomEditorRef.current?.getEvidenceRenames() || [];
@@ -1140,7 +1140,7 @@ export default function AdminApp() {
             </div></fieldset>
 
             <fieldset><legend>모델 메타데이터</legend><div className="admin-form-grid">
-              <Field label="Family release date" evidence={cev("familyReleaseDate")} picker={pk("familyReleaseDate")}><Input field="familyReleaseDate" form={form} setForm={setForm} type="date" /></Field>
+              <Field label="Release date" evidence={cev("releaseDate")} picker={pk("releaseDate")}><Input field="releaseDate" form={form} setForm={setForm} type="date" /></Field>
               {textFields.map(([field, label]) => <Field label={label} key={field} wide={field === "packageUrl"} evidence={cev(field)} picker={pk(field)}><Input field={field} form={form} setForm={setForm} /></Field>)}
               <Field label="License reported JSON" wide><textarea className="code-input" value={licenseText} onChange={(e) => setLicenseText(e.target.value)} rows="3" placeholder='"apache-2.0" 또는 ["license-a"]' /></Field>
             </div></fieldset>

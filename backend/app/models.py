@@ -20,9 +20,7 @@ class ModelInfo(Base):
     family_name: Mapped[str] = mapped_column(String(255))
     model_role: Mapped[str] = mapped_column(String(20))
     supplier: Mapped[str | None] = mapped_column(String(255))
-    family_developer: Mapped[str | None] = mapped_column(String(255))
-    family_release_date: Mapped[date | None] = mapped_column(Date)
-    family_license_name: Mapped[str | None] = mapped_column(String(255))
+    release_date: Mapped[date | None] = mapped_column(Date)  # of this model, not of its family
     primary_purpose: Mapped[str | None] = mapped_column(String(255))
     model_version: Mapped[str | None] = mapped_column(String(255))
     package_url: Mapped[str | None] = mapped_column(String(1000))

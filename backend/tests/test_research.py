@@ -88,9 +88,6 @@ def research_content() -> dict:
             "familyName": "Model Family",
             "modelRole": "BASE",
             "supplier": "Example Org",
-            "familyDeveloper": "Example Org",
-            "familyReleaseDate": "2026-01-02",
-            "familyLicenseName": "Apache-2.0",
             "primaryPurpose": "Text generation",
             "modelVersion": "1.0",
             "packageUrl": None,
@@ -170,14 +167,14 @@ def test_openrouter_schema_carries_field_glossary_without_bom_fields() -> None:
 
 def test_openrouter_prompt_injects_catalog_context() -> None:
     context = CatalogContext(
-        families=(CatalogFamily(key="llama31", name="Llama 3.1", developer="Meta"),),
+        families=(CatalogFamily(key="llama31", name="Llama 3.1"),),
         relationship_types=("customTunedFrom",),
         model_ids=("meta-llama/Llama-3.1-8B",),
     )
 
     prompt = build_openrouter_payload("org/model", context=context)["messages"][1]["content"]
 
-    assert "- llama31 | Llama 3.1 | Meta" in prompt
+    assert "- llama31 | Llama 3.1" in prompt
     assert "customTunedFrom, instructionTunedFrom" in prompt
     assert "- meta-llama/Llama-3.1-8B" in prompt
     assert "instruction_tuned_from" in prompt
@@ -381,7 +378,7 @@ def test_load_catalog_context_collects_families_relationships_and_ids() -> None:
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     db = Session(engine, expire_on_commit=False)
-    base = {"familyKey": "llama31", "familyName": "Llama 3.1", "familyDeveloper": "Meta", "detailsJson": {}}
+    base = {"familyKey": "llama31", "familyName": "Llama 3.1", "detailsJson": {}}
     create_admin_model(db, AdminModelWrite.model_validate({
         "modelId": "meta-llama/Llama-3.1-8B", "namespace": "meta-llama", "modelName": "Llama-3.1-8B",
         "modelRole": "BASE", "modelUrl": "https://example.test/base", **base,
@@ -394,7 +391,7 @@ def test_load_catalog_context_collects_families_relationships_and_ids() -> None:
 
     context = load_catalog_context(db)
 
-    assert context.families == (CatalogFamily(key="llama31", name="Llama 3.1", developer="Meta"),)
+    assert context.families == (CatalogFamily(key="llama31", name="Llama 3.1"),)
     assert context.relationship_types == ("adapterTrainedFrom",)
     assert context.model_ids == ("meta-llama/Llama-3.1-8B", "org/child")
     assert context.relationship_vocabulary[0] == "adapterTrainedFrom"
@@ -432,19 +429,19 @@ def research_result(source: str, **draft_overrides) -> dict:
 
 def merge_content() -> dict:
     draft = research_content()["draft"]
-    draft["familyDeveloper"] = "Example Org (paper)"
+    draft["supplier"] = "Example Org (paper)"
     fields = list(draft.keys())
     return {
         "status": "found",
         "draft": draft,
         "fieldDecisions": [
-            {"field": field, "chosen": "paper" if field == "familyDeveloper" else "huggingface", "rationale": "근거가 더 명확합니다."}
+            {"field": field, "chosen": "paper" if field == "supplier" else "huggingface", "rationale": "근거가 더 명확합니다."}
             for field in fields
         ],
         "parentCandidates": [],
         "aibom": aibom_content(),
         "areaDecisions": [{"area": "evaluations", "chosen": "combined", "rationale": "두 결과를 합쳤습니다."}],
-        "warnings": ["familyDeveloper 값이 두 조사에서 달랐습니다."],
+        "warnings": ["supplier 값이 두 조사에서 달랐습니다."],
     }
 
 
@@ -458,10 +455,10 @@ def test_merge_request_requires_at_least_one_result() -> None:
 
 
 def test_merge_payload_compacts_inputs_and_disables_web_search() -> None:
-    results = {"huggingface": research_result("huggingface"), "paper": research_result("paper", familyDeveloper="Example Org (paper)")}
+    results = {"huggingface": research_result("huggingface"), "paper": research_result("paper", supplier="Example Org (paper)")}
     inputs = compact_merge_inputs(results)
 
-    assert inputs["huggingface"]["draft"]["familyDeveloper"] == "Example Org"
+    assert inputs["huggingface"]["draft"]["supplier"] == "Example Org"
     assert "detailsJson" not in inputs["huggingface"]["draft"]
     assert inputs["paper"]["sources"] == [{"title": "paper", "url": "https://example.test/paper"}]
     assert inputs["huggingface"]["aibom"]["transformation"]["method"] == ["SFT", "DPO"]
@@ -482,13 +479,13 @@ def test_merge_response_becomes_admin_draft_with_decisions() -> None:
     result = parse_merge_response(upstream, results, context=CatalogContext())
 
     assert result["source"] == "merged"
-    assert result["draft"]["familyDeveloper"] == "Example Org (paper)"
+    assert result["draft"]["supplier"] == "Example Org (paper)"
     assert result["draft"]["bomFormat"] is None
     assert result["draft"]["detailsJson"]["ai_research"]["merged"] is True
-    assert result["draft"]["detailsJson"]["ai_research"]["fieldDecisions"]["familyDeveloper"] == "paper"
+    assert result["draft"]["detailsJson"]["ai_research"]["fieldDecisions"]["supplier"] == "paper"
     assert result["draft"]["detailsJson"]["ai_research"]["runs"]["paper"]["webSearchRequests"] == 1
     assert [item["source"] for item in result["sources"]] == ["huggingface", "paper"]
-    assert result["warnings"] == ["familyDeveloper 값이 두 조사에서 달랐습니다."]
+    assert result["warnings"] == ["supplier 값이 두 조사에서 달랐습니다."]
     assert len(result["fieldDecisions"]) == len(merge_content()["fieldDecisions"])
     assert result["areaDecisions"][0]["area"] == "evaluations"
     assert result["aibom"]["evaluation"][0]["score"] == 70.5
@@ -509,8 +506,7 @@ def test_merge_stream_endpoint_reports_missing_configuration(monkeypatch) -> Non
 def _lineage_context() -> CatalogContext:
     from app.research import CatalogModel
 
-    family = {"family_key": "llama31", "family_name": "Llama 3.1", "family_developer": "Meta",
-              "family_release_date": date(2024, 7, 23), "family_license_name": "Llama 3.1 Community License"}
+    family = {"family_key": "llama31", "family_name": "Llama 3.1"}
     return CatalogContext(models=(
         CatalogModel(model_id="meta-llama/Llama-3.1-8B-Instruct", **family),
         CatalogModel(model_id="FreedomIntelligence/HuatuoGPT-o1-8B", depth=1,
@@ -523,7 +519,7 @@ def _grandchild_content() -> dict:
     content["draft"].update({
         "modelId": "BrainHealthAI/MedCortex-Huatuo-8B-e1", "namespace": "BrainHealthAI",
         "modelName": "MedCortex-Huatuo-8B-e1", "modelRole": "DERIVED",
-        "familyKey": "huatuogpto1", "familyName": "HuatuoGPT-o1", "familyDeveloper": "FreedomIntelligence",
+        "familyKey": "huatuogpto1", "familyName": "HuatuoGPT-o1",
     })
     content["parentCandidates"] = [
         {"modelId": "meta-llama/Llama-3.1-8B-Instruct", "relationshipType": "domainFineTunedFrom",
@@ -544,7 +540,9 @@ def test_derivative_of_a_derivative_joins_the_parent_family_at_depth_two() -> No
     assert draft["relationshipType"] == "domainFineTunedFrom"
     assert draft["hierarchyDepth"] == 2
     assert (draft["familyKey"], draft["familyName"]) == ("llama31", "Llama 3.1")
-    assert (draft["familyDeveloper"], draft["familyReleaseDate"]) == ("Meta", "2024-07-23")
+    # The release date is the model's own (from its AIBOM), never the family's.
+    assert draft["releaseDate"] == "2026-01-02"
+    assert not {"familyDeveloper", "familyReleaseDate", "familyLicenseName"} & set(draft)
     assert any("huatuogpto1" in warning and "llama31" in warning for warning in result["warnings"])
     assert result["catalogLineage"]["suggestedFamily"]["familyKey"] == "huatuogpto1"
 
@@ -568,7 +566,7 @@ def test_lineage_is_re_resolved_against_the_current_catalog() -> None:
 
     resolve_catalog_lineage(result, without_parents)  # and removed again
     assert result["draft"]["parentModelId"] is None
-    assert (result["draft"]["familyKey"], result["draft"]["familyDeveloper"]) == ("huatuogpto1", "FreedomIntelligence")
+    assert (result["draft"]["familyKey"], result["draft"]["familyName"]) == ("huatuogpto1", "HuatuoGPT-o1")
     assert sum("카탈로그에 등록되어 있지 않아" in warning for warning in result["warnings"]) == 1
 
 

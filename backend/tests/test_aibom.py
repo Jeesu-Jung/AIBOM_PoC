@@ -29,7 +29,7 @@ def catalog_payload(model_id: str, parent_id: str | None = None, **extra) -> Adm
         "modelUrl": f"https://example.test/{model_id}",
         "parentModelId": parent_id,
         "relationshipType": "fineTunedFrom" if parent_id else None,
-        "familyLicenseName": "Apache-2.0",
+        "licenseReported": ["Apache-2.0"],
         "detailsJson": {},
         **extra,
     })
@@ -190,3 +190,18 @@ def test_admin_aibom_route_is_not_swallowed_by_model_path(monkeypatch) -> None:
         main.app.dependency_overrides.clear()
     assert response.status_code == 200
     assert response.json() == {"model": {"identity": "org/name"}}
+
+
+def test_family_release_date_is_the_release_date_of_its_root_models() -> None:
+    from datetime import date
+
+    from app.catalog import load_family_index
+
+    db = session()
+    create_admin_model(db, catalog_payload("org/base", releaseDate="2024-07-23"))
+    create_admin_model(db, catalog_payload("org/child", "org/base", releaseDate="2025-02-01"))
+
+    index = load_family_index(db)
+
+    assert index["items"][0]["releaseDate"] == date(2024, 7, 23)
+    assert index["summary"]["latestRelease"] == date(2024, 7, 23)

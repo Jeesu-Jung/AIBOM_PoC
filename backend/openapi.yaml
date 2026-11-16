@@ -178,7 +178,7 @@ paths:
         `model_info` 와 `model_hierarchy` 레코드를 함께 생성합니다.
         AIBOM 영역도 함께 초기화합니다: `provenance`(subject, origin=familyName, provider=supplier, parent, relation),
         부모가 있으면 `transformation`(input = 부모, role base), 빈 `model` 행,
-        `familyLicenseName` 이 있으면 `license_policy`. AI 초안으로 등록할 때는 관리 화면이 이어서
+        `licenseReported` 에 라이선스가 있으면 `license_policy`. AI 초안으로 등록할 때는 관리 화면이 이어서
         `PUT /api/v1/admin/models/{modelId}/aibom` 으로 조사된 AIBOM을 저장합니다.
         - `parentModelId` 가 있으면 부모가 존재하고 동일 패밀리여야 하며, `hierarchyDepth` 는 부모 depth + 1 로 계산됩니다.
         - 루트 모델(`parentModelId: null`)은 `relationshipType` 을 가질 수 없고, 파생 모델은 반드시 가져야 합니다.
@@ -427,7 +427,7 @@ paths:
       summary: '[관리자] AI 모델 리서치 (SSE 스트리밍)'
       description: |
         OpenRouter(웹 검색 도구 포함)를 호출해 모델 메타데이터 초안과 근거(evidence) 맵을 **Server-Sent Events** 로 스트리밍합니다.
-        **DB에는 쓰지 않고 읽기만 합니다.** 프롬프트에 기존 카탈로그의 `familyKey`/`familyName`/`familyDeveloper` 목록, `relationshipType` 어휘, 모델 ID 목록을 주입해
+        **DB에는 쓰지 않고 읽기만 합니다.** 프롬프트에 기존 카탈로그의 `familyKey`/`familyName` 목록, `relationshipType` 어휘, 모델 ID 목록을 주입해
         초안이 기존 식별자를 재사용하도록 합니다. DB를 읽지 못하면 컨텍스트 없이 조사하고 `warnings` 에 한국어 경고를 추가합니다.
         `complete` 이벤트의 `result.draft` 는 `AdminModelWrite` 와 호환되며, 검토 후 `POST /api/v1/admin/models` 에 그대로 사용할 수 있습니다.
         `bomFormat`/`bomSpecVersion`/`bomSerialNumber`/`bomVersion` 은 웹 조사 대상이 아니므로 서버가 항상 `null` 로 채웁니다.
@@ -648,8 +648,8 @@ paths:
       description: |
         `/model-research/stream` 을 `source=huggingface`, `source=paper` 로 각각 호출해 얻은 두 `ModelResearchResult` 를
         OpenRouter(웹 검색 없음)에 넘겨 **하나의 초안으로 병합**합니다. 항목별로 근거가 강한 값을 고르고, 선택 이유(`fieldDecisions`)와
-        충돌 경고를 한국어로 남깁니다. 저장소 사실(modelId, packageUrl, artifactFormat 등)은 Hugging Face, 패밀리 사실(familyDeveloper,
-        familyReleaseDate 등)은 논문이 명시한 경우 논문을 우선하되, fieldEvidence 신뢰도가 더 높은 쪽이 있으면 그쪽을 따릅니다.
+        충돌 경고를 한국어로 남깁니다. 저장소 사실(modelId, packageUrl, artifactFormat 등)은 Hugging Face, 패밀리 이름(familyName)은
+        논문이 명시한 경우 논문을 우선하되, fieldEvidence 신뢰도가 더 높은 쪽이 있으면 그쪽을 따릅니다.
         `description` 만 두 결과를 결합(`combined`)할 수 있고 나머지 값은 한쪽 값을 그대로 사용합니다.
 
         DB는 읽기만 하며(카탈로그 컨텍스트 주입), 결과는 저장하지 않습니다. 두 결과 중 하나만 있어도 호출할 수 있지만,
@@ -676,7 +676,7 @@ paths:
                 data: {"stage": "merging", "message": "두 조사 결과를 항목별로 비교하고 병합하고 있습니다."}
 
                 event: complete
-                data: {"result": {"status": "found", "source": "merged", "draft": {"modelId": "Qwen/Qwen2.5-7B-Instruct"}, "fieldDecisions": [{"field": "familyDeveloper", "chosen": "paper", "rationale": "논문 저자 소속이 명시되어 있습니다."}], "parentCandidates": [], "sources": [], "warnings": [], "research": {}}}
+                data: {"result": {"status": "found", "source": "merged", "draft": {"modelId": "Qwen/Qwen2.5-7B-Instruct"}, "fieldDecisions": [{"field": "familyName", "chosen": "paper", "rationale": "논문이 패밀리 이름을 명시합니다."}], "parentCandidates": [], "sources": [], "warnings": [], "research": {}}}
         '422':
           $ref: '#/components/responses/ValidationError'
 
@@ -902,9 +902,7 @@ components:
         - familyName
         - modelRole
         - supplier
-        - familyDeveloper
-        - familyReleaseDate
-        - familyLicenseName
+        - releaseDate
         - primaryPurpose
         - modelVersion
         - packageUrl
@@ -928,9 +926,7 @@ components:
         modelRole:
           $ref: '#/components/schemas/ModelRole'
         supplier: { type: [string, 'null'] }
-        familyDeveloper: { type: [string, 'null'] }
-        familyReleaseDate: { type: [string, 'null'], format: date }
-        familyLicenseName: { type: [string, 'null'] }
+        releaseDate: { type: [string, 'null'], format: date, description: 이 모델 자체의 공개일 (패밀리 공개일이 아님) }
         primaryPurpose: { type: [string, 'null'] }
         modelVersion: { type: [string, 'null'] }
         packageUrl: { type: [string, 'null'], description: 'PURL (예 pkg:huggingface/Qwen/Qwen2.5-7B-Instruct@rev)' }
@@ -1125,9 +1121,7 @@ components:
         modelRole:
           $ref: '#/components/schemas/ModelRole'
         supplier: { type: [string, 'null'], maxLength: 255, default: null }
-        familyDeveloper: { type: [string, 'null'], maxLength: 255, default: null }
-        familyReleaseDate: { type: [string, 'null'], format: date, default: null }
-        familyLicenseName: { type: [string, 'null'], maxLength: 255, default: null }
+        releaseDate: { type: [string, 'null'], format: date, default: null, description: 이 모델 자체의 공개일 (패밀리 공개일이 아님) }
         primaryPurpose: { type: [string, 'null'], maxLength: 255, default: null }
         modelVersion: { type: [string, 'null'], maxLength: 255, default: null }
         packageUrl: { type: [string, 'null'], maxLength: 1000, default: null }
