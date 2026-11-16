@@ -24,7 +24,7 @@ class AdminModelWrite(BaseModel):
     model_name: str = Field(alias="modelName", min_length=1, max_length=255)
     family_key: str = Field(alias="familyKey", min_length=1, max_length=100)
     family_name: str = Field(alias="familyName", min_length=1, max_length=255)
-    model_role: Literal["BASE", "INSTRUCT", "DERIVED"] = Field(alias="modelRole")
+    model_role: Literal["BASE", "DERIVED"] = Field(alias="modelRole")
     supplier: str | None = Field(default=None, max_length=255)
     family_developer: str | None = Field(default=None, alias="familyDeveloper", max_length=255)
     family_release_date: date | None = Field(default=None, alias="familyReleaseDate")

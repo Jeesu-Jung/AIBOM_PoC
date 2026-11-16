@@ -11,10 +11,7 @@ from .models import ModelHierarchy, ModelInfo
 def load_family_index(session: Session) -> dict[str, Any]:
     root_count = func.sum(case((ModelHierarchy.hierarchy_depth == 0, 1), else_=0))
     derived_count = func.sum(case((ModelHierarchy.hierarchy_depth > 0, 1), else_=0))
-    preferred_root = func.coalesce(
-        func.min(case((ModelInfo.model_role == "INSTRUCT", ModelInfo.model_id))),
-        func.min(case((ModelHierarchy.hierarchy_depth == 0, ModelInfo.model_id))),
-    )
+    first_root = func.min(case((ModelHierarchy.hierarchy_depth == 0, ModelInfo.model_id)))
     statement = (
         select(
             ModelInfo.family_key,
@@ -23,7 +20,7 @@ def load_family_index(session: Session) -> dict[str, Any]:
             func.count(ModelInfo.model_id).label("model_count"),
             root_count.label("root_count"),
             derived_count.label("derived_count"),
-            preferred_root.label("default_node_id"),
+            first_root.label("default_node_id"),
         )
         .join(ModelHierarchy, ModelHierarchy.model_id == ModelInfo.model_id)
         .group_by(ModelInfo.family_key)
@@ -35,12 +32,17 @@ def load_family_index(session: Session) -> dict[str, Any]:
     # Include its actual ID in the lightweight index so document deep links do not
     # get mistaken for model IDs by clients before a hierarchy has been loaded.
     document_node_ids: dict[str, str] = {}
+    # A family can name the node it opens on (family_config.default_node_id); otherwise its first root.
+    configured_defaults: dict[str, str] = {}
     config_rows = session.execute(
         select(ModelInfo.family_key, ModelInfo.details_json).order_by(
             ModelInfo.family_key, ModelInfo.model_id
         )
     ).all()
     for family_key, details_json in config_rows:
+        default_node_id = details_json.get("family_config", {}).get("default_node_id")
+        if default_node_id:
+            configured_defaults.setdefault(family_key, default_node_id)
         if family_key in document_node_ids:
             continue
         document_id = (details_json.get("family_config", {})
@@ -56,7 +58,7 @@ def load_family_index(session: Session) -> dict[str, Any]:
             "modelCount": row.model_count,
             "rootCount": int(row.root_count or 0),
             "derivedCount": int(row.derived_count or 0),
-            "defaultNodeId": row.default_node_id,
+            "defaultNodeId": configured_defaults.get(row.family_key) or row.default_node_id,
             "documentNodeId": document_node_ids.get(
                 row.family_key, f"document:{row.family_key}"
             ),
@@ -177,11 +179,7 @@ def build_catalog(rows: list[ModelInfo]) -> dict[str, Any]:
             })
 
         if not family.get("default_node_id"):
-            instruct = next(
-                (member.model_id for member in roots if member.model_role == "INSTRUCT"),
-                None,
-            )
-            family["default_node_id"] = instruct or (roots[0].model_id if roots else None)
+            family["default_node_id"] = roots[0].model_id if roots else None
         family_registry[family_key] = family
 
     return {

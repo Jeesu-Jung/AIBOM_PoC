@@ -1094,7 +1094,7 @@ export default function AdminApp() {
               <Field label="Model ID" evidence={cev("modelId")} picker={pk("modelId")}><Input field="modelId" form={form} setForm={setForm} required disabled={Boolean(selectedId)} /></Field>
               <Field label="Namespace" evidence={cev("namespace")} picker={pk("namespace")}><Input field="namespace" form={form} setForm={setForm} required /></Field>
               <Field label="Model name" evidence={cev("modelName")} picker={pk("modelName")}><Input field="modelName" form={form} setForm={setForm} required /></Field>
-              <Field label="Role" evidence={cev("modelRole")} picker={pk("modelRole")}><select value={form.modelRole} onChange={(e) => setForm({ ...form, modelRole: e.target.value })}><option>BASE</option><option>INSTRUCT</option><option>DERIVED</option></select></Field>
+              <Field label="Role" evidence={cev("modelRole")} picker={pk("modelRole")}><select value={form.modelRole} onChange={(e) => setForm({ ...form, modelRole: e.target.value })}><option>BASE</option><option>DERIVED</option></select></Field>
               <Field label="Family key" evidence={cev("familyKey")} picker={pk("familyKey")}><Input field="familyKey" form={form} setForm={setForm} required /></Field>
               <Field label="Family name" evidence={cev("familyName")} picker={pk("familyName")}><Input field="familyName" form={form} setForm={setForm} required /></Field>
               <Field label="Model URL" wide evidence={cev("modelUrl")} picker={pk("modelUrl")}><Input field="modelUrl" form={form} setForm={setForm} type="url" required /></Field>

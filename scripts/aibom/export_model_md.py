@@ -186,7 +186,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     conn = connect()
     cur = conn.cursor()
-    cur.execute("SELECT * FROM v_model_aibom ORDER BY family_key, FIELD(model_role, 'BASE', 'INSTRUCT', 'DERIVED'), model_id")
+    cur.execute("SELECT * FROM v_model_aibom ORDER BY family_key, FIELD(model_role, 'BASE', 'DERIVED'), model_id")
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     counts = {}

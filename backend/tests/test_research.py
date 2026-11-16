@@ -196,7 +196,7 @@ def test_prompt_separates_catalog_roots_from_aibom_lineage() -> None:
     payload = build_openrouter_payload("org/model", context=CatalogContext(datasets=(("cais/mmlu", "MMLU"),)))
     system_prompt = payload["messages"][0]["content"]
 
-    assert "An official INSTRUCT checkpoint has its pretrained BASE checkpoint as the input" in system_prompt
+    assert "An official instruction-tuned checkpoint is BASE in the catalog" in system_prompt
     assert "Do not copy leaderboard numbers or claims that are not needed" not in system_prompt
     assert "- cais/mmlu | MMLU" in payload["messages"][1]["content"]
     assert "aibom" in payload["response_format"]["json_schema"]["schema"]["properties"]

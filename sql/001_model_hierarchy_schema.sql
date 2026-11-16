@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS model_info (
   model_name               VARCHAR(255) NOT NULL,
   family_key               VARCHAR(100) NOT NULL,
   family_name              VARCHAR(255) NOT NULL,
-  model_role               ENUM('BASE', 'INSTRUCT', 'DERIVED') NOT NULL,
+  model_role               ENUM('BASE', 'DERIVED') NOT NULL,
   supplier                 VARCHAR(255) NULL,
   family_developer         VARCHAR(255) NULL,
   family_release_date      DATE NULL,

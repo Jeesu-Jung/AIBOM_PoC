@@ -749,8 +749,8 @@ components:
           enum: [ok, unhealthy]
     ModelRole:
       type: string
-      enum: [BASE, INSTRUCT, DERIVED]
-      description: BASE = 사전학습 기반 모델, INSTRUCT = 공식 지시 튜닝 변형, DERIVED = 파인튜닝/양자화/병합/변환 등 파생 모델
+      enum: [BASE, DERIVED]
+      description: BASE = 패밀리 개발사의 공식 체크포인트(사전학습 모델과 공식 Instruct 모델), DERIVED = 파인튜닝/양자화/병합/변환 등 파생 모델
 
     # ---------- families ----------
     FamilyIndex:
@@ -798,7 +798,7 @@ components:
           description: '`hierarchy_depth > 0` 인 모델 수'
         defaultNodeId:
           type: [string, 'null']
-          description: 기본 선택 노드. INSTRUCT 루트가 있으면 그 중 최소 ID, 없으면 depth 0 루트 중 최소 ID
+          description: 기본 선택 노드. 패밀리 설정(family_config.default_node_id)이 있으면 그 값, 없으면 depth 0 루트 중 최소 ID
         documentNodeId:
           type: string
           description: 패밀리의 evidence document 노드 ID. document 딥링크를 모델 ID와 구별하는 데 사용됩니다.

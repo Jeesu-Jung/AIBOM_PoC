@@ -94,14 +94,15 @@ class ResearchDraft(BaseModel):
             "match the catalog's name when an existing familyKey is reused."
         ),
     )
-    model_role: Literal["BASE", "INSTRUCT", "DERIVED"] = Field(
+    model_role: Literal["BASE", "DERIVED"] = Field(
         alias="modelRole",
         description=(
-            "BASE: the family developer's official pretrained checkpoint. INSTRUCT: the family "
-            "developer's primary official instruction/chat checkpoint that directly pairs with a "
-            "BASE checkpoint (e.g. `Qwen/Qwen2.5-7B-Instruct`). DERIVED: everything else, including "
-            "official variants with additional modification (long-context, quantized, distilled, "
-            "preview), every third-party fine-tune, adapter, merge, conversion, or re-upload."
+            "BASE: a primary official checkpoint of the family released by the family developer, "
+            "shown as a root of the family tree: the pretrained checkpoint and its official "
+            "instruction/chat counterpart (e.g. both `Qwen/Qwen2.5-7B` and "
+            "`Qwen/Qwen2.5-7B-Instruct`). DERIVED: everything else, including official variants "
+            "with additional modification (long-context, quantized, distilled, preview), every "
+            "third-party fine-tune, adapter, merge, conversion, or re-upload."
         ),
     )
     supplier: str | None = Field(
@@ -383,15 +384,15 @@ Research rules:
    and never coin a family named after the intermediate model. Coin a new key only when no listed
    family matches, and say so in warnings.
 8. Lineage has two views that must not be mixed up:
-   - Catalog tree (`parentCandidates`): empty for BASE and INSTRUCT roles, because the catalog UI
-     shows official checkpoints as roots. For DERIVED, list the immediate technical parent, not
+   - Catalog tree (`parentCandidates`): empty for the BASE role, because the catalog UI shows the
+     family's official checkpoints as roots. For DERIVED, list the immediate technical parent, not
      merely the family root, and only when a source explicitly states the relationship. The parent
      may itself be a DERIVED model (the tree can be any number of levels deep). Use
      relationshipType values from the camelCase vocabulary in the catalog context; if none fits,
      coin a camelCase verb ending in `From` and flag it in warnings.
    - AIBOM (`aibom.transformation.inputs`, `aibom.provenance.relation`): the real technical lineage
-     for every role. An official INSTRUCT checkpoint has its pretrained BASE checkpoint as the input
-     with role `base`; only models trained from scratch have no inputs (relation `pretrained`).
+     for every role. An official instruction-tuned checkpoint is BASE in the catalog but still has
+     its pretrained checkpoint as the input with role `base`; only models trained from scratch have no inputs (relation `pretrained`).
      Models that only generated data, rewards, or verification (e.g. GPT-4o) are inputs with those
      roles. `aibom.provenance.relation` must be one of the snake_case AIBOM relations in the
      catalog context.
@@ -710,6 +711,9 @@ def resolve_catalog_lineage(result: dict[str, Any], context: CatalogContext | No
     current catalog (e.g. after the parent was registered).
     """
     draft = result.get("draft")
+    if isinstance(draft, dict) and draft.get("modelRole") == "INSTRUCT":
+        # Results stored before the INSTRUCT role was folded into BASE (sql/009).
+        draft["modelRole"] = "BASE"
     if not isinstance(draft, dict) or context is None or not context.models:
         return result
 
@@ -964,7 +968,7 @@ Merge rules:
 4. If both inputs are empty for a field, output null and mark the decision `none`.
 5. Every field of the draft object needs exactly one fieldDecisions entry with the exact field name.
 6. parentCandidates: union of both inputs, deduplicated by modelId and relationshipType, keeping
-   the higher confidence and merging evidenceUrls. Empty for BASE and INSTRUCT roles.
+   the higher confidence and merging evidenceUrls. Empty for the BASE role.
 7. warnings: keep every input warning that still applies after merging, add one Korean sentence for
    each field where the inputs conflicted, and note when one input was missing or not_found.
 8. AIBOM (`aibom`): merge the two input AIBOMs area by area and record one areaDecisions entry per
