@@ -6,7 +6,7 @@ import AibomAreas from "./components/aibom/AibomAreas.jsx";
 import { aibomDraftToView } from "./domain/aibomView.js";
 import { composeEvidence, describeEvidence, pruneEvidence, rekeyEvidence, swapEvidence } from "./domain/evidence.js";
 import EvidenceLinks from "./components/admin/EvidenceLinks.jsx";
-import SourcePicker, { RESEARCH_SOURCES, sourceLabel as chipLabel } from "./components/admin/SourcePicker.jsx";
+import SourcePicker, { MANUAL, RESEARCH_SOURCES, sourceLabel as chipLabel } from "./components/admin/SourcePicker.jsx";
 import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, fetchAdminModelEvidence, fetchResearchRun, fetchResearchRuns, linkResearchRun, saveAdminModelEvidence, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
 
 const EMPTY_MODEL = {
@@ -888,6 +888,8 @@ export default function AdminApp() {
   // Catalog fields: chips to take the value (and its evidence) from a research result.
   const catalogValue = (value) => (Array.isArray(value) ? value.join(", ") : String(value ?? ""));
   const pickCatalog = (field, source) => {
+    // "수동 입력": only the mode changes; the value and its evidence stay until the reviewer edits them.
+    if (source === MANUAL) { setPickedSource((current) => ({ ...current, [field]: MANUAL })); return; }
     const draft = candidates?.[source]?.draft;
     if (!draft) return;
     // Model ID parts and family key / name only make sense together; a registered model keeps its ID.

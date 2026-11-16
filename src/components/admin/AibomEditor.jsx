@@ -2,7 +2,7 @@ import { createContext, forwardRef, useCallback, useContext, useEffect, useImper
 import { fetchAdminAibomOptions, fetchAdminModelAibom, saveAdminModelAibom } from "../../api/admin.js";
 import { areaEvidence, evaluationKey } from "../../domain/evidence.js";
 import EvidenceLinks from "./EvidenceLinks.jsx";
-import SourcePicker, { RESEARCH_SOURCES, sourceLabel } from "./SourcePicker.jsx";
+import SourcePicker, { MANUAL, RESEARCH_SOURCES, sourceLabel } from "./SourcePicker.jsx";
 
 const INPUT_ROLES = ["base", "merge_source", "teacher", "generator", "verifier", "reward_model"];
 const DATASET_ROLES = ["pretraining", "finetuning", "preference", "distillation", "calibration", "other"];
@@ -220,6 +220,8 @@ const AibomEditor = forwardRef(function AibomEditor({ modelId, initialAibom = nu
           ...current,
           ...Object.fromEntries((field ? [field] : ["*", ...(AREA_FIELDS[area] || [])]).map((name) => [`${area}.${name}`, source]))
         }));
+        // "수동 입력": only the mode changes; the value and its evidence stay as they are.
+        if (source === MANUAL) return;
         const theirs = forms[source]?.[area];
         setForm((current) => ({
           ...current,

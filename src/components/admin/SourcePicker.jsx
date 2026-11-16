@@ -19,11 +19,17 @@ const preview = (value) => {
  * the current value equals that result's value.
  * Exactly one chip is marked. When several results hold the same value, it is the one the reviewer
  * picked last (`preferred`), otherwise the AI merge, then Hugging Face, then the paper.
- * "수동 입력" is marked when the value matches none of them.
+ * "수동 입력" is marked when the value matches none of them, or as soon as the reviewer clicks it
+ * (`onPick(MANUAL)`): the value stays as it is until they edit it.
  */
 const PRIORITY = ["merged", "huggingface", "paper"];
 
+// `preferred` value for "the reviewer chose to enter this value by hand".
+export const MANUAL = "manual";
+
 export function activeSource(options, preferred = null) {
+  // Manual mode holds even while the value still equals a research result.
+  if (preferred === MANUAL) return null;
   const matching = options.filter((option) => option.matches).map((option) => option.key);
   if (matching.includes(preferred)) return preferred;
   return PRIORITY.find((key) => matching.includes(key)) || matching[0] || null;
@@ -41,9 +47,10 @@ export default function SourcePicker({ options, onPick, scope = "값", preferred
       {option.selected ? "✓ " : ""}{option.label}
     </button>)}
     <button type="button" className={`is-manual${manual ? " is-selected" : ""}`} aria-pressed={manual}
-      title={manual ? "조사 결과와 다른 값입니다 (직접 입력했거나 저장된 값)." : "직접 입력하려면 아래 입력란을 수정하세요."}
+      title={manual ? "직접 입력하는 값입니다. 조사 결과 칩을 누르면 그 값으로 바뀝니다." : "직접 입력으로 전환합니다 (값은 그대로 두고 입력란으로 이동)."}
       onClick={(event) => {
         event.preventDefault();
+        onPick(MANUAL);
         event.currentTarget.closest("label, .aibom-area")?.querySelector("input:not([disabled]), textarea, select")?.focus();
       }}>
       {manual ? "✓ " : ""}수동 입력
