@@ -393,6 +393,34 @@
 .ai-aibom-value-card.is-merged .ai-aibom-card-check { color:#18734b; }
 @media(max-width:980px){.aibom-grid{grid-template-columns:1fr}}
 .ai-merge-cell small.is-inherited,.ai-merge-final small .is-inherited { color:#0f766e; font-weight:700; }
+.ai-eval-table-wrap { border-top:1px solid #dbe3ee; overflow-x:auto; }
+.ai-eval-summary { margin:0; padding:9px 14px; color:#58697e; font-size:.75rem; line-height:1.5; }
+.ai-eval-table { width:100%; min-width:760px; border-collapse:collapse; font-size:.8rem; }
+.ai-eval-table th,.ai-eval-table td { padding:8px 12px; border-top:1px solid #e6ecf4; text-align:left; vertical-align:top; }
+.ai-eval-table thead th { background:#f1f5fb; color:#58697e; font-size:.74rem; font-weight:750; white-space:nowrap; }
+.ai-eval-table thead th.is-selected { background:#e3ebff; }
+.ai-eval-table thead button { display:flex; align-items:baseline; gap:6px; padding:4px 9px; border:1px solid #c6d0dd; border-radius:7px; color:#43546a; background:#fff; font:inherit; font-weight:750; cursor:pointer; }
+.ai-eval-table thead button:disabled { opacity:.55; cursor:default; }
+.ai-eval-table thead th.is-selected button { border-color:#2251cc; color:#fff; background:#2251cc; }
+.ai-eval-table thead button small { font-size:.68rem; font-weight:600; opacity:.8; }
+.ai-eval-table tbody th { color:#172033; font-weight:700; }
+.ai-eval-table tbody th em { display:inline-block; margin-left:7px; padding:1px 7px; border-radius:99px; color:#9a4a12; background:#fdebd8; font-size:.66rem; font-style:normal; font-weight:750; white-space:nowrap; }
+.ai-eval-table tbody th em.is-soft { color:#5b6b80; background:#e8edf4; }
+.ai-eval-table tbody td { color:#43546a; }
+.ai-eval-table tr.is-diff > th,.ai-eval-table tr.is-diff > td { background:#fffaf3; }
+.ai-eval-table .ai-eval-cell.is-selected { background:#f1f5ff; box-shadow:inset 2px 0 0 #315ae6,inset -2px 0 0 #315ae6; }
+.ai-eval-cell div + div { margin-top:6px; padding-top:6px; border-top:1px dashed #d3ddeb; }
+.ai-eval-cell strong { display:block; color:#172033; font-size:.9rem; font-variant-numeric:tabular-nums; }
+.ai-eval-cell small { display:block; margin-top:2px; color:#75869c; font-size:.69rem; word-break:break-all; }
+.ai-eval-cell.is-missing span { color:#a3afbf; font-size:.75rem; }
+.ai-dataset-cell strong { font-size:.82rem; }
+.ai-dataset-cell .ai-dataset-uses { display:flex; flex-wrap:wrap; gap:4px; margin:4px 0; }
+.ai-dataset-uses b { padding:1px 7px; border-radius:99px; color:#24507a; background:#e3eefb; font-size:.66rem; font-weight:750; }
+.ai-dataset-uses i { color:#a3afbf; font-style:normal; }
+.ai-reference-source { max-width:340px; }
+.ai-reference-source span { display:block; margin-bottom:2px; }
+.ai-reference-source a { display:block; color:#2251cc; font-size:.72rem; font-weight:600; word-break:break-all; }
+.ai-reference-source em { margin:4px 0 0; }
 .ai-aibom-evidence { display:block; margin-top:-8px; padding:0 14px 10px; color:#718096; font-size:.72rem; font-weight:600; text-align:left; }
 .evidence-links { display:grid; gap:4px; min-width:0; padding:8px 10px; border:1px dashed #cfd9e8; border-radius:8px; background:#f7f9fc; cursor:default; }
 .evidence-links-label { color:#58697e; font-size:.7rem; font-weight:800; letter-spacing:.03em; }

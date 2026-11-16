@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AibomEditor from "./components/admin/AibomEditor.jsx";
 import { ModelResearchRuns } from "./components/admin/ResearchHistory.jsx";
 import { aibomDerivedFields, mergeFields } from "./constants/researchFields.js";
@@ -200,13 +200,191 @@ const aibomValue = (value) => {
   return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 };
 
+// EVALUATION as one table: a row per reported result (benchmark, metric, shots), a column per research
+// result. The per-field view showed each field as a separate JSON array, so a score could not be read
+// next to its benchmark and dataset. The area is still picked as a whole, by column.
+// Column headings of those tables: one button per research result, picking the whole area from it.
+function AibomSourceHeads({ results, columns, area, selected, onSelect }) {
+  return columns.map((option) => {
+    const count = results[option.value]?.aibom ? (results[option.value].aibom[area] || []).length : null;
+    return <th key={option.value} className={selected === option.value ? "is-selected" : ""}>
+      <button type="button" disabled={count === null} aria-pressed={selected === option.value} onClick={() => onSelect(option.value)}
+        title={`${option.label}의 ${area.toUpperCase()} 전체를 초안에 쓰기`}>{selected === option.value ? "✓ " : ""}{option.label}<small>{count === null ? "AIBOM 없음" : `${count}건`}</small></button>
+    </th>;
+  });
+}
+
+// DATASET as one table: a row per dataset identity, a column per research result. Each cell also says
+// what that result uses the dataset for (its TRANSFORMATION role, how many EVALUATION rows point at it).
+function AibomDatasetTable({ results, columns, selected, onSelect }) {
+  const rows = [];
+  const byId = new Map();
+  [...columns].sort((a, b) => (b.value === "merged") - (a.value === "merged")).forEach((option) => {
+    const aibom = results[option.value]?.aibom;
+    (aibom?.dataset || []).forEach((item) => {
+      if (!byId.has(item.identity)) { byId.set(item.identity, { id: item.identity, cells: {} }); rows.push(byId.get(item.identity)); }
+      const roles = [...new Set((aibom.transformation?.datasets || []).filter((use) => use.dataset === item.identity).map((use) => use.role))];
+      const evaluations = (aibom.evaluation || []).filter((evaluation) => evaluation.dataset === item.identity).length;
+      const uses = [...roles, ...(evaluations ? [`evaluation ${evaluations}건`] : [])];
+      const parents = item.provenance?.parent || [];
+      byId.get(item.identity).cells[option.value] = {
+        name: item.extensions?.name || item.identity,
+        uses,
+        facts: [
+          ["version", item.version], ["license", item.license], ["size", item.extensions?.size],
+          ["disclosure", item.provenance?.extensions?.disclosure_status],
+          ["parent", parents.length ? `${item.provenance.relation || "derived"} ← ${parents.map((parent) => parent.replace(/^dataset:/, "")).join(", ")}` : null]
+        ].filter(([, value]) => value != null && value !== ""),
+        processing: item.processing || [],
+        description: item.extensions?.description
+      };
+    });
+  });
+  const signature = (cell) => JSON.stringify([cell.uses, cell.facts, cell.processing]);
+  const marked = rows.map((row) => ({
+    ...row,
+    differs: new Set(columns.map((option) => row.cells[option.value]).filter(Boolean).map(signature)).size > 1,
+    partial: columns.some((option) => results[option.value]?.aibom && !row.cells[option.value])
+  }));
+  if (!rows.length) return <p className="ai-result-empty">어느 조사 결과에도 데이터셋이 없습니다.</p>;
+  return <div className="ai-eval-table-wrap">
+    <p className="ai-eval-summary">데이터셋 <b>{rows.length}</b>개 · 내용이 서로 다른 행 <b>{marked.filter((row) => row.differs).length}</b> · 일부 결과에만 있는 행 <b>{marked.filter((row) => row.partial).length}</b>. 열 제목을 누르면 DATASET 영역 전체가 그 결과의 값으로 정해집니다. 같은 데이터셋이라도 identity가 다르면(HF id / slug) 다른 행으로 나옵니다.</p>
+    <table className="ai-eval-table">
+      <thead><tr>
+        <th>Dataset identity</th>
+        <AibomSourceHeads results={results} columns={columns} area="dataset" selected={selected} onSelect={onSelect} />
+      </tr></thead>
+      <tbody>{marked.map((row) => <tr key={row.id} className={row.differs ? "is-diff" : ""}>
+        <th scope="row">{row.id}{row.differs && <em>내용 다름</em>}</th>
+        {columns.map((option) => {
+          const cell = row.cells[option.value];
+          return <td key={option.value} className={`ai-eval-cell ai-dataset-cell${selected === option.value ? " is-selected" : ""}${cell ? "" : " is-missing"}`}>
+            {cell ? <div title={cell.description || undefined}>
+              <strong>{cell.name}</strong>
+              <small className="ai-dataset-uses">{cell.uses.length ? cell.uses.map((use) => <b key={use}>{use}</b>) : <i>사용처 없음</i>}</small>
+              {cell.facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}
+              {cell.processing.length > 0 && <small title={cell.processing.join("\n")}>processing: {cell.processing.length}단계</small>}
+            </div> : <span>없음</span>}
+          </td>;
+        })}
+      </tr>)}</tbody>
+    </table>
+  </div>;
+}
+
+// REFERENCE as one table: a row per source URL, a column per research result. Each cell says how that
+// result filed the source (type, revision) and how many of its values cite it.
+function AibomReferenceTable({ results, columns, selected, onSelect }) {
+  const rows = [];
+  const byId = new Map();
+  const urlKey = (uri) => String(uri || "").trim().replace(/\/+$/, "");
+  [...columns].sort((a, b) => (b.value === "merged") - (a.value === "merged")).forEach((option) => {
+    const result = results[option.value];
+    (result?.aibom?.reference || []).forEach((item) => {
+      const id = urlKey(item.uri);
+      if (!byId.has(id)) { byId.set(id, { id, uri: item.uri, title: null, cells: {} }); rows.push(byId.get(id)); }
+      const row = byId.get(id);
+      row.title = row.title || item.extensions?.title || null;
+      row.cells[option.value] = {
+        type: item.type || "webpage", revision: item.revision || null,
+        cited: (result.evidence || []).filter((evidence) => urlKey(evidence.url) === id).length
+      };
+    });
+  });
+  const marked = rows.map((row) => ({
+    ...row,
+    differs: new Set(columns.map((option) => row.cells[option.value]).filter(Boolean).map((cell) => `${cell.type}|${cell.revision || ""}`)).size > 1,
+    partial: columns.some((option) => results[option.value]?.aibom && !row.cells[option.value])
+  }));
+  if (!rows.length) return <p className="ai-result-empty">어느 조사 결과에도 참조 자료가 없습니다.</p>;
+  return <div className="ai-eval-table-wrap">
+    <p className="ai-eval-summary">참조 자료 <b>{rows.length}</b>개 · 유형·리비전이 서로 다른 행 <b>{marked.filter((row) => row.differs).length}</b> · 일부 결과에만 있는 행 <b>{marked.filter((row) => row.partial).length}</b>. 열 제목을 누르면 REFERENCE 영역 전체가 그 결과의 값으로 정해집니다.</p>
+    <table className="ai-eval-table">
+      <thead><tr>
+        <th>Source</th>
+        <AibomSourceHeads results={results} columns={columns} area="reference" selected={selected} onSelect={onSelect} />
+      </tr></thead>
+      <tbody>{marked.map((row) => <tr key={row.id} className={row.differs ? "is-diff" : ""}>
+        <th scope="row" className="ai-reference-source">{row.title && <span>{row.title}</span>}<a href={row.uri} target="_blank" rel="noreferrer">{row.uri} ↗</a>{row.differs && <em>유형·리비전 다름</em>}</th>
+        {columns.map((option) => {
+          const cell = row.cells[option.value];
+          return <td key={option.value} className={`ai-eval-cell ai-dataset-cell${selected === option.value ? " is-selected" : ""}${cell ? "" : " is-missing"}`}>
+            {cell ? <div>
+              <small className="ai-dataset-uses"><b>{cell.type}</b></small>
+              {cell.revision && <small>revision: {cell.revision}</small>}
+              <small>{cell.cited ? `값 근거 ${cell.cited}곳에서 인용` : "값 근거로 인용되지 않음"}</small>
+            </div> : <span>없음</span>}
+          </td>;
+        })}
+      </tr>)}</tbody>
+    </table>
+  </div>;
+}
+
+const evaluationToken = (text) => String(text ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+const evaluationScore = (item) => item.score ?? item.extensions?.score_text ?? "—";
+function AibomEvaluationTable({ results, columns, selected, onSelect }) {
+  const rows = [];
+  const byId = new Map();
+  // The selected-by-default merge decides the row order; rows only the inputs have follow.
+  [...columns].sort((a, b) => (b.value === "merged") - (a.value === "merged")).forEach((option) => {
+    (results[option.value]?.aibom?.evaluation || []).forEach((item) => {
+      const configuration = item.configuration || {};
+      const id = [evaluationToken(configuration.benchmark), evaluationToken(item.metric).replace("percent", ""), configuration.shots ?? ""].join("|");
+      if (!byId.has(id)) {
+        byId.set(id, { id, benchmark: configuration.benchmark || "-", metric: item.metric || "-", shots: configuration.shots, cells: {} });
+        rows.push(byId.get(id));
+      }
+      const cells = byId.get(id).cells;
+      cells[option.value] = [...(cells[option.value] || []), item];
+    });
+  });
+  const distinct = (row, read) => new Set(columns.map((option) => row.cells[option.value]).filter(Boolean)
+    .map((items) => items.map(read).join(" / "))).size > 1;
+  const marked = rows.map((row) => ({
+    ...row,
+    scoreDiffers: distinct(row, (item) => String(evaluationScore(item))),
+    datasetDiffers: distinct(row, (item) => item.dataset || ""),
+    partial: columns.some((option) => results[option.value]?.aibom && !row.cells[option.value])
+  }));
+  if (!rows.length) return <p className="ai-result-empty">어느 조사 결과에도 평가 결과가 없습니다.</p>;
+  return <div className="ai-eval-table-wrap">
+    <p className="ai-eval-summary">평가 결과 <b>{rows.length}</b>행 · 점수가 서로 다른 행 <b>{marked.filter((row) => row.scoreDiffers).length}</b> · 일부 결과에만 있는 행 <b>{marked.filter((row) => row.partial).length}</b>. 열 제목을 누르면 EVALUATION 영역 전체가 그 결과의 값으로 정해집니다.</p>
+    <table className="ai-eval-table">
+      <thead><tr>
+        <th>Benchmark</th><th>Metric</th><th>Shots</th>
+        <AibomSourceHeads results={results} columns={columns} area="evaluation" selected={selected} onSelect={onSelect} />
+      </tr></thead>
+      <tbody>{marked.map((row) => <tr key={row.id} className={row.scoreDiffers ? "is-diff" : ""}>
+        <th scope="row">{row.benchmark}{row.scoreDiffers && <em>점수 다름</em>}{!row.scoreDiffers && row.datasetDiffers && <em className="is-soft">데이터셋 다름</em>}</th>
+        <td>{row.metric}</td>
+        <td>{row.shots ?? "—"}</td>
+        {columns.map((option) => {
+          const items = row.cells[option.value];
+          return <td key={option.value} className={`ai-eval-cell${selected === option.value ? " is-selected" : ""}${items ? "" : " is-missing"}`}>
+            {items ? items.map((item, index) => <div key={index} title={[item.configuration?.notes, item.extensions?.reference, item.extensions?.reference_locator].filter(Boolean).join("\n") || undefined}>
+              <strong>{String(evaluationScore(item))}</strong>
+              <small>{item.dataset || "데이터셋 미연결"}</small>
+            </div>) : <span>없음</span>}
+          </td>;
+        })}
+      </tr>)}</tbody>
+    </table>
+  </div>;
+}
+
+const AIBOM_TABLES = { evaluation: AibomEvaluationTable, dataset: AibomDatasetTable, reference: AibomReferenceTable };
 const AIBOM_AREA_ONLY = new Set(["dataset", "evaluation", "license_policy", "reference"]);
 function AibomFullComparison({ results, columns, overrides, fieldOverrides, onSelect, onFieldSelect }) {
   return <div className="ai-aibom-full-comparison">
     {aibomComparisonFields.map(([label, key, fields]) => <details key={key} open>
-      <summary>{label} <span>{fields.length} fields</span></summary>
+      <summary>{label} <span>{AIBOM_TABLES[key] ? "결과별 비교 표" : `${fields.length} fields`}</span></summary>
       <div className="ai-aibom-area-actions"><span>이 영역 전체를 한 결과로 고르기</span>{columns.map((option) => <button type="button" key={option.value} className={overrides[key] === option.value ? "is-selected" : ""} onClick={() => onSelect(key, overrides[key] === option.value ? null : option.value)}>{overrides[key] === option.value ? "✓ " : ""}{option.label}</button>)}{overrides[key] && <button type="button" onClick={() => onSelect(key, null)}>AI 병합으로</button>}</div>
-      <div className="ai-aibom-full-table" style={{ "--aibom-columns": columns.length }}>
+      {AIBOM_TABLES[key] ? createElement(AIBOM_TABLES[key], {
+        results, columns, onSelect: (source) => onSelect(key, source),
+        selected: overrides[key] || (columns.some((option) => option.value === "merged") ? "merged" : null)
+      })
+      : <div className="ai-aibom-full-table" style={{ "--aibom-columns": columns.length }}>
         <div className="ai-aibom-full-row is-head"><span>Field</span>{columns.map((option) => <span key={option.value}>{option.label}</span>)}</div>
         {fields.map((field) => <div className="ai-aibom-full-row" key={field}>{(() => {
           const fieldKey = key + "." + field;
@@ -227,7 +405,7 @@ function AibomFullComparison({ results, columns, overrides, fieldOverrides, onSe
           </button>;
         })}</>;
         })()}</div>)}
-      </div>
+      </div>}
     </details>)}
   </div>;
 }
