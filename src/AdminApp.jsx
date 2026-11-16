@@ -1105,7 +1105,9 @@ export default function AdminApp() {
 
             <fieldset><legend>계층 구조</legend><p className="admin-help">부모를 바꾸면 현재 모델과 모든 하위 모델의 depth가 자동으로 재계산됩니다.</p><div className="admin-form-grid">
               <Field label="Parent model"><select value={form.parentModelId || ""} onChange={(e) => setForm({ ...form, parentModelId: e.target.value || null })}>
-                <option value="">없음 (Root)</option>{models.filter((model) => !descendants.has(model.modelId) && (!form.familyKey || model.familyKey === form.familyKey)).map((model) => <option value={model.modelId} key={model.modelId}>{model.modelName} — {model.modelId}</option>)}
+                <option value="">없음 (Root)</option>{models.filter((model) => !descendants.has(model.modelId) && (!form.familyKey || model.familyKey === form.familyKey))
+                  .sort((a, b) => a.modelName.localeCompare(b.modelName, "en", { sensitivity: "base" }) || a.modelId.localeCompare(b.modelId, "en", { sensitivity: "base" }))
+                  .map((model) => <option value={model.modelId} key={model.modelId}>{model.modelName} — {model.modelId}</option>)}
               </select></Field>
               <Field label="Relationship type" evidence={cev("relationshipType")} picker={pk("relationshipType")}><Input field="relationshipType" form={form} setForm={setForm} disabled={!form.parentModelId} placeholder="fineTunedFrom" required={Boolean(form.parentModelId)} /></Field>
               <Field label="Sibling order" evidence={cev("siblingOrder")} picker={pk("siblingOrder")}><Input field="siblingOrder" form={form} setForm={setForm} type="number" min="0" /></Field>
