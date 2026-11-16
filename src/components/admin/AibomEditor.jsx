@@ -244,7 +244,13 @@ const AibomEditor = forwardRef(function AibomEditor({ modelId, initialAibom = nu
   }
   useImperativeHandle(ref, () => ({ save, getValue: () => toPayload(form), getEvidenceRenames: () => evidenceRenames(form) }), [form, modelId]);
   if (loadError) return <p className="admin-help">AIBOM을 불러오지 못했습니다: {loadError}</p>; if (!form) return <p className="admin-help">AIBOM을 불러오는 중입니다...</p>;
-  const datasets = options?.datasets || [], models = options?.models || [];
+  // The dataset pickers offer the stored datasets plus the ones in this form: a research draft's new
+  // datasets are not stored until the first save, and a <select> without a matching option shows its
+  // first one ("선택 안 함") although the value is set.
+  const stored = options?.datasets || [], models = options?.models || [];
+  const known = new Set(stored.map((d) => d.identity));
+  const datasets = [...stored, ...form.dataset.filter((d) => d.identity && !known.has(d.identity) && known.add(d.identity)).map((d) => ({ identity: d.identity }))]
+    .sort((a, b) => a.identity < b.identity ? -1 : a.identity > b.identity ? 1 : 0);
   return <PickContext.Provider value={pickContext}><section className="aibom-editor"><fieldset disabled={saving || disabled}><legend>AIBOM</legend><p className="admin-help">DATASET과 REFERENCE는 다른 모델과 공유될 수 있으므로 수정 내용은 해당 공통 정보에도 적용됩니다. AI 조사로 등록한 모델은 각 값 아래에 조사 당시의 근거 URL이 표시됩니다.{pickContext ? " AI 조사 결과가 있으면 영역·필드마다 HF / 논문 / AI 병합 값 중에서 고르거나 직접 입력할 수 있습니다." : ""}</p><Model value={form.model} onChange={(v) => set("model", v)} evidence={evidence} /><Provenance value={form.provenance} onChange={(v) => set("provenance", v)} evidence={evidence} /><Transformation value={form.transformation} onChange={(v) => set("transformation", v)} models={models} datasets={datasets} evidence={evidence} /><Evaluation value={form.evaluation} onChange={(v) => set("evaluation", v)} datasets={datasets} evidence={evidence} /><Safety value={form.safety_ethics} onChange={(v) => set("safety_ethics", v)} evidence={evidence} /><Licenses value={form.license_policy} onChange={(v) => set("license_policy", v)} evidence={evidence} /><Datasets value={form.dataset} onChange={(v) => set("dataset", v)} evidence={evidence} /><References value={form.reference} onChange={(v) => set("reference", v)} /></fieldset></section></PickContext.Provider>;
 });
 
