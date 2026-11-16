@@ -429,6 +429,9 @@
 .research-assign-bar { display:grid; gap:8px; padding:10px; border:1px solid #dbe3ee; border-radius:11px; background:#fff; font-size:.8rem; }
 .research-assign-bar label { display:flex; align-items:center; gap:6px; color:#58697e; font-weight:650; }
 .research-assign-bar > div { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; }
+.research-range input { min-width:0; min-height:38px; padding:7px 9px; border:1px solid #cad4e1; border-radius:9px; font:inherit; font-size:.82rem; }
+.research-range-note { color:var(--text-soft); font-size:.74rem; line-height:1.45; }
+.research-range-note.is-error { color:#b42318; }
 .research-assign-bar button,.reviewer-manager button { padding:7px 10px; border:1px solid #c6d0dd; border-radius:8px; background:#fff; color:#25364a; font:inherit; font-size:.78rem; font-weight:700; cursor:pointer; }
 .research-assign-bar button:disabled,.reviewer-manager button:disabled { opacity:.5; cursor:not-allowed; }
 .research-assign-bar .research-distribute { border-color:#2251cc; background:#edf3ff; color:#2251cc; }
@@ -454,3 +457,7 @@
 .review-by > span { color:#25364a; font-weight:750; }
 .review-by small { color:var(--text-soft); }
 @media(max-width:980px){.research-review-actions{flex-wrap:wrap}}
+/* Header buttons keep their label on one line; the description text wraps instead. */
+.admin-header > div:first-child { min-width:0; }
+@media(min-width:601px){.admin-header-actions{flex:none}}
+.admin-header-actions > * { white-space:nowrap; }

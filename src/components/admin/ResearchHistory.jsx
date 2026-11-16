@@ -123,6 +123,23 @@ function ReviewBadge({ run }) {
 }
 
 const FILTERS = [["all", "전체"], ["pending", "검토 대기"], ["saved", "저장 완료"]];
+
+/**
+ * Run ids from text such as "10-25", "3, 5, 8-12" or "#7". Returns a Set, or null when a part is
+ * not a number or a range.
+ */
+export function parseRunIdRange(text) {
+  const ids = new Set();
+  for (const part of text.split(/[\s,]+/).filter(Boolean)) {
+    const match = part.match(/^#?(\d+)(?:\s*[-~]\s*#?(\d+))?$/);
+    if (!match) return null;
+    const from = Number(match[1]);
+    const to = match[2] === undefined ? from : Number(match[2]);
+    if (Math.abs(to - from) > 100000) return null;
+    for (let id = Math.min(from, to); id <= Math.max(from, to); id += 1) ids.add(id);
+  }
+  return ids;
+}
 const UNASSIGNED = "none";
 
 /** Who a run belongs to: the assignee while it waits, the person who reviewed it once saved. */
@@ -181,6 +198,7 @@ export default function ResearchHistoryPage() {
   const [selectedId, setSelectedId] = useState(Number(params.get("run")) || null);
   const [checked, setChecked] = useState(() => new Set());
   const [assignTo, setAssignTo] = useState("");
+  const [rangeText, setRangeText] = useState("");
   const [detail, setDetail] = useState(null);
   const [tab, setTab] = useState("merged");
   const [error, setError] = useState(null);
@@ -239,6 +257,10 @@ export default function ResearchHistoryPage() {
   // Only pending runs can be (re)assigned; saved ones keep who reviewed them.
   const assignable = visibleRuns.filter((run) => run.reviewStatus === "pending");
   const checkedIds = assignable.filter((run) => checked.has(run.runId)).map((run) => run.runId);
+  // Bulk assignment by run id range: every pending run in the range, whatever the list is filtered to.
+  const rangeIds = useMemo(() => (rangeText.trim() ? parseRunIdRange(rangeText.trim()) : new Set()), [rangeText]);
+  const rangeRuns = useMemo(() => (rangeIds ? (runs || []).filter((run) => rangeIds.has(run.runId)) : []), [runs, rangeIds]);
+  const rangePendingIds = rangeRuns.filter((run) => run.reviewStatus === "pending").map((run) => run.runId);
   const toggle = (runId) => setChecked((current) => {
     const next = new Set(current);
     if (next.has(runId)) next.delete(runId); else next.add(runId);
@@ -255,6 +277,7 @@ export default function ResearchHistoryPage() {
       const name = reviewers.find((reviewer) => reviewer.id === reviewerId)?.name;
       setMessage(reviewerId == null ? `${result.assigned}건의 배정을 해제했습니다.` : `${result.assigned}건을 ${name}에게 배정했습니다.`);
       setChecked(new Set());
+      setRangeText("");
       await refresh();
     } catch (err) { setError(err.message); }
   }
@@ -323,6 +346,14 @@ export default function ResearchHistoryPage() {
               </select>
               <button type="button" disabled={!checkedIds.length || !assignTo} onClick={() => assign(checkedIds, assignTo === UNASSIGNED ? null : Number(assignTo))}>선택 {checkedIds.length}건 배정</button>
             </div>
+            <div className="research-range">
+              <input value={rangeText} onChange={(event) => setRangeText(event.target.value)} placeholder="실행 ID 범위 (예: 10-25 또는 3, 5, 8-12)" aria-label="배정할 실행 ID 범위" />
+              <button type="button" disabled={!rangePendingIds.length || !assignTo} onClick={() => assign(rangePendingIds, assignTo === UNASSIGNED ? null : Number(assignTo))}>범위 {rangePendingIds.length}건 배정</button>
+            </div>
+            {rangeText.trim() && <small className={`research-range-note${rangeIds ? "" : " is-error"}`}>{!rangeIds
+              ? "숫자와 범위만 입력할 수 있습니다. 예: 10-25 또는 3, 5, 8-12"
+              : !rangeRuns.length ? "이 범위에 해당하는 조사 실행이 없습니다."
+                : `범위 안의 실행 ${rangeRuns.length}건 중 검토 대기 ${rangePendingIds.length}건이 배정됩니다${rangeRuns.length > rangePendingIds.length ? ` (저장된 ${rangeRuns.length - rangePendingIds.length}건은 제외)` : ""}.${assignTo ? "" : " 위에서 작업자를 선택하세요."}`}</small>}
             <button type="button" className="research-distribute" disabled={!counts.unassigned || !activeReviewers.length} onClick={distribute}
               title="미배정 검토 대기 실행을 활성 작업자에게, 대기 건이 적은 사람부터 고르게 나눕니다.">미배정 {counts.unassigned}건 자동 분배</button>
           </div>
