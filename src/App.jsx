@@ -169,7 +169,15 @@ export default function App({ initialCatalog = null }) {
   useLineageConnections(activeContext, activeNodeId);
 
   if (loadError) return <main className="app-state"><h1>Unable to load AIBOM data</h1><p>{loadError}</p></main>;
-  if (familyIndex && familyIndex.items.length === 0) return <main className="app-state"><h1>Unable to load AIBOM data</h1><p>The API returned an empty family index.</p></main>;
+  // A fresh deployment has no models yet: that is an empty catalog, not a failure.
+  if (familyIndex && familyIndex.items.length === 0) return (
+    <main className="app-state app-state-empty">
+      <p className="eyebrow">AIBOM model catalog</p>
+      <h1>No models registered yet</h1>
+      <p>The catalog is empty. Register the first model on the admin page and its family lineage and AIBOM will appear here.</p>
+      <a className="app-state-action" href="/admin">Open the admin page →</a>
+    </main>
+  );
   if (!familyIndex || !activeContext || !activeNode) return <main className="app-state"><p>Loading model family...</p></main>;
 
   const metrics = [

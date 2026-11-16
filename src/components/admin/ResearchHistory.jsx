@@ -365,7 +365,7 @@ export default function ResearchHistoryPage() {
           <ReviewerManager reviewers={reviewers} onChange={() => refresh()} onError={setError} />
 
           {!runs ? <p className="admin-help">불러오는 중...</p> : !visibleRuns.length
-            ? <p className="admin-help">{status === "pending" ? "조건에 맞는 검토 대기 실행이 없습니다." : "조건에 맞는 조사 실행이 없습니다."}</p> : (
+            ? <p className="admin-help">{!runs.length ? "아직 AI 조사 실행이 없습니다. 모델 관리의 “+ 새 모델 → AI로 정보 채우기”로 조사하면 여기에 쌓입니다." : status === "pending" ? "조건에 맞는 검토 대기 실행이 없습니다." : "조건에 맞는 조사 실행이 없습니다."}</p> : (
               <ul className="research-run-list has-checks">{visibleRuns.map((run) => (
                 <li key={run.runId}>
                   <input type="checkbox" checked={checked.has(run.runId)} disabled={run.reviewStatus !== "pending"} onChange={() => toggle(run.runId)}
@@ -381,7 +381,7 @@ export default function ResearchHistoryPage() {
             )}
         </aside>
         <div className="research-history-detail">
-          {!detail ? <p className="admin-help">{selectedId ? "불러오는 중..." : "왼쪽에서 조사 실행을 선택하세요."}</p> : <>
+          {!detail ? <p className="admin-help">{selectedId ? "불러오는 중..." : runs && !runs.length ? "조사 실행이 생기면 여기에서 결과를 확인하고 검토할 수 있습니다." : "왼쪽에서 조사 실행을 선택하세요."}</p> : <>
             <div className="research-detail-head">
               <div><h3>#{detail.runId} {detail.modelName}</h3>
                 <p><ReviewBadge run={detail} /> {formatDateTime(detail.createdAt)} · 결과 모델 {detail.resultModelId || "-"} · 총 검색 {detail.totalWebSearches ?? "-"} · 총 비용 {formatCost(detail.totalCostUsd)}</p></div>

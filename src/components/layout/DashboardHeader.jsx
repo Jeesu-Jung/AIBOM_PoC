@@ -4,7 +4,7 @@ export default function DashboardHeader({ metrics, familyIndex, nodeCount }) {
   const metaItems = [
     ["Families", familyIndex.summary.familyCount],
     ["Loaded nodes", nodeCount],
-    ["Latest root release", formatDate(familyIndex.summary.latestRelease)]
+    ["Latest root release", familyIndex.summary.latestRelease ? formatDate(familyIndex.summary.latestRelease) : "Not recorded"]
   ];
 
   return (

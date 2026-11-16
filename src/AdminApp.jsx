@@ -1090,7 +1090,7 @@ export default function AdminApp() {
                 <span><strong>{model.modelName}</strong><small>{model.modelId}</small></span>
                 <em>{model.modelRole}</em>
               </button>
-            )) : <p className="admin-empty">조건에 맞는 모델이 없습니다.</p>}
+            )) : <p className="admin-empty">{models.length ? "조건에 맞는 모델이 없습니다." : "아직 등록된 모델이 없습니다. 오른쪽 양식이나 상단의 “+ 새 모델”로 첫 모델을 등록하세요."}</p>}
           </div>
         </aside>
 
