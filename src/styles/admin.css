@@ -266,7 +266,7 @@
 .admin-field > span { color:#58697e; font-size:.76rem; font-weight:700; letter-spacing:.025em; }
 .admin-field textarea { padding:11px 12px; resize:vertical; line-height:1.5; }
 .admin-field input:focus,.admin-field select:focus,.admin-field textarea:focus,.admin-filters input:focus,.admin-filters select:focus { border-color:#527ee1; outline:3px solid #e7efff; }
-.admin-field input:disabled { color:#6d7886; background:#eef1f5; cursor:not-allowed; }
+.admin-field input:disabled,.admin-field select:disabled,.admin-field input[readonly],.admin-field textarea[readonly] { color:#6d7886; background:#eef1f5; cursor:not-allowed; }
 .code-input { font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace!important; font-size:.8rem!important; tab-size:2; }
 .admin-form-actions { position:sticky; bottom:0; display:grid; grid-template-columns:auto 1fr auto auto; margin:30px -32px -28px; padding:16px 32px; border-top:1px solid var(--line); background:rgba(255,255,255,.96); backdrop-filter:blur(8px); }
 .admin-primary,.admin-secondary,.admin-danger { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:9px 15px; border-radius:9px; font:inherit; font-size:.86rem; font-weight:700; text-decoration:none; cursor:pointer; }

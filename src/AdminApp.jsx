@@ -1192,7 +1192,8 @@ export default function AdminApp() {
     setPickedSource((current) => ({ ...current, ...Object.fromEntries(group.map((item) => [item, source])) }));
     updateEvidence((rows) => group.reduce((next, item) => swapEvidence(next, candidates[source].evidence, "catalog", item), rows));
   };
-  const pk = (field) => {
+  // `manual: false` leaves out the "수동 입력" chip (기본 정보: taken from a research result).
+  const pk = (field, { manual = true } = {}) => {
     if (!candidates || !pickableFields.has(field) || (selectedId && identityFields.includes(field))) return null;
     // The merge chip names the input its value came from: the AI's own field decision, or the
     // catalog parent for an inherited family field.
@@ -1204,8 +1205,14 @@ export default function AdminApp() {
       return { key, label: key === "merged" ? chipLabel(label, mergeOrigin) : label, value,
                matches: catalogValue(value) === catalogValue(form[field]) };
     });
-    return <SourcePicker options={options} preferred={pickedSource[field]} onPick={(source) => pickCatalog(field, source)} />;
+    return <SourcePicker options={options} preferred={pickedSource[field]} manual={manual} onPick={(source) => pickCatalog(field, source)} />;
   };
+  const pkOnly = (field) => pk(field, { manual: false });
+  // 기본 정보 with research results to choose from: the value is set by the chips only, not typed.
+  const chipOnly = (field) => Boolean(candidates && pickableFields.has(field) && !(selectedId && identityFields.includes(field))
+    && RESEARCH_SOURCES.some(([key]) => candidates[key]?.draft));
+  // An AI draft is placed in the tree from its parent candidates; the reviewer only reads it here.
+  const hierarchyLocked = !selectedId && aiDraft;
   const pickAibomEvidence = useCallback((area, field, source) => {
     updateEvidence((rows) => swapEvidence(rows, candidates?.[source]?.evidence, area, field));
   }, [candidates, updateEvidence]);
@@ -1411,25 +1418,24 @@ export default function AdminApp() {
           {aiDraft && <div className="ai-draft-banner"><span>✦</span><div><strong>AI가 작성한 초안입니다</strong><p>내용과 출처를 확인하고 필요한 항목을 수정한 뒤 등록해 주세요. 각 항목 위의 HF / 논문 / AI 병합 칩으로 다른 조사 결과의 값으로 바꿀 수 있습니다.{pendingAibom ? ` AIBOM(평가 ${pendingAibom.evaluation?.length || 0}건 · 데이터셋 ${pendingAibom.dataset?.length || 0}개 · 근거 ${pendingAibom.reference?.length || 0}개)을 포함한 전체 정보가 한 번에 저장됩니다.` : ""}</p></div><em>검토 필요</em></div>}
           <form onSubmit={requestSave}>
             <fieldset><legend>기본 정보</legend><div className="admin-form-grid">
-              <Field label="Model ID" evidence={cev("modelId")} picker={pk("modelId")}><Input field="modelId" form={form} setForm={setForm} required disabled={Boolean(selectedId)} /></Field>
-              <Field label="Namespace" evidence={cev("namespace")} picker={pk("namespace")}><Input field="namespace" form={form} setForm={setForm} required /></Field>
-              <Field label="Model name" evidence={cev("modelName")} picker={pk("modelName")}><Input field="modelName" form={form} setForm={setForm} required /></Field>
-              <Field label="Role" evidence={cev("modelRole")} picker={pk("modelRole")}><select value={form.modelRole} onChange={(e) => setForm({ ...form, modelRole: e.target.value })}><option>BASE</option><option>DERIVED</option></select></Field>
-              <Field label="Family key" evidence={cev("familyKey")} picker={pk("familyKey")}><Input field="familyKey" form={form} setForm={setForm} required /></Field>
-              <Field label="Family name" evidence={cev("familyName")} picker={pk("familyName")}><Input field="familyName" form={form} setForm={setForm} required /></Field>
-              <Field label="Model URL" wide evidence={cev("modelUrl")} picker={pk("modelUrl")}><Input field="modelUrl" form={form} setForm={setForm} type="url" required /></Field>
+              <Field label="Model ID" evidence={cev("modelId")} picker={pkOnly("modelId")}><Input field="modelId" form={form} setForm={setForm} required disabled={Boolean(selectedId)} readOnly={chipOnly("modelId")} /></Field>
+              <Field label="Namespace" evidence={cev("namespace")} picker={pkOnly("namespace")}><Input field="namespace" form={form} setForm={setForm} required readOnly={chipOnly("namespace")} /></Field>
+              <Field label="Model name" evidence={cev("modelName")} picker={pkOnly("modelName")}><Input field="modelName" form={form} setForm={setForm} required readOnly={chipOnly("modelName")} /></Field>
+              <Field label="Role" evidence={cev("modelRole")} picker={pkOnly("modelRole")}><select disabled={chipOnly("modelRole")} value={form.modelRole} onChange={(e) => setForm({ ...form, modelRole: e.target.value })}><option>BASE</option><option>DERIVED</option></select></Field>
+              <Field label="Family key" evidence={cev("familyKey")} picker={pkOnly("familyKey")}><Input field="familyKey" form={form} setForm={setForm} required readOnly={chipOnly("familyKey")} /></Field>
+              <Field label="Family name" evidence={cev("familyName")} picker={pkOnly("familyName")}><Input field="familyName" form={form} setForm={setForm} required readOnly={chipOnly("familyName")} /></Field>
+              <Field label="Model URL" wide evidence={cev("modelUrl")} picker={pkOnly("modelUrl")}><Input field="modelUrl" form={form} setForm={setForm} type="url" required readOnly={chipOnly("modelUrl")} /></Field>
               <Field label="Description" wide evidence={cev("description")} picker={pk("description")}><textarea value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} rows="3" /></Field>
             </div></fieldset>
 
-            <fieldset><legend>계층 구조</legend><p className="admin-help">부모를 바꾸면 현재 모델과 모든 하위 모델의 depth가 자동으로 재계산됩니다.</p><div className="admin-form-grid">
-              <Field label="Parent model"><select value={form.parentModelId || ""} onChange={(e) => setForm({ ...form, parentModelId: e.target.value || null })}>
+            <fieldset><legend>계층 구조</legend><p className="admin-help">{hierarchyLocked ? "AI 조사 결과의 부모 후보와 카탈로그를 대조해 자동으로 정해진 값입니다. 여기서는 조회만 할 수 있습니다." : "부모를 바꾸면 현재 모델과 모든 하위 모델의 depth가 자동으로 재계산됩니다."}</p><div className="admin-form-grid">
+              <Field label="Parent model"><select disabled={hierarchyLocked} value={form.parentModelId || ""} onChange={(e) => setForm({ ...form, parentModelId: e.target.value || null })}>
                 <option value="">없음 (Root)</option>{models.filter((model) => !descendants.has(model.modelId) && (!form.familyKey || model.familyKey === form.familyKey))
                   .sort((a, b) => a.modelName.localeCompare(b.modelName, "en", { sensitivity: "base" }) || a.modelId.localeCompare(b.modelId, "en", { sensitivity: "base" }))
                   .map((model) => <option value={model.modelId} key={model.modelId}>{model.modelName} — {model.modelId}</option>)}
               </select></Field>
-              <Field label="Relationship type" evidence={cev("relationshipType")} picker={pk("relationshipType")}><Input field="relationshipType" form={form} setForm={setForm} disabled={!form.parentModelId} placeholder="fineTunedFrom" required={Boolean(form.parentModelId)} /></Field>
-              <Field label="Sibling order" evidence={cev("siblingOrder")} picker={pk("siblingOrder")}><Input field="siblingOrder" form={form} setForm={setForm} type="number" min="0" /></Field>
-              <Field label="Change details JSON" wide><textarea className="code-input" value={changeText} onChange={(e) => setChangeText(e.target.value)} rows="5" placeholder={'{\n  "added_task": "..."\n}'} /></Field>
+              <Field label="Relationship type" evidence={cev("relationshipType")} picker={hierarchyLocked ? null : pk("relationshipType")}><Input field="relationshipType" form={form} setForm={setForm} disabled={hierarchyLocked || !form.parentModelId} placeholder="fineTunedFrom" required={Boolean(form.parentModelId)} /></Field>
+              <Field label="Change details JSON" wide><textarea className="code-input" readOnly={hierarchyLocked} value={changeText} onChange={(e) => setChangeText(e.target.value)} rows="5" placeholder={'{\n  "added_task": "..."\n}'} /></Field>
             </div></fieldset>
 
             <fieldset><legend>모델 메타데이터</legend><div className="admin-form-grid">
