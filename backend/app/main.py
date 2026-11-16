@@ -30,7 +30,13 @@ from .database import SessionLocal, get_db
 from pydantic import BaseModel, Field
 
 from .research_store import (
+    AssignRunsRequest,
+    ReviewerWrite,
     SaveResearchResultsRequest,
+    assign_runs,
+    distribute_runs,
+    list_reviewers,
+    save_reviewer,
     delete_research_results,
     delete_research_run,
     get_research_run,
@@ -215,6 +221,55 @@ def admin_delete_research_results(modelName: str, db: Session = Depends(get_db))
 
 class ResearchRunLink(BaseModel):
     model_id: str | None = Field(alias="modelId", default=None, max_length=512)
+    reviewed_by: int | None = Field(alias="reviewedBy", default=None,
+                                    description="Reviewer who reviewed and saved the run; defaults to the assignee.")
+
+
+def _store_call(db: Session, action):
+    """Run a research-store write and map its failures like the other admin writes."""
+    try:
+        return action()
+    except HTTPException:
+        db.rollback()
+        raise
+    except IntegrityError as error:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="The change conflicts with another record.") from error
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise _database_unavailable() from error
+
+
+@app.get("/api/v1/admin/reviewers", tags=["admin"])
+def admin_reviewers(db: Session = Depends(get_db)) -> list[dict]:
+    """Reviewers with how many runs wait for them and how many they reviewed."""
+    try:
+        return list_reviewers(db)
+    except SQLAlchemyError as error:
+        raise _database_unavailable() from error
+
+
+@app.post("/api/v1/admin/reviewers", tags=["admin"], status_code=status.HTTP_201_CREATED)
+def admin_create_reviewer(payload: ReviewerWrite, db: Session = Depends(get_db)) -> list[dict]:
+    return _store_call(db, lambda: save_reviewer(db, payload))
+
+
+@app.put("/api/v1/admin/reviewers/{reviewer_id}", tags=["admin"])
+def admin_update_reviewer(reviewer_id: int, payload: ReviewerWrite, db: Session = Depends(get_db)) -> list[dict]:
+    """Rename a reviewer or (de)activate them. Reviewers are not deleted so their history stays."""
+    return _store_call(db, lambda: save_reviewer(db, payload, reviewer_id))
+
+
+@app.post("/api/v1/admin/research-runs/assign", tags=["admin"])
+def admin_assign_runs(payload: AssignRunsRequest, db: Session = Depends(get_db)) -> dict:
+    """Assign pending runs to a reviewer (`reviewerId: null` unassigns)."""
+    return _store_call(db, lambda: assign_runs(db, payload))
+
+
+@app.post("/api/v1/admin/research-runs/distribute", tags=["admin"])
+def admin_distribute_runs(db: Session = Depends(get_db)) -> dict:
+    """Share the unassigned pending runs between the active reviewers, least loaded first."""
+    return _store_call(db, lambda: distribute_runs(db))
 
 
 @app.get("/api/v1/admin/research-runs", tags=["admin"])
@@ -242,7 +297,7 @@ def admin_research_run(run_id: int, resolve: bool = False, db: Session = Depends
 def admin_link_research_run(run_id: int, payload: ResearchRunLink, db: Session = Depends(get_db)) -> dict:
     """Record which catalog model was registered from this run (null to unlink)."""
     try:
-        return link_research_run(db, run_id, payload.model_id)
+        return link_research_run(db, run_id, payload.model_id, payload.reviewed_by)
     except HTTPException:
         db.rollback()
         raise

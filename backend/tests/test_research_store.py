@@ -193,3 +193,61 @@ def test_runs_report_whether_they_were_reviewed_and_saved() -> None:
     link_research_run(db, first["runId"], "org/model")
     states = {run["runId"]: (run["reviewStatus"], run["catalogModelId"]) for run in list_research_runs(db)}
     assert states == {first["runId"]: ("saved", "org/model"), other["runId"]: ("pending", None)}
+
+
+def test_runs_are_assigned_distributed_and_record_who_reviewed_them() -> None:
+    from app.admin import AdminModelWrite, create_admin_model
+    from app.research_store import (AssignRunsRequest, ReviewerWrite, assign_runs, distribute_runs, get_research_run,
+                                    link_research_run, list_reviewers, save_reviewer)
+
+    db = session()
+    run_ids = [save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": f"org/model-{index}", "replacePrevious": True,
+        "results": {"merged": result("merged", f"org/model-{index}")}}))["runId"] for index in range(5)]
+    save_reviewer(db, ReviewerWrite(name="  Kim   Review "))
+    save_reviewer(db, ReviewerWrite(name="Lee"))
+    reviewers = {row["name"]: row["id"] for row in save_reviewer(db, ReviewerWrite(name="Park", isActive=False))}
+    assert set(reviewers) == {"Kim Review", "Lee", "Park"}  # whitespace is normalised
+    kim, lee, park = reviewers["Kim Review"], reviewers["Lee"], reviewers["Park"]
+
+    # Kim already has two runs; the three unassigned ones go to the least loaded active reviewer.
+    assert assign_runs(db, AssignRunsRequest(runIds=run_ids[:2], reviewerId=kim)) == {"assigned": 2}
+    shared = distribute_runs(db)
+    assert shared["assigned"] == 3
+    assert {row["name"]: row["assigned"] for row in shared["byReviewer"]} == {"Lee": 2, "Kim Review": 1}
+    load = {row["name"]: row["pendingCount"] for row in list_reviewers(db)}
+    assert load == {"Kim Review": 3, "Lee": 2, "Park": 0}  # the inactive reviewer gets nothing
+    assert get_research_run(db, run_ids[0])["reviewerName"] == "Kim Review"
+
+    create_admin_model(db, AdminModelWrite.model_validate({
+        "modelId": "org/model-0", "namespace": "org", "modelName": "model-0", "familyKey": "family",
+        "familyName": "Family", "modelRole": "BASE", "modelUrl": "https://example.test/model", "detailsJson": {}}))
+    saved = link_research_run(db, run_ids[0], "org/model-0", reviewed_by=lee)  # reviewed by someone else
+    assert (saved["reviewStatus"], saved["reviewerName"], saved["reviewedByName"]) == ("saved", "Kim Review", "Lee")
+    assert saved["reviewedAt"] is not None
+    # A saved run is not reassigned, and the reviewer's counts follow.
+    assert assign_runs(db, AssignRunsRequest(runIds=[run_ids[0]], reviewerId=park)) == {"assigned": 0}
+    counts = {row["name"]: (row["pendingCount"], row["reviewedCount"]) for row in list_reviewers(db)}
+    assert counts == {"Kim Review": (2, 0), "Lee": (2, 1), "Park": (0, 0)}
+
+    undone = link_research_run(db, run_ids[0], None)
+    assert (undone["reviewStatus"], undone["reviewedByName"], undone["reviewedAt"]) == ("pending", None, None)
+
+
+def test_reviewer_endpoints_validate_names_and_targets() -> None:
+    db = session()
+    main.app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(main.app)
+        created = client.post("/api/v1/admin/reviewers", json={"name": "Kim"})
+        assert created.status_code == 201 and created.json()[0]["name"] == "Kim"
+        assert client.post("/api/v1/admin/reviewers", json={"name": "Kim"}).status_code == 409
+        reviewer_id = created.json()[0]["id"]
+        renamed = client.put(f"/api/v1/admin/reviewers/{reviewer_id}", json={"name": "Kim J", "isActive": False}).json()
+        assert (renamed[0]["name"], renamed[0]["isActive"]) == ("Kim J", False)
+        assert client.put("/api/v1/admin/reviewers/999", json={"name": "Nobody"}).status_code == 404
+        assert client.post("/api/v1/admin/research-runs/assign", json={"runIds": [1], "reviewerId": 999}).status_code == 422
+        assert client.post("/api/v1/admin/research-runs/distribute").status_code == 422  # nobody active
+        assert client.get("/api/v1/admin/reviewers").json()[0]["pendingCount"] == 0
+    finally:
+        main.app.dependency_overrides.clear()

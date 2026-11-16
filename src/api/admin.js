@@ -82,9 +82,20 @@ export const fetchResearchRuns = ({ modelName, modelId, limit } = {}) => {
 };
 // resolve: results placed in the current catalog tree with evidence rows (what the editor needs).
 export const fetchResearchRun = (runId, resolve = false) => request(`/api/v1/admin/research-runs/${runId}${resolve ? "?resolve=true" : ""}`);
-export const linkResearchRun = (runId, modelId) => request(`/api/v1/admin/research-runs/${runId}/model`, {
-  method: "PUT", body: JSON.stringify({ modelId })
+// reviewedBy: reviewer who did the review (defaults to the reviewer the run is assigned to).
+export const linkResearchRun = (runId, modelId, reviewedBy = null) => request(`/api/v1/admin/research-runs/${runId}/model`, {
+  method: "PUT", body: JSON.stringify({ modelId, reviewedBy })
 });
+export const fetchReviewers = () => request("/api/v1/admin/reviewers");
+export const createReviewer = (reviewer) => request("/api/v1/admin/reviewers", { method: "POST", body: JSON.stringify(reviewer) });
+export const updateReviewer = (reviewerId, reviewer) => request(`/api/v1/admin/reviewers/${reviewerId}`, {
+  method: "PUT", body: JSON.stringify(reviewer)
+});
+// reviewerId null removes the assignment; runs that are already saved are skipped.
+export const assignResearchRuns = (runIds, reviewerId) => request("/api/v1/admin/research-runs/assign", {
+  method: "POST", body: JSON.stringify({ runIds, reviewerId })
+});
+export const distributeResearchRuns = () => request("/api/v1/admin/research-runs/distribute", { method: "POST" });
 export const deleteResearchRun = (runId) => request(`/api/v1/admin/research-runs/${runId}`, { method: "DELETE" });
 export const createAdminModel = (payload) => request("/api/v1/admin/models", {
   method: "POST", body: JSON.stringify(payload)

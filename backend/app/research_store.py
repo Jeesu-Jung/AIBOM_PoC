@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
-from .models import ModelInfo, ModelResearchResult, ModelResearchRun
+from .models import ModelInfo, ModelResearchResult, ModelResearchRun, Reviewer
 
 StoredSource = Literal["huggingface", "paper", "merged"]
 STORED_SOURCES: tuple[StoredSource, ...] = ("huggingface", "paper", "merged")
@@ -110,6 +110,10 @@ def _run_to_dict(run: ModelResearchRun, include_results: bool = True) -> dict[st
         "modelId": run.model_id,
         "resultModelId": next((results[k]["resultModelId"] for k in ("merged", "huggingface", "paper")
                                if results[k] and results[k]["resultModelId"]), None),
+        "reviewerId": run.reviewer_id,
+        "assignedAt": _iso(run.assigned_at),
+        "reviewedById": run.reviewed_by,
+        "reviewedAt": _iso(run.reviewed_at),
         "createdAt": _iso(run.created_at),
         "updatedAt": _iso(run.updated_at),
         "totalCostUsd": float(sum(costs)) if costs else None,
@@ -118,7 +122,12 @@ def _run_to_dict(run: ModelResearchRun, include_results: bool = True) -> dict[st
     }
 
 
-def _add_review_state(run: dict[str, Any], catalog_ids: set[str]) -> dict[str, Any]:
+def _reviewer_names(session: Session) -> dict[int, str]:
+    return dict(session.execute(select(Reviewer.id, Reviewer.name)).all())
+
+
+def _add_review_state(run: dict[str, Any], catalog_ids: set[str],
+                      reviewer_names: dict[int, str] | None = None) -> dict[str, Any]:
     """Whether a human reviewed and saved the run, and which catalog model it belongs to.
 
     `saved`: the run is linked to the catalog model that was registered (or updated) from it.
@@ -129,6 +138,9 @@ def _add_review_state(run: dict[str, Any], catalog_ids: set[str]) -> dict[str, A
     result_id = run.get("resultModelId")
     run["reviewStatus"] = "saved" if run.get("modelId") else "pending"
     run["catalogModelId"] = run.get("modelId") or (result_id if result_id in catalog_ids else None)
+    names = reviewer_names or {}
+    run["reviewerName"] = names.get(run.get("reviewerId"))
+    run["reviewedByName"] = names.get(run.get("reviewedById"))
     return run
 
 
@@ -206,7 +218,8 @@ def list_research_runs(session: Session, model_name: str | None = None, model_id
         runs = [run for run in runs
                 if run.model_id == model_id or any(row.result_model_id == model_id for row in run.results)]
     catalog_ids = set(session.scalars(select(ModelInfo.model_id)))
-    return [_add_review_state(_run_to_dict(run, include_results=False), catalog_ids) for run in runs[:limit]]
+    names = _reviewer_names(session)
+    return [_add_review_state(_run_to_dict(run, include_results=False), catalog_ids, names) for run in runs[:limit]]
 
 
 def get_research_run(session: Session, run_id: int) -> dict[str, Any]:
@@ -215,18 +228,128 @@ def get_research_run(session: Session, run_id: int) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Research run not found.")
     data = _run_to_dict(run)
     result_id = data.get("resultModelId")
-    return _add_review_state(data, {result_id} if result_id and session.get(ModelInfo, result_id) else set())
+    return _add_review_state(data, {result_id} if result_id and session.get(ModelInfo, result_id) else set(),
+                             _reviewer_names(session))
 
 
-def link_research_run(session: Session, run_id: int, model_id: str | None) -> dict[str, Any]:
+def link_research_run(session: Session, run_id: int, model_id: str | None,
+                      reviewed_by: int | None = None) -> dict[str, Any]:
+    """Mark the run as reviewed and saved to `model_id` (None undoes it).
+
+    `reviewed_by` is the reviewer who did the review; without it the reviewer the run is assigned
+    to is recorded.
+    """
     run = session.get(ModelResearchRun, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Research run not found.")
     if model_id is not None and session.get(ModelInfo, model_id) is None:
         raise HTTPException(status_code=422, detail="The model to link does not exist in the catalog.")
+    if reviewed_by is not None and session.get(Reviewer, reviewed_by) is None:
+        raise HTTPException(status_code=422, detail="The reviewer does not exist.")
     run.model_id = model_id
+    if model_id is None:
+        run.reviewed_by, run.reviewed_at = None, None
+    else:
+        run.reviewed_by = reviewed_by if reviewed_by is not None else run.reviewer_id
+        run.reviewed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     session.commit()
     return get_research_run(session, run_id)
+
+
+# --- reviewers and assignment (sql/010) ----------------------------------------------------------
+
+class ReviewerWrite(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100)
+    email: str | None = Field(default=None, max_length=255)
+    is_active: bool = Field(default=True, alias="isActive")
+
+
+class AssignRunsRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    run_ids: list[int] = Field(alias="runIds", min_length=1, max_length=500)
+    reviewer_id: int | None = Field(default=None, alias="reviewerId", description="null removes the assignment")
+
+
+def _pending_load(session: Session) -> dict[int, int]:
+    """Runs still waiting for review, per assigned reviewer."""
+    load: dict[int, int] = {}
+    for (reviewer_id,) in session.execute(select(ModelResearchRun.reviewer_id).where(
+            ModelResearchRun.model_id.is_(None), ModelResearchRun.reviewer_id.is_not(None))):
+        load[reviewer_id] = load.get(reviewer_id, 0) + 1
+    return load
+
+
+def list_reviewers(session: Session) -> list[dict[str, Any]]:
+    pending = _pending_load(session)
+    reviewed: dict[int, int] = {}
+    for (reviewer_id,) in session.execute(select(ModelResearchRun.reviewed_by).where(
+            ModelResearchRun.reviewed_by.is_not(None))):
+        reviewed[reviewer_id] = reviewed.get(reviewer_id, 0) + 1
+    return [{"id": row.id, "name": row.name, "email": row.email, "isActive": bool(row.is_active),
+             "pendingCount": pending.get(row.id, 0), "reviewedCount": reviewed.get(row.id, 0)}
+            for row in session.scalars(select(Reviewer).order_by(Reviewer.name))]
+
+
+def save_reviewer(session: Session, payload: ReviewerWrite, reviewer_id: int | None = None) -> list[dict[str, Any]]:
+    name = " ".join(payload.name.split())
+    if not name:
+        raise HTTPException(status_code=422, detail="Reviewer name is required.")
+    row = session.get(Reviewer, reviewer_id) if reviewer_id is not None else Reviewer()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Reviewer not found.")
+    duplicate = session.scalar(select(Reviewer).where(Reviewer.name == name))
+    if duplicate is not None and duplicate.id != row.id:
+        raise HTTPException(status_code=409, detail="A reviewer with this name already exists.")
+    row.name, row.email, row.is_active = name, (payload.email or "").strip() or None, payload.is_active
+    session.add(row)
+    session.commit()
+    return list_reviewers(session)
+
+
+def assign_runs(session: Session, payload: AssignRunsRequest) -> dict[str, Any]:
+    """Assign runs to a reviewer (or unassign them). Runs that are already saved are left alone."""
+    if payload.reviewer_id is not None and session.get(Reviewer, payload.reviewer_id) is None:
+        raise HTTPException(status_code=422, detail="The reviewer does not exist.")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    changed = 0
+    for run in session.scalars(select(ModelResearchRun).where(ModelResearchRun.id.in_(payload.run_ids))):
+        if run.model_id is not None or run.reviewer_id == payload.reviewer_id:
+            continue
+        run.reviewer_id = payload.reviewer_id
+        run.assigned_at = now if payload.reviewer_id is not None else None
+        changed += 1
+    session.commit()
+    return {"assigned": changed}
+
+
+def distribute_runs(session: Session) -> dict[str, Any]:
+    """Share the unassigned pending runs between the active reviewers.
+
+    Each run goes to whoever has the fewest runs waiting at that moment, so people who already
+    carry more get fewer new ones. Oldest runs are handed out first.
+    """
+    reviewers = list(session.scalars(select(Reviewer).where(Reviewer.is_active.is_(True)).order_by(Reviewer.id)))
+    if not reviewers:
+        raise HTTPException(status_code=422, detail="There is no active reviewer to assign runs to.")
+    load = _pending_load(session)
+    counts = {reviewer.id: load.get(reviewer.id, 0) for reviewer in reviewers}
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    given: dict[int, int] = {}
+    runs = session.scalars(select(ModelResearchRun).where(
+        ModelResearchRun.model_id.is_(None), ModelResearchRun.reviewer_id.is_(None))
+        .order_by(ModelResearchRun.created_at, ModelResearchRun.id))
+    for run in runs:
+        target = min(counts, key=lambda reviewer_id: (counts[reviewer_id], reviewer_id))
+        run.reviewer_id, run.assigned_at = target, now
+        counts[target] += 1
+        given[target] = given.get(target, 0) + 1
+    session.commit()
+    names = {reviewer.id: reviewer.name for reviewer in reviewers}
+    return {"assigned": sum(given.values()),
+            "byReviewer": [{"reviewerId": key, "name": names[key], "assigned": value} for key, value in given.items()]}
 
 
 def delete_research_run(session: Session, run_id: int) -> None:

@@ -2,7 +2,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -182,6 +182,18 @@ class LicensePolicy(Base):
     extensions: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
+class Reviewer(Base):
+    """A person who reviews AI research runs (sql/010). A name list: the app has no login."""
+
+    __tablename__ = "reviewer"
+
+    id: Mapped[int] = mapped_column(_BIGINT, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    email: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow)
+
+
 class ModelResearchRun(Base):
     """One "AI로 정보 채우기" run: Hugging Face and paper research, then the merge (sql/006)."""
 
@@ -190,6 +202,11 @@ class ModelResearchRun(Base):
     id: Mapped[int] = mapped_column(_BIGINT, primary_key=True, autoincrement=True)
     requested_model: Mapped[str] = mapped_column(String(512))
     model_id: Mapped[str | None] = mapped_column(String(512), ForeignKey("model_info.model_id"))
+    # Review work (sql/010): who the run is assigned to, and who reviewed and saved it.
+    reviewer_id: Mapped[int | None] = mapped_column(_BIGINT, ForeignKey("reviewer.id"))
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+    reviewed_by: Mapped[int | None] = mapped_column(_BIGINT, ForeignKey("reviewer.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow,
                                                  onupdate=_utcnow)

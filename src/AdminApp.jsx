@@ -8,7 +8,7 @@ import { composeEvidence, describeEvidence, pruneEvidence, rekeyEvidence, swapEv
 import EvidenceLinks from "./components/admin/EvidenceLinks.jsx";
 import { focusInputOnLabelClick } from "./utils/labelClick.js";
 import SourcePicker, { MANUAL, RESEARCH_SOURCES, sourceLabel as chipLabel } from "./components/admin/SourcePicker.jsx";
-import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, fetchAdminModelEvidence, fetchResearchRun, fetchResearchRuns, linkResearchRun, saveAdminModelEvidence, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
+import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, fetchAdminModelEvidence, fetchResearchRun, fetchResearchRuns, fetchReviewers, linkResearchRun, saveAdminModelEvidence, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
 
 const EMPTY_MODEL = {
   modelId: "", namespace: "", modelName: "", familyKey: "", familyName: "", modelRole: "DERIVED",
@@ -794,6 +794,10 @@ export default function AdminApp() {
   const [pickedSource, setPickedSource] = useState({});
   // A stored run opened from the research history for review: { runId, modelId } once its catalog model is known.
   const [reviewRun, setReviewRun] = useState(null);
+  // Who is reviewing the run on screen; recorded with the run when it is saved.
+  const [reviewers, setReviewers] = useState([]);
+  const [reviewedBy, setReviewedBy] = useState("");
+  useEffect(() => { fetchReviewers().then(setReviewers).catch(() => {}); }, []);
   const aibomEditorRef = useRef(null);
 
   const reload = async (preferredId = selectedId) => {
@@ -843,6 +847,7 @@ export default function AdminApp() {
   async function openRunForReview(runId, catalog = models) {
     const run = await fetchResearchRun(runId, true);
     const results = Object.fromEntries(RESEARCH_SOURCES.map(([key]) => [key, run.results[key]?.result || null]));
+    setReviewedBy(run.reviewerId ? String(run.reviewerId) : ""); // the assignee reviews it unless changed
     const existing = catalog.find((model) => model.modelId === run.catalogModelId);
     if (existing) {
       setReviewRun({ runId, modelId: existing.modelId });
@@ -1011,7 +1016,7 @@ export default function AdminApp() {
       if (activeReviewRunId) {
         // Remember which research run this catalog record was saved from: the research history
         // shows the run as reviewed and saved.
-        await linkResearchRun(activeReviewRunId, saved.modelId).catch(() => {});
+        await linkResearchRun(activeReviewRunId, saved.modelId, reviewedBy ? Number(reviewedBy) : null).catch(() => {});
       }
       setReviewRun(null);
       let evidenceError = null;
@@ -1090,6 +1095,12 @@ export default function AdminApp() {
             <div><p className="eyebrow">{selectedId ? "EDIT MODEL" : "CREATE MODEL"}</p><h2>{selectedId || "새 모델 등록"}</h2></div>
             {selectedId && <span className="admin-depth">Depth {form.hierarchyDepth}</span>}
           </div>
+          {activeReviewRunId && reviewers.length > 0 && <label className="review-by"><span>검토자</span>
+            <select value={reviewedBy} onChange={(event) => setReviewedBy(event.target.value)}>
+              <option value="">선택 안 함 (배정된 작업자로 기록)</option>
+              {reviewers.filter((reviewer) => reviewer.isActive || String(reviewer.id) === reviewedBy).map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
+            </select>
+            <small>AI 조사 #{activeReviewRunId}을(를) 검토한 사람으로 저장할 때 함께 기록됩니다.</small></label>}
           {selectedId && activeReviewRunId && <div className="ai-draft-banner"><span>✦</span><div><strong>AI 조사 #{activeReviewRunId} 결과를 검토하고 있습니다</strong><p>이미 등록된 모델이라 새로 만들지 않고 이 모델에 반영합니다. 각 항목 위의 HF / 논문 / AI 병합 칩으로 조사 값을 골라 넣고 저장하면, 이 조사 실행이 검토 완료로 표시됩니다.</p></div><em>검토 중</em></div>}
           {aiDraft && <div className="ai-draft-banner"><span>✦</span><div><strong>AI가 작성한 초안입니다</strong><p>내용과 출처를 확인하고 필요한 항목을 수정한 뒤 등록해 주세요. 각 항목 위의 HF / 논문 / AI 병합 칩으로 다른 조사 결과의 값으로 바꿀 수 있습니다.{pendingAibom ? ` AIBOM(평가 ${pendingAibom.evaluation?.length || 0}건 · 데이터셋 ${pendingAibom.dataset?.length || 0}개 · 근거 ${pendingAibom.reference?.length || 0}개)을 포함한 전체 정보가 한 번에 저장됩니다.` : ""}</p></div><em>검토 필요</em></div>}
           <form onSubmit={save}>
