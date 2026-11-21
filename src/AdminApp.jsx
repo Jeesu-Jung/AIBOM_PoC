@@ -4,7 +4,7 @@ import { ModelResearchRuns } from "./components/admin/ResearchHistory.jsx";
 import { aibomDerivedFields, mergeFields } from "./constants/researchFields.js";
 import AibomAreas from "./components/aibom/AibomAreas.jsx";
 import { aibomDraftToView } from "./domain/aibomView.js";
-import { composeEvidence, describeEvidence, pruneEvidence, rekeyEvidence, swapEvidence } from "./domain/evidence.js";
+import { composeEvidence, datasetsWithoutEvidence, describeEvidence, pruneEvidence, rekeyEvidence, swapEvidence } from "./domain/evidence.js";
 import EvidenceLinks from "./components/admin/EvidenceLinks.jsx";
 import { focusInputOnLabelClick } from "./utils/labelClick.js";
 import SourcePicker, { MANUAL, RESEARCH_SOURCES, sourceLabel as chipLabel } from "./components/admin/SourcePicker.jsx";
@@ -1008,7 +1008,7 @@ function NoticeModal({ notice, onClose }) {
 
 // Asked before every save of the editor form. Enter in a form input submits the form, so without this
 // a stray Enter saved the model. Enter does nothing here: the choice has to be clicked.
-function ConfirmSaveModal({ open, title, message, confirmLabel, onConfirm, onCancel }) {
+function ConfirmSaveModal({ open, title, message, warningItems = [], confirmLabel, onConfirm, onCancel }) {
   const dialogRef = useRef(null);
   useEffect(() => {
     if (!open) return undefined;
@@ -1038,6 +1038,10 @@ function ConfirmSaveModal({ open, title, message, confirmLabel, onConfirm, onCan
           <p className="eyebrow">CONFIRM</p>
           <h2 id="confirm-save-title">{title}</h2>
           <p id="admin-modal-message">{message}</p>
+          {warningItems.length > 0 && <div className="admin-modal-warning" role="alert">
+            <strong>근거가 없는 데이터셋이 {warningItems.length}개 있습니다. 그대로 저장할까요?</strong>
+            <ul>{warningItems.map((item, index) => <li key={index}>{item}</li>)}</ul>
+          </div>}
         </div>
         <div className="admin-modal-actions">
           <button type="button" className="admin-secondary" onClick={onCancel}>취소</button>
@@ -1062,6 +1066,8 @@ export default function AdminApp() {
   const [notice, setNotice] = useState(null);
   const [confirmingSave, setConfirmingSave] = useState(false);
   const cancelSave = useCallback(() => setConfirmingSave(false), []);
+  // Datasets without any evidence, listed in the save confirmation.
+  const [unevidencedDatasets, setUnevidencedDatasets] = useState([]);
   const [createMode, setCreateMode] = useState(null);
   const [aiDraft, setAiDraft] = useState(false);
   const [aibomRefresh, setAibomRefresh] = useState(0);
@@ -1284,7 +1290,10 @@ export default function AdminApp() {
   // Submitting the form (the save button, or Enter in an input) only asks; `save` runs once confirmed.
   function requestSave(event) {
     event.preventDefault();
-    if (!saving) setConfirmingSave(true);
+    if (saving) return;
+    const renames = aibomEditorRef.current?.getEvidenceRenames() || [];
+    setUnevidencedDatasets(datasetsWithoutEvidence(aibomEditorRef.current?.getValue(), rekeyEvidence(evidenceRows || [], renames)));
+    setConfirmingSave(true);
   }
 
   async function save() {
@@ -1363,7 +1372,7 @@ export default function AdminApp() {
       <ConfirmSaveModal open={confirmingSave} onConfirm={save} onCancel={cancelSave}
         title={selectedId ? "변경사항을 저장할까요?" : "모델을 등록할까요?"}
         message={selectedId ? `'${selectedId}' 모델에 지금 편집한 내용을 저장합니다.` : `'${form.modelId}' 모델을 카탈로그에 새로 등록합니다.`}
-        confirmLabel={selectedId ? "저장" : "등록"} />
+        warningItems={unevidencedDatasets} confirmLabel={selectedId ? "저장" : "등록"} />
       {createMode && <CreateModelDialog mode={createMode} onModeChange={setCreateMode} onManual={startCreate} onUseDraft={(...draft) => { setAssignee(null); setReviewedBy(""); useAiDraft(...draft); }} onClose={() => setCreateMode(null)} />}
       <header className="admin-header">
         <div><p className="eyebrow">AIBOM ADMIN</p><h1>Model catalog</h1><p>등록된 모델 정보와 모델 간 연결 관계를 조회하고 수정할 수 있습니다.</p></div>

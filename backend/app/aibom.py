@@ -351,10 +351,11 @@ def save_model_aibom(session: Session, model_id: str, payload: AibomWrite, *, co
     inputs = [{"model": i.model, "role": i.role, "external": i.model not in known_models} for i in (tr.input if tr else [])]
     provenance = Provenance(
         subject=model_subject(model_id), origin=pv.origin, provider=pv.provider, relation=pv.relation,
-        # MySQL's multi-valued JSON index requires an array, including when there
-        # are no parents. `null` fails at INSERT for root models.
+        # MySQL's multi-valued JSON indexes (ix_provenance_parent, ix_provenance_evidence) require an
+        # array, including when there are no parents or no evidence. Python None is written as JSON
+        # `null`, which fails at INSERT with error 3903, so both columns always get a list.
         parent=[model_subject(i["model"]) for i in inputs if i["role"] in PARENT_ROLES],
-        evidence=_resolve_evidence(session, pv.evidence) or None, extensions=pv.extensions)
+        evidence=_resolve_evidence(session, pv.evidence), extensions=pv.extensions)
     session.add(provenance)
     session.flush()
 
@@ -410,7 +411,7 @@ def _replace_dataset_provenance(session: Session, dataset_id: str, area: Dataset
     session.execute(delete(Provenance).where(Provenance.subject == subject))
     row = Provenance(subject=subject, origin=area.origin, provider=area.provider,
                      parent=[dataset_subject(p) for p in parents], relation=area.relation,
-                     evidence=_resolve_evidence(session, area.evidence) or None, extensions=area.extensions)
+                     evidence=_resolve_evidence(session, area.evidence), extensions=area.extensions)
     session.add(row)
     session.flush()
     dataset.provenance = row.id

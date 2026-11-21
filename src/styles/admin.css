@@ -52,6 +52,9 @@
 .admin-modal.confirm .admin-modal-icon { color:#2f5fb8; background:#e6eefc; }
 .admin-modal-actions { display:flex; grid-column:2; justify-content:flex-end; gap:8px; margin-top:16px; }
 .admin-modal-actions button { min-width:86px; }
+.admin-modal-warning { margin-top:12px; padding:10px 12px; border:1px solid #f1c4c4; border-radius:10px; background:#fff4f4; color:#a33b3b; font-size:.86rem; line-height:1.5; }
+.admin-modal-warning ul { max-height:140px; margin:6px 0 0; padding-left:18px; overflow:auto; font-size:.8rem; overflow-wrap:anywhere; }
+.aibom-missing-evidence { grid-column:1 / -1; margin:0; color:#c0392b; font-size:.8rem; font-weight:700; line-height:1.5; }
 @keyframes admin-fade-in { from { opacity:0; } }
 @keyframes admin-modal-in { from { opacity:0; transform:translateY(8px) scale(.98); } }
 .create-backdrop { overflow:auto; }

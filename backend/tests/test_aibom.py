@@ -155,6 +155,19 @@ def test_catalog_root_uses_empty_parent_array() -> None:
     assert provenance(db, "org/root").parent == []
 
 
+def test_provenance_without_evidence_stores_an_empty_array_not_json_null() -> None:
+    """An undisclosed training corpus has no evidence URL; JSON null breaks ix_provenance_evidence."""
+    db = session()
+    create_admin_model(db, catalog_payload("org/base"))
+    save_model_aibom(db, "org/base", AibomWrite.model_validate({
+        "provenance": {"origin": "Sample", "provider": "Org", "relation": "pretrained"},
+        "dataset": [{"identity": "slug:undisclosed-corpus", "provenance": {"provider": "Org", "evidence": []}}],
+    }))
+
+    assert provenance(db, "org/base").evidence == []
+    assert db.scalar(select(Provenance).where(Provenance.subject == "dataset:slug:undisclosed-corpus")).evidence == []
+
+
 def test_save_model_aibom_writes_dataset_provenance_and_resolves_model_evidence_uris() -> None:
     db = session()
     create_admin_model(db, catalog_payload("org/base"))

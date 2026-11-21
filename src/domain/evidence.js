@@ -137,6 +137,21 @@ export function areaEvidence(rows, area) {
   };
 }
 
+/**
+ * Whether a source backs a dataset: a reference on its provenance, or an evidence row of the
+ * research result. `itemKey` is the key its evidence rows carry (the identity unless it was edited).
+ */
+export function datasetHasEvidence(dataset, rows, itemKey = dataset?.identity) {
+  return Boolean(dataset?.provenance?.evidence?.length)
+    || (rows || []).some((row) => row.area === "dataset" && row.itemKey === itemKey && row.url);
+}
+
+/** Identities of the datasets in an AIBOM payload that no source backs. */
+export function datasetsWithoutEvidence(aibom, rows) {
+  return (aibom?.dataset || []).filter((dataset) => !datasetHasEvidence(dataset, rows))
+    .map((dataset) => dataset.identity || "(identity 없음)");
+}
+
 /** Follow list items whose key the reviewer edited: `renames` = [{ area, from, to }]. */
 export function rekeyEvidence(rows, renames) {
   if (!renames?.length) return rows;
