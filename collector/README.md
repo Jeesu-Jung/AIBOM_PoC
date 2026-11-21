@@ -23,6 +23,8 @@ sh run-collect.sh Qwen/Qwen2.5-7B
 | 옵션 | 기본값 | 설명 |
 | --- | --- | --- |
 | `--out DIR` | `data/model_lists` | 출력 폴더. 그 아래 루트 모델별 폴더가 생깁니다 |
+| `--sort KEY` | `downloads` | 정렬 기준: `trending`, `likes`, `downloads`, `created`, `modified`, `most_params`, `least_params` |
+| `--top N` | 0 | 필터링 후 정렬 순서대로 상위 N개만 남김 (0이면 전체) |
 | `--workers N` | 16 | README 동시 다운로드 수 |
 | `--keep-readme` | | README 원문을 출력 폴더의 `readme/`에 보관 |
 | `--no-gui` | | 창 없이 콘솔에서 실행 (루트 모델 이름 필수) |
@@ -32,13 +34,17 @@ Hugging Face 토큰은 쓰지 않습니다. 공개된 모델 목록과 README만
 ## 동작
 
 1. **루트 확인**: `GET /api/models/<루트>`로 모델이 있는지 확인합니다.
-2. **1차 수집**: `base_model:finetune:<루트>` 태그가 붙은 모델(직계 finetune)을 모두 받아 다운로드순으로 저장합니다.
+2. **1차 수집**: `base_model:finetune:<루트>` 태그가 붙은 모델(직계 finetune)을 모두 받아
+   선택한 정렬 순서 그대로 저장합니다. 정렬 기준은 Hugging Face 모델 목록의 Sort와 같습니다.
    adapter · merge · quantized 관계와 finetune의 finetune은 포함하지 않습니다.
 3. **2차 필터링**: 각 모델의 `README.md`를 받아 아래에 해당하면 제외합니다.
    - **공식 카드 복사본**: 루트 모델과 같은 조직이 아닌데, README 본문이 루트 모델 또는 목록 안의 같은 조직 모델과 같은 경우.
      YAML front matter와 공백 · 빈 줄 차이는 무시합니다. 루트와 같은 조직의 모델은 그대로 둡니다.
    - **본문 없음**: front matter 외에 내용이 없는 경우
    - **README 없음**: 저장소에 `README.md`가 없는 경우
+4. **상위 N개**: 개수를 지정했으면 필터링을 통과한 모델 중 정렬 순서대로 앞의 N개만 남깁니다.
+   하위 모델은 개수와 상관없이 항상 전부 수집하고, 자르는 것은 필터링 뒤입니다.
+   Trending처럼 정렬 값이 드러나지 않는 기준도 있어서, 값으로 다시 정렬하지 않고 Hugging Face가 돌려준 순서(`rank`)를 그대로 씁니다.
 
 ## 출력
 
@@ -46,10 +52,13 @@ Hugging Face 토큰은 쓰지 않습니다. 공개된 모델 목록과 README만
 
 | 파일 | 내용 |
 | --- | --- |
-| `1-finetunes.csv` | 1차 수집 전체 (모델 ID, 다운로드, 좋아요, 생성일, 수정일, gated, README 유무) |
-| `<모델>-based-model-list.md` | 최종 조사 대상. 한 줄에 모델 하나, 다운로드 많은 순 |
-| `2-excluded.csv` | 제외한 모델과 사유 (`official_copy`, `empty_body`, `no_readme`, `readme_error`), 복사 원본 |
-| `summary.json` | 루트 모델, 수집 시각, 건수 |
+| `1-finetunes.csv` | 1차 수집 전체, 정렬 순서대로 (순위 `rank`, 모델 ID, 다운로드, 좋아요, 생성일, 수정일, gated, README 유무) |
+| `<모델>-based-model-list.md` | 최종 조사 대상. 한 줄에 모델 하나, 정렬 순서대로 |
+| `<모델>-based-model-list-<정렬>-top<N>.md` | 상위 N개를 지정했을 때의 최종 목록. 전체 목록 파일을 덮어쓰지 않습니다 |
+| `2-excluded.csv` | 제외한 모델과 사유 (`official_copy`, `empty_body`, `no_readme`, `readme_error`, 상위 N개 밖은 `over_limit`), 복사 원본 |
+| `summary.json` | 루트 모델, 정렬 기준, 상위 개수, 수집 시각, 건수 |
+
+`2-excluded.csv`와 `summary.json`은 마지막 실행 기준으로 덮어씁니다.
 
 다운로드 수와 하위 모델 목록은 계속 바뀌므로 실행할 때마다 결과가 조금씩 달라질 수 있습니다.
 

@@ -84,7 +84,7 @@ class CollectTests(unittest.TestCase):
             hub.fail_always.add("user/broken")
             hub.rate_limit_once.add("user/slow")
             original_iter = HubClient.iter_finetunes
-            HubClient.iter_finetunes = lambda self, root_id, page_size=4: original_iter(self, root_id, page_size)
+            HubClient.iter_finetunes = lambda self, root_id, sort, page_size=4: original_iter(self, root_id, sort, page_size)
             try:
                 collector = self.run_collector(hub, Path(tmp), root_input=f"https://huggingface.co/{ROOT.lower()}")
             finally:
@@ -94,7 +94,7 @@ class CollectTests(unittest.TestCase):
 
             with (folder / "1-finetunes.csv").open(encoding="utf-8", newline="") as handle:
                 collected = [row["model_id"] for row in csv.DictReader(handle)]
-            self.assertEqual(collected, [model["id"] for model in MODELS[:-1]])  # every page, download order
+            self.assertEqual(collected, [model["id"] for model in MODELS[:-1]])  # every page, listing order
 
             kept = (folder / "Base-7B-based-model-list.md").read_text(encoding="utf-8").splitlines()
             self.assertEqual(kept, ["Org/Base-7B-Instruct", "user/real", "user/twin-1", "user/twin-2", "user/slow"])
@@ -131,6 +131,30 @@ class CollectTests(unittest.TestCase):
             self.assertEqual(saved, ["Org__Base-7B-Instruct.md", "Org__Base-7B.md", "user__real.md"])
             self.assertEqual(set(hub.auth_headers), {None})
 
+    def test_top_n_after_filter_in_listing_order(self):
+        # Listing order differs from download order, as with a trending sort that exposes no value.
+        listing = [MODELS[8], MODELS[2], MODELS[6], MODELS[4], MODELS[1], MODELS[0], MODELS[7]]
+        with tempfile.TemporaryDirectory() as tmp, MockHub(ROOT, "# Base\n", listing, READMES) as hub:
+            collector = self.run_collector(hub, Path(tmp), sort="trending", top=3)
+            folder = Path(tmp) / "out" / "Org__Base-7B"
+            self.assertIn("sort=trendingScore&direction=-1", hub.requests[1])
+            # copy-instruct and empty are filtered out first; the first three survivors in listing order remain.
+            kept = (folder / "Base-7B-based-model-list-trending-top3.md").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(kept, ["user/broken", "user/twin-1", "user/real"])
+            with (folder / "2-excluded.csv").open(encoding="utf-8", newline="") as handle:
+                excluded = [(row["rank"], row["model_id"], row["reason"]) for row in csv.DictReader(handle)]
+            self.assertEqual(excluded, [("2", "user/copy-instruct", "official_copy"), ("4", "user/empty", "empty_body"),
+                                        ("6", "Org/Base-7B-Instruct", "over_limit"), ("7", "user/twin-2", "over_limit")])
+            self.assertEqual((collector.summary["passedFilter"], collector.summary["kept"]), (5, 3))
+            self.assertFalse((folder / "Base-7B-based-model-list.md").exists())
+
+    def test_least_parameters_sort_and_unknown_sort(self):
+        with tempfile.TemporaryDirectory() as tmp, MockHub(ROOT, "# Base\n", MODELS[:2], READMES) as hub:
+            self.run_collector(hub, Path(tmp), sort="least_params")
+            self.assertIn("sort=num_parameters&direction=1", hub.requests[1])
+            with self.assertRaises(ValueError):
+                Collector(ROOT, Path(tmp), sort="bogus")
+
     def test_unknown_root(self):
         with tempfile.TemporaryDirectory() as tmp, MockHub(ROOT, "# Base\n", MODELS, READMES) as hub:
             collector = self.run_collector(hub, Path(tmp), root_input="Org/Missing")
@@ -144,8 +168,8 @@ class CollectTests(unittest.TestCase):
             collector = Collector(ROOT, Path(tmp) / "out", client, work_root=Path(tmp) / "work")
             original = client.iter_finetunes
 
-            def stop_after_listing(root_id):
-                yield from original(root_id)
+            def stop_after_listing(root_id, sort):
+                yield from original(root_id, sort)
                 collector.stop()
 
             client.iter_finetunes = stop_after_listing

@@ -10,16 +10,17 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
-from .hub import HubClient, parse_model_id
-from .pipeline import DEFAULT_OUT_DIR, REASON_LABELS, Collector
+from .hub import DEFAULT_SORT, SORTS, HubClient, parse_model_id
+from .pipeline import DEFAULT_OUT_DIR, OVER_LIMIT, REASON_LABELS, Collector
 
 LOG_FONT = ("Menlo", 11) if sys.platform == "darwin" else ("Consolas", 9) if sys.platform == "win32" else ("TkFixedFont", 10)
+SORT_KEYS = {label: key for key, (label, _api, _direction) in SORTS.items()}
 STAGE_TEXT = {"": "루트 모델 확인 중…", "list": "1차: 하위 모델 목록 수집 중", "readme": "2차: README 받는 중", "done": "완료"}
 
 
 class App:
     def __init__(self, root: tk.Tk, model: str = "", out_dir: str | Path = DEFAULT_OUT_DIR, workers: int = 16,
-                 keep_readme: bool = False):
+                 keep_readme: bool = False, sort: str = DEFAULT_SORT, top: int = 0):
         self.root = root
         self.collector: Collector | None = None
         self._was_running = False
@@ -31,6 +32,8 @@ class App:
         self.out_var = tk.StringVar(value=str(out_dir))
         self.workers_var = tk.IntVar(value=workers)
         self.keep_var = tk.BooleanVar(value=keep_readme)
+        self.sort_var = tk.StringVar(value=SORTS[sort if sort in SORTS else DEFAULT_SORT][0])
+        self.top_var = tk.IntVar(value=max(0, top))
         self.status_var = tk.StringVar(value="루트 모델 이름을 입력하고 시작을 누르세요. 예: Qwen/Qwen2.5-7B")
 
         form = ttk.Frame(root, padding=(10, 10, 10, 4))
@@ -54,6 +57,14 @@ class App:
 
         settings = ttk.Frame(root, padding=(10, 4))
         settings.pack(fill="x")
+        ttk.Label(settings, text="정렬").pack(side="left")
+        self.sort_combo = ttk.Combobox(settings, textvariable=self.sort_var, values=list(SORT_KEYS), state="readonly",
+                                       width=17)
+        self.sort_combo.pack(side="left", padx=(4, 12))
+        ttk.Label(settings, text="상위").pack(side="left")
+        self.top_spin = ttk.Spinbox(settings, from_=0, to=1000000, increment=100, width=8, textvariable=self.top_var)
+        self.top_spin.pack(side="left", padx=4)
+        ttk.Label(settings, text="개 (0 = 전체, 필터링 후 기준)").pack(side="left", padx=(0, 12))
         ttk.Label(settings, text="동시 다운로드").pack(side="left")
         self.workers_spin = ttk.Spinbox(settings, from_=1, to=32, width=4, textvariable=self.workers_var)
         self.workers_spin.pack(side="left", padx=(4, 12))
@@ -106,7 +117,14 @@ class App:
         except (tk.TclError, ValueError):
             workers = 16
         self.workers_var.set(workers)
-        self.collector = Collector(model, out_dir, HubClient(), workers=workers, keep_readme=self.keep_var.get())
+        try:
+            top = max(0, int(self.top_var.get()))
+        except (tk.TclError, ValueError):
+            messagebox.showwarning("상위 개수", "상위 개수는 0 이상의 숫자로 입력하세요. 0이면 전체를 남깁니다.")
+            return
+        self.top_var.set(top)
+        self.collector = Collector(model, out_dir, HubClient(), workers=workers, keep_readme=self.keep_var.get(),
+                                   sort=SORT_KEYS.get(self.sort_var.get(), DEFAULT_SORT), top=top)
         self.collector.start()
         self._was_running = True
         self._set_running(True)
@@ -126,8 +144,9 @@ class App:
     def _set_running(self, running: bool) -> None:
         idle = "disabled" if running else "normal"
         for widget in (self.model_entry, self.out_entry, self.browse_button, self.workers_spin, self.keep_check,
-                       self.start_button):
+                       self.top_spin, self.start_button):
             widget.configure(state=idle)
+        self.sort_combo.configure(state="disabled" if running else "readonly")
         self.stop_button.configure(state="normal" if running else "disabled")
 
     # --- display --------------------------------------------------------------------------------
@@ -168,9 +187,11 @@ class App:
         self.progress.configure(mode="determinate", maximum=1, value=1 if collector.summary else 0)
         summary = collector.summary
         if summary:
-            excluded = "  ·  ".join(f"{REASON_LABELS[reason]} {count}" for reason, count in summary["excluded"].items())
-            self.status_var.set(f"완료: 수집 {summary['collected']}건 → 조사 대상 {summary['kept']}건"
-                                + (f"  (제외: {excluded})" if excluded else ""))
+            excluded = "  ·  ".join(f"{REASON_LABELS[reason]} {count}" for reason, count in summary["excluded"].items()
+                                    if reason != OVER_LIMIT)
+            self.status_var.set(f"완료: 수집 {summary['collected']}건 → 필터 통과 {summary['passedFilter']}건"
+                                + (f"  (제외: {excluded})" if excluded else "")
+                                + (f" → 상위 {summary['top']}개 제한으로 {summary['kept']}건" if summary["top"] else ""))
             if collector.error:
                 messagebox.showwarning("일부 실패", collector.error)
         elif collector.stopped:
@@ -180,10 +201,11 @@ class App:
             messagebox.showerror("수집 실패", collector.error or "알 수 없는 오류")
 
 
-def run_gui(model: str = "", out_dir: str | Path = DEFAULT_OUT_DIR, workers: int = 16, keep_readme: bool = False) -> None:
+def run_gui(model: str = "", out_dir: str | Path = DEFAULT_OUT_DIR, workers: int = 16, keep_readme: bool = False,
+            sort: str = DEFAULT_SORT, top: int = 0) -> None:
     try:
         root = tk.Tk()
     except tk.TclError as error:
         raise SystemExit(f"창을 열 수 없습니다 ({error}). --no-gui 로 콘솔에서 실행할 수 있습니다.") from error
-    App(root, model, out_dir, workers, keep_readme)
+    App(root, model, out_dir, workers, keep_readme, sort, top)
     root.mainloop()

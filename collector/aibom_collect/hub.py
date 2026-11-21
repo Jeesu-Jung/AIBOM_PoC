@@ -13,6 +13,18 @@ from typing import Iterator
 DEFAULT_HUB_URL = "https://huggingface.co"
 USER_AGENT = "aibom-collect"
 
+# Sort orders of the Hugging Face model list: key -> (label on the site, API sort, API direction)
+SORTS = {
+    "trending": ("Trending", "trendingScore", "-1"),
+    "likes": ("Most likes", "likes", "-1"),
+    "downloads": ("Most downloads", "downloads", "-1"),
+    "created": ("Recently created", "createdAt", "-1"),
+    "modified": ("Recently updated", "lastModified", "-1"),
+    "most_params": ("Most parameters", "num_parameters", "-1"),
+    "least_params": ("Least parameters", "num_parameters", "1"),
+}
+DEFAULT_SORT = "downloads"
+
 _SEGMENT = r"[A-Za-z0-9][\w.\-]*"
 MODEL_ID = re.compile(rf"{_SEGMENT}/[\w.\-]+")
 _INPUT_ID = re.compile(rf"{_SEGMENT}(?:/[\w.\-]+)?")
@@ -83,10 +95,11 @@ class HubClient:
         data, _headers = self._get(f"{self.base_url}/api/models/{urllib.parse.quote(model_id)}")
         return json.loads(data)
 
-    def iter_finetunes(self, root_id: str, page_size: int = 500) -> Iterator[list[dict]]:
-        """Pages of models tagged `base_model:finetune:<root>`, most downloaded first."""
+    def iter_finetunes(self, root_id: str, sort: str = DEFAULT_SORT, page_size: int = 500) -> Iterator[list[dict]]:
+        """Pages of models tagged `base_model:finetune:<root>`, in the order of the chosen sort."""
+        _label, api_sort, direction = SORTS[sort]
         query = urllib.parse.urlencode({"filter": f"base_model:finetune:{root_id}", "full": "true",
-                                        "limit": str(page_size), "sort": "downloads", "direction": "-1"})
+                                        "limit": str(page_size), "sort": api_sort, "direction": direction})
         url: str | None = f"{self.base_url}/api/models?{query}"
         while url:
             data, headers = self._get(url)

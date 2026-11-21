@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
-from .hub import MODEL_ID, Cancelled, HubClient, HubError, parse_model_id
+from .hub import DEFAULT_SORT, MODEL_ID, SORTS, Cancelled, HubClient, HubError, parse_model_id
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT_DIR = PACKAGE_ROOT.parent / "data" / "model_lists"
@@ -28,8 +28,9 @@ NO_README = "no_readme"          # the repository has no README.md
 EMPTY_BODY = "empty_body"        # nothing but YAML front matter
 OFFICIAL_COPY = "official_copy"  # body equals a card of the root model's organisation
 README_ERROR = "readme_error"    # README.md could not be downloaded
+OVER_LIMIT = "over_limit"        # passed the filter but ranked below the requested top N
 REASON_LABELS = {OFFICIAL_COPY: "공식 카드 복사본", EMPTY_BODY: "본문 없음", NO_README: "README 없음",
-                 README_ERROR: "README 다운로드 실패"}
+                 README_ERROR: "README 다운로드 실패", OVER_LIMIT: "상위 N개 밖"}
 
 _FRONT_MATTER = re.compile(r"\A﻿?---\s*\n.*?\n---\s*(?:\n|\Z)", re.DOTALL)
 
@@ -43,6 +44,7 @@ class Child:
     last_modified: str = ""
     gated: str = ""
     has_readme: bool | None = None  # None: the listing did not say
+    rank: int = 0  # 1-based position in the listing, in the order the hub returned it
 
 
 @dataclass
@@ -57,8 +59,10 @@ def safe_name(model_id: str) -> str:
     return model_id.replace("/", "__")
 
 
-def list_file_name(root_id: str) -> str:
-    return f"{root_id.split('/')[-1]}-based-model-list.md"
+def list_file_name(root_id: str, sort: str = DEFAULT_SORT, top: int = 0) -> str:
+    """A top-N list gets its own name so it does not replace the full list."""
+    suffix = f"-{sort}-top{top}" if top else ""
+    return f"{root_id.split('/')[-1]}-based-model-list{suffix}.md"
 
 
 def normalise_body(raw: bytes) -> str:
@@ -122,13 +126,18 @@ class Collector:
     """Runs both stages on a worker thread. The GUI and the console poll `logs` and the counters."""
 
     def __init__(self, root_input: str, out_dir: str | Path = DEFAULT_OUT_DIR, client: HubClient | None = None,
-                 workers: int = 16, keep_readme: bool = False, work_root: str | Path = WORK_ROOT):
+                 workers: int = 16, keep_readme: bool = False, work_root: str | Path = WORK_ROOT,
+                 sort: str = DEFAULT_SORT, top: int = 0):
+        if sort not in SORTS:
+            raise ValueError(f"알 수 없는 정렬 기준입니다: {sort!r} ({', '.join(SORTS)})")
         self.root_input = root_input
         self.out_root = Path(out_dir)
         self.client = client or HubClient()
         self.workers = max(1, workers)
         self.keep_readme = keep_readme
         self.work_root = Path(work_root)
+        self.sort = sort
+        self.top = max(0, int(top))  # 0: keep everything that passes the filter
         self.logs: queue.Queue[str] = queue.Queue()
         self.stage = ""            # "", "list", "readme", "done"
         self.done = 0
@@ -188,19 +197,22 @@ class Collector:
             raise HubError(f"루트 모델 ID를 확인할 수 없습니다: {root_id!r}")
         self.out_dir = self.out_root / safe_name(root_id)
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        self.log(f"루트 모델 확인: {root_id}")
+        self.log(f"루트 모델 확인: {root_id}  ·  정렬: {SORTS[self.sort][0]}")
 
-        # Stage 1: every direct finetune, saved before any filtering.
+        # Stage 1: every direct finetune, saved before any filtering, in the order the hub lists them.
+        # That order is the only record of sorts without a visible value (trending), so it is never re-sorted.
         self.stage = "list"
         children: dict[str, Child] = {}
-        for page in self.client.iter_finetunes(root_id):
+        for page in self.client.iter_finetunes(root_id, self.sort):
             for item in page:
                 child = parse_child(item) if isinstance(item, dict) else None
                 if child and child.model_id != root_id:
                     children.setdefault(child.model_id, child)
             self.done = self.total = len(children)
             self.log(f"1차 수집: {len(children)}건")
-        ordered = sorted(children.values(), key=lambda child: (-child.downloads, child.model_id.lower()))
+        ordered = list(children.values())
+        for rank, child in enumerate(ordered, 1):
+            child.rank = rank
         self._write_children(ordered)
         self.log(f"1차 저장: {self.out_dir / CHILDREN_FILE} ({len(ordered)}건)")
         if not ordered:
@@ -224,20 +236,27 @@ class Collector:
             raise Cancelled()
 
         kept, excluded = classify(root_id, root_readme, ordered, readmes)
-        list_path = self.out_dir / list_file_name(root_id)
+        passed = len(kept)
+        if self.top:  # cut after filtering, so the list holds the top N of what passed
+            excluded += [Excluded(child, OVER_LIMIT) for child in kept[self.top:]]
+            kept = kept[:self.top]
+        list_path = self.out_dir / list_file_name(root_id, self.sort, self.top)
         list_path.write_text("".join(f"{child.model_id}\n" for child in kept), encoding="utf-8", newline="\n")
         self._write_excluded(excluded)
         counts = Counter(item.reason for item in excluded)
         self.summary = {
             "root": root_id, "relation": "finetune", "collectedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "collected": len(ordered), "kept": len(kept), "excluded": dict(counts),
+            "sort": self.sort, "top": self.top or None,
+            "collected": len(ordered), "passedFilter": passed, "kept": len(kept), "excluded": dict(counts),
             "files": {"collected": CHILDREN_FILE, "list": list_path.name, "excluded": EXCLUDED_FILE},
         }
         (self.out_dir / SUMMARY_FILE).write_text(json.dumps(self.summary, ensure_ascii=False, indent=2) + "\n",
                                                  encoding="utf-8", newline="\n")
-        detail = ", ".join(f"{REASON_LABELS[reason]} {counts[reason]}" for reason in REASON_LABELS if counts[reason])
+        detail = ", ".join(f"{REASON_LABELS[reason]} {counts[reason]}" for reason in REASON_LABELS
+                           if counts[reason] and reason != OVER_LIMIT)
         self.log(f"2차 저장: {list_path} ({len(kept)}건)")
-        self.log(f"수집 {len(ordered)}건 → 조사 대상 {len(kept)}건" + (f" (제외: {detail})" if detail else ""))
+        self.log(f"수집 {len(ordered)}건 → 필터 통과 {passed}건" + (f" (제외: {detail})" if detail else "")
+                 + (f" → 상위 {self.top}개 제한으로 {len(kept)}건" if self.top else ""))
         if counts[README_ERROR]:
             self.error = (f"README를 받지 못한 모델 {counts[README_ERROR]}건은 목록에서 빠졌습니다. "
                           "다시 시작하면 실패한 것만 다시 받습니다.")
@@ -272,15 +291,16 @@ class Collector:
     def _write_children(self, children: list[Child]) -> None:
         with (self.out_dir / CHILDREN_FILE).open("w", encoding="utf-8", newline="") as handle:
             writer = csv.writer(handle)
-            writer.writerow(["model_id", "downloads", "likes", "created_at", "last_modified", "gated", "has_readme"])
+            writer.writerow(["rank", "model_id", "downloads", "likes", "created_at", "last_modified", "gated",
+                             "has_readme"])
             for child in children:
-                writer.writerow([child.model_id, child.downloads, child.likes, child.created_at, child.last_modified,
+                writer.writerow([child.rank, child.model_id, child.downloads, child.likes, child.created_at, child.last_modified,
                                  child.gated, "" if child.has_readme is None else str(child.has_readme).lower()])
 
     def _write_excluded(self, excluded: list[Excluded]) -> None:
         with (self.out_dir / EXCLUDED_FILE).open("w", encoding="utf-8", newline="") as handle:
             writer = csv.writer(handle)
-            writer.writerow(["model_id", "reason", "copied_from", "detail", "downloads", "likes"])
+            writer.writerow(["rank", "model_id", "reason", "copied_from", "detail", "downloads", "likes"])
             for item in excluded:
-                writer.writerow([item.child.model_id, item.reason, item.copied_from, item.detail,
+                writer.writerow([item.child.rank, item.child.model_id, item.reason, item.copied_from, item.detail,
                                  item.child.downloads, item.child.likes])
