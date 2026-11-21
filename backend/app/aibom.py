@@ -208,7 +208,8 @@ class EvaluationArea(_Area):
     dataset: str | None = Field(default=None, max_length=255)
     configuration: dict[str, Any] | None = None
     metric: str | None = Field(default=None, max_length=255)
-    score: Decimal | None = None
+    # evaluation.score is DECIMAL(14,4): at most 10 digits before the decimal point.
+    score: Decimal | None = Field(default=None, gt=Decimal("-1e10"), lt=Decimal("1e10"))
     timestamp: date | None = None
     extensions: dict[str, Any] | None = None
 
@@ -298,6 +299,8 @@ def _resolve_evidence(session: Session, items: list[int | str]) -> list[int]:
             if session.get(Reference, item) is None:
                 raise _unprocessable(f"Reference #{item} does not exist.")
             ids.append(item)
+        elif not item or len(item) > 1000:
+            raise _unprocessable(f"Evidence URI must be 1 to 1000 characters: {item[:80]}")
         else:
             ids.append(_upsert_reference(session, item).id)
     return sorted(set(ids))
@@ -325,7 +328,12 @@ def save_model_aibom(session: Session, model_id: str, payload: AibomWrite, *, co
 
     for ref in payload.reference:
         _upsert_reference(session, ref.uri, ref)
-    payload_datasets = {ds.identity for ds in payload.dataset}
+    payload_datasets: set[str] = set()
+    for ds in payload.dataset:
+        # Two rows with one identity would break the dataset primary key at INSERT.
+        if ds.identity in payload_datasets:
+            raise _unprocessable(f"Dataset '{ds.identity}' is listed twice. Keep one entry per dataset.")
+        payload_datasets.add(ds.identity)
     for ds in payload.dataset:
         row = session.get(Dataset, ds.identity) or Dataset(identity=ds.identity)
         row.version, row.processing, row.license, row.extensions = ds.version, ds.processing, ds.license, ds.extensions
@@ -384,9 +392,10 @@ def save_model_aibom(session: Session, model_id: str, payload: AibomWrite, *, co
                                  extensions=s.extensions))
     seen_licenses: set[str] = set()
     for lic in payload.license_policy:
-        if lic.license in seen_licenses:
+        # ux_license_policy compares case-insensitively (utf8mb4_0900_ai_ci), so `MIT` and `mit` collide.
+        if lic.license.casefold() in seen_licenses:
             raise _unprocessable(f"License '{lic.license}' is listed twice.")
-        seen_licenses.add(lic.license)
+        seen_licenses.add(lic.license.casefold())
         session.add(LicensePolicy(subject=model_subject(model_id), license=lic.license, usage_policy=lic.usage_policy,
                                   restrictions=lic.restrictions or None, extensions=lic.extensions))
     session.flush()

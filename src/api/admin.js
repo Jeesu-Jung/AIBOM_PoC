@@ -9,7 +9,11 @@ async function request(path, options = {}) {
     const payload = await response.json().catch(() => null);
     const detail = payload?.detail;
     const message = Array.isArray(detail)
-      ? detail.map((item) => item.msg).join(" · ")
+      // Name the field of each validation error (`model.artifactFormat: String should have ...`).
+      ? detail.map((item) => {
+        const field = (item.loc || []).filter((part) => part !== "body").join(".");
+        return field ? `${field}: ${item.msg}` : item.msg;
+      }).join(" · ")
       : detail || `API request failed (${response.status}).`;
     throw new Error(message);
   }

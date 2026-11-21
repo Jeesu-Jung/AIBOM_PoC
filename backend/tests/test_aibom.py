@@ -168,6 +168,31 @@ def test_provenance_without_evidence_stores_an_empty_array_not_json_null() -> No
     assert db.scalar(select(Provenance).where(Provenance.subject == "dataset:slug:undisclosed-corpus")).evidence == []
 
 
+def test_dataset_listed_twice_is_rejected_before_it_reaches_the_primary_key() -> None:
+    db = session()
+    create_admin_model(db, catalog_payload("org/base"))
+    with pytest.raises(HTTPException) as error:
+        save_model_aibom(db, "org/base", AibomWrite.model_validate({"dataset": [
+            {"identity": "slug:aime-2025"}, {"identity": "slug:aime-2025", "version": "v2"}]}))
+    assert error.value.status_code == 422
+    assert "slug:aime-2025" in error.value.detail
+
+
+def test_save_model_aibom_rejects_values_the_database_would_refuse() -> None:
+    db = session()
+    create_admin_model(db, catalog_payload("org/base"))
+    with pytest.raises(HTTPException) as error:
+        save_model_aibom(db, "org/base", AibomWrite.model_validate({
+            "license_policy": [{"license": "MIT"}, {"license": "mit"}]}))
+    assert error.value.status_code == 422
+    with pytest.raises(HTTPException) as error:
+        save_model_aibom(db, "org/base", AibomWrite.model_validate({
+            "provenance": {"evidence": ["https://example.test/" + "x" * 1000]}}))
+    assert error.value.status_code == 422
+    with pytest.raises(ValueError):
+        AibomWrite.model_validate({"evaluation": [{"score": "12345678901"}]})
+
+
 def test_save_model_aibom_writes_dataset_provenance_and_resolves_model_evidence_uris() -> None:
     db = session()
     create_admin_model(db, catalog_payload("org/base"))
