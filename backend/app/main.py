@@ -1,3 +1,4 @@
+import logging
 from copy import deepcopy
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
@@ -65,6 +66,8 @@ class AdminModelWithAibomWrite(BaseModel):
     aibom: AibomWrite
 
 
+logger = logging.getLogger(__name__)
+
 app = FastAPI(
     title="AIBOM Model Catalog API",
     version="1.0.0",
@@ -79,10 +82,31 @@ app.add_middleware(
 )
 
 
-def _database_unavailable() -> HTTPException:
+# MySQL client / server codes that mean the database cannot be reached or logged into.
+_CONNECTION_ERROR_CODES = frozenset({1040, 1042, 1043, 1044, 1045, 1049, 1129, 1130, 2002, 2003, 2005, 2006, 2013})
+
+
+def _database_error(error: SQLAlchemyError) -> HTTPException:
+    """Turn a database failure into an API error, and log the driver's own message.
+
+    Only a failed connection is reported as "unavailable" (503). A statement the database rejected
+    (a value too long for its column, a column or table missing because a sql/ migration was not
+    run on this server, ...) is a 500 that carries the database's message, so the cause is visible
+    in the admin UI instead of looking like an outage.
+    """
+    logger.error("Database request failed", exc_info=error)
+    orig = getattr(error, "orig", None)
+    args = getattr(orig, "args", ())
+    code = args[0] if args and isinstance(args[0], int) else None
+    if orig is None or code is None or code in _CONNECTION_ERROR_CODES:
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The model catalog database is unavailable.",
+        )
+    message = str(args[1]) if len(args) > 1 else str(orig)
     return HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="The model catalog database is unavailable.",
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"The database rejected the request ({code}): {message[:500]}",
     )
 
 
@@ -102,7 +126,7 @@ def families(db: Session = Depends(get_db)) -> dict:
     try:
         return load_family_index(db)
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.get("/api/v1/models", tags=["models"])
@@ -110,7 +134,7 @@ def models(db: Session = Depends(get_db)) -> list[dict]:
     try:
         return [model_to_dict(row) for row in load_model_rows(db)]
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.get("/api/v1/families/{family_key}/hierarchy", tags=["families"])
@@ -118,7 +142,7 @@ def family_hierarchy(family_key: str, db: Session = Depends(get_db)) -> dict:
     try:
         payload = build_catalog(load_model_rows(db, family_key=family_key))
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
     family = payload["familyRegistry"].get(family_key)
     if family is None:
         raise HTTPException(status_code=404, detail="Model family not found.")
@@ -134,7 +158,7 @@ def model(model_id: str, db: Session = Depends(get_db)) -> dict:
             raise HTTPException(status_code=404, detail="Model not found.")
         return {**model_to_dict(row), "aibom": load_model_aibom(db, model_id)}
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.get("/api/v1/admin/models", tags=["admin"])
@@ -142,7 +166,7 @@ def admin_models(db: Session = Depends(get_db)) -> list[dict]:
     try:
         return [admin_model_to_dict(row) for row in load_admin_models(db)]
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 def _load_research_context() -> CatalogContext:
@@ -195,7 +219,7 @@ def admin_research_results(modelName: str, db: Session = Depends(get_db)) -> dic
     try:
         return _refresh_stored_results(db, load_research_results(db, modelName))
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.post("/api/v1/admin/model-research/results", tags=["admin"])
@@ -208,7 +232,7 @@ def admin_save_research_results(payload: SaveResearchResultsRequest, db: Session
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.delete("/api/v1/admin/model-research/results", tags=["admin"], status_code=status.HTTP_204_NO_CONTENT)
@@ -217,7 +241,7 @@ def admin_delete_research_results(modelName: str, db: Session = Depends(get_db))
         delete_research_results(db, modelName)
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -239,7 +263,7 @@ def _store_call(db: Session, action):
         raise HTTPException(status_code=409, detail="The change conflicts with another record.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.get("/api/v1/admin/reviewers", tags=["admin"])
@@ -248,7 +272,7 @@ def admin_reviewers(db: Session = Depends(get_db)) -> list[dict]:
     try:
         return list_reviewers(db)
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.post("/api/v1/admin/reviewers", tags=["admin"], status_code=status.HTTP_201_CREATED)
@@ -288,7 +312,7 @@ def admin_research_runs(modelName: str | None = None, modelId: str | None = None
     try:
         return list_research_runs(db, model_name=modelName, model_id=modelId, limit=max(1, min(limit, 500)))
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.get("/api/v1/admin/research-runs/page", tags=["admin"])
@@ -300,7 +324,7 @@ def admin_research_run_page(status: str = "all", reviewer: str = "all", query: s
         return page_research_runs(db, status=status, reviewer=reviewer, query=query, search_by=searchBy,
                                   offset=max(0, offset), limit=max(1, min(limit, 500)))
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.get("/api/v1/admin/research-runs/{run_id}", tags=["admin"])
@@ -311,7 +335,7 @@ def admin_research_run(run_id: int, resolve: bool = False, db: Session = Depends
         run = get_research_run(db, run_id)
         return _refresh_stored_results(db, run) if resolve else run
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.put("/api/v1/admin/research-runs/{run_id}/model", tags=["admin"])
@@ -324,7 +348,7 @@ def admin_link_research_run(run_id: int, payload: ResearchRunLink, db: Session =
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.delete("/api/v1/admin/research-runs/{run_id}", tags=["admin"], status_code=status.HTTP_204_NO_CONTENT)
@@ -336,7 +360,7 @@ def admin_delete_research_run(run_id: int, db: Session = Depends(get_db)) -> Res
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -357,7 +381,7 @@ def admin_aibom_options(db: Session = Depends(get_db)) -> dict:
     try:
         return load_aibom_options(db)
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 # Registered before the `{model_id:path}` routes below, which would otherwise swallow `/evidence`.
@@ -369,7 +393,7 @@ def admin_model_evidence(model_id: str, db: Session = Depends(get_db)) -> list[d
             raise HTTPException(status_code=404, detail="Model not found.")
         return load_model_evidence(db, model_id)
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.put("/api/v1/admin/models/{model_id:path}/evidence", tags=["admin"])
@@ -382,7 +406,7 @@ def admin_save_model_evidence(model_id: str, payload: ModelEvidenceWrite, db: Se
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 # Registered before the `{model_id:path}` routes below, which would otherwise swallow `/aibom`.
@@ -393,7 +417,7 @@ def admin_model_aibom(model_id: str, db: Session = Depends(get_db)) -> dict:
             raise HTTPException(status_code=404, detail="Model not found.")
         return load_model_aibom(db, model_id) or {}
     except SQLAlchemyError as error:
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.put("/api/v1/admin/models/{model_id:path}/aibom", tags=["admin"])
@@ -409,7 +433,7 @@ def admin_save_model_aibom(model_id: str, payload: AibomWrite, db: Session = Dep
         raise HTTPException(status_code=409, detail="The AIBOM could not be saved because it conflicts with another record.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.post("/api/v1/admin/models", tags=["admin"], status_code=status.HTTP_201_CREATED)
@@ -424,7 +448,7 @@ def admin_create_model(payload: AdminModelWrite, db: Session = Depends(get_db)) 
         raise HTTPException(status_code=409, detail="The model could not be saved because its data conflicts with another record.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.post("/api/v1/admin/models/complete", tags=["admin"], status_code=status.HTTP_201_CREATED)
@@ -442,7 +466,7 @@ def admin_create_complete_model(payload: AdminModelWithAibomWrite, db: Session =
         raise HTTPException(status_code=409, detail="The model could not be saved because its data conflicts with another record.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.put("/api/v1/admin/models/{model_id:path}/complete", tags=["admin"])
@@ -460,7 +484,7 @@ def admin_update_complete_model(model_id: str, payload: AdminModelWithAibomWrite
         raise HTTPException(status_code=409, detail="The model could not be saved because its data conflicts with another record.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.put("/api/v1/admin/models/{model_id:path}", tags=["admin"])
@@ -475,7 +499,7 @@ def admin_update_model(model_id: str, payload: AdminModelWrite, db: Session = De
         raise HTTPException(status_code=409, detail="The model could not be saved because its data conflicts with another record.") from error
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
 
 
 @app.delete("/api/v1/admin/models/{model_id:path}", tags=["admin"], status_code=status.HTTP_204_NO_CONTENT)
@@ -487,5 +511,5 @@ def admin_delete_model(model_id: str, db: Session = Depends(get_db)) -> Response
         raise
     except SQLAlchemyError as error:
         db.rollback()
-        raise _database_unavailable() from error
+        raise _database_error(error) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)
