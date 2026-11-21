@@ -615,6 +615,26 @@ def test_base_role_is_corrected_without_a_catalog_and_kept_for_real_roots() -> N
     assert not any("DERIVED" in warning for warning in result["warnings"])
 
 
+def test_dataset_the_research_model_lists_twice_becomes_one_entry() -> None:
+    """The merge prompt asks for one entry per identity; the code enforces it like it does for evaluations."""
+    content = research_content()
+    first = content["aibom"]["datasets"][1]  # cais/mmlu
+    content["aibom"]["datasets"].append({
+        **first, "name": "MMLU benchmark", "license": "CC-BY-4.0", "size": "15K", "provider": "CAIS",
+        "evidence_urls": ["https://huggingface.co/datasets/cais/mmlu", "https://example.test/model"]})
+    first["evidence_urls"] = ["https://example.test/model"]
+
+    result = parse_openrouter_response({"choices": [{"message": {"content": json.dumps(content)}}]})
+    datasets = result["aibom"]["dataset"]
+
+    assert [item["identity"] for item in datasets] == ["org/sft-data", "cais/mmlu"]
+    mmlu = datasets[1]
+    assert mmlu["license"] == "MIT"  # the first entry wins
+    assert mmlu["extensions"] == {"name": "MMLU", "hf_id": "cais/mmlu", "size": "15K", "provider": "CAIS"}
+    assert mmlu["provenance"]["evidence"] == ["https://example.test/model", "https://huggingface.co/datasets/cais/mmlu"]
+    assert result["aibomSummary"]["datasets"] == 2
+
+
 def test_prompt_lists_family_and_parent_of_existing_models() -> None:
     prompt = build_openrouter_payload("org/model", context=_lineage_context())["messages"][1]["content"]
 

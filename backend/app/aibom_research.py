@@ -371,7 +371,7 @@ def aibom_write_from_draft(draft: AibomDraft | dict[str, Any]) -> dict[str, Any]
                                     "scope_note": lic.scope_note, "commercial_use": lic.commercial_use,
                                     "source": (cite([lic.source_url]) or [None])[0]}),
         } for lic in {lic.license: lic for lic in d.license_policy}.values()],
-        "dataset": datasets,
+        "dataset": merge_duplicate_datasets(datasets),
     }
     payload["reference"] = list(references.values())
     # Like scripts/aibom/load_research.py: every opened source is evidence of the model record, with the
@@ -406,6 +406,36 @@ def catalog_fields_from_aibom(draft: AibomDraft) -> dict[str, Any]:
         "artifactRevision": None,
         "releaseDate": draft.model.release_date.isoformat() if draft.model.release_date else None,
     }
+
+
+_EMPTY = (None, "", [], {})
+
+
+def merge_duplicate_datasets(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One entry per dataset identity, in first-seen order.
+
+    The merge prompt asks for datasets deduplicated by identity, but the research model sometimes
+    lists one twice (same identity, another evidence URL or description). The catalog keeps one row
+    per identity, so the first entry is kept and a later one only fills what it left empty;
+    `extensions` are merged key by key and the provenance evidence / parents are unioned.
+    """
+    merged: dict[str, dict[str, Any]] = {}
+    for item in items:
+        kept = merged.get(item["identity"])
+        if kept is None:
+            merged[item["identity"]] = {**item}
+            continue
+        for key, value in item.items():
+            if key in ("extensions", "provenance") and isinstance(kept.get(key), dict) and isinstance(value, dict):
+                target = kept[key] = {**kept[key]}
+                for sub_key, sub_value in value.items():
+                    if sub_key in ("evidence", "parent"):
+                        target[sub_key] = list(dict.fromkeys([*(target.get(sub_key) or []), *(sub_value or [])]))
+                    elif target.get(sub_key) in _EMPTY:
+                        target[sub_key] = sub_value
+            elif kept.get(key) in _EMPTY:
+                kept[key] = value
+    return list(merged.values())
 
 
 def summarize_aibom(write: dict[str, Any] | None) -> dict[str, int]:
