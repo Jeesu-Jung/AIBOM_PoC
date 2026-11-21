@@ -11,3 +11,4 @@ __pycache__/
 *.pyc
 dbhub.toml
 batch/.work/
+collector/.work/
