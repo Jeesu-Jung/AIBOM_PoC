@@ -226,17 +226,24 @@ export default function ResearchHistoryPage() {
 
   // The reviewer filter follows the run's current owner: the assignee while pending, the reviewer once saved.
   const ownerId = (run) => (run.reviewStatus === "saved" ? run.reviewedById : run.reviewerId);
+  const matchesReviewer = (run) => reviewerFilter === "all"
+    || (reviewerFilter === UNASSIGNED ? ownerId(run) == null : String(ownerId(run)) === reviewerFilter);
+  // The reviewer filter is the outermost one: the status tabs and their counts work inside it.
+  const ownedRuns = useMemo(() => (runs || []).filter(matchesReviewer), [runs, reviewerFilter]);
   const visibleRuns = useMemo(() => {
     const text = query.trim().toLowerCase();
     const matchesQuery = (run) => !text || (searchBy === "id"
       ? String(run.runId) === text.replace(/^#/, "")
       : `${run.modelName} ${run.resultModelId || ""} ${run.modelId || ""}`.toLowerCase().includes(text));
-    const matchesReviewer = (run) => reviewerFilter === "all"
-      || (reviewerFilter === UNASSIGNED ? ownerId(run) == null : String(ownerId(run)) === reviewerFilter);
     // Only pending runs can be handed out, so the manage view lists just those.
     const wanted = managing ? "pending" : status;
-    return (runs || []).filter((run) => (wanted === "all" || run.reviewStatus === wanted) && matchesReviewer(run) && matchesQuery(run));
-  }, [runs, query, searchBy, status, reviewerFilter, managing]);
+    return ownedRuns.filter((run) => (wanted === "all" || run.reviewStatus === wanted) && matchesQuery(run));
+  }, [ownedRuns, query, searchBy, status, managing]);
+  const tabCounts = useMemo(() => ({
+    all: ownedRuns.length,
+    pending: ownedRuns.filter((run) => run.reviewStatus === "pending").length,
+    saved: ownedRuns.filter((run) => run.reviewStatus === "saved").length
+  }), [ownedRuns]);
   const counts = useMemo(() => ({
     all: runs?.length || 0,
     pending: (runs || []).filter((run) => run.reviewStatus === "pending").length,
@@ -259,7 +266,12 @@ export default function ResearchHistoryPage() {
     window.history.replaceState({}, "", url);
   }, [selectedId, status, reviewerFilter, managing]);
   const switchView = (next) => { setView(next); setChecked(new Set()); setMessage(null); setError(null); };
-  const openRun = (runId) => { setQuery(""); setReviewerFilter("all"); setStatus("all"); setSelectedId(runId); switchView("review"); };
+  // The reviewer filter stays as it is unless it would hide the run being opened.
+  const openRun = (runId) => {
+    const run = runs.find((item) => item.runId === runId);
+    if (run && !matchesReviewer(run)) setReviewerFilter("all");
+    setQuery(""); setStatus("all"); setSelectedId(runId); switchView("review");
+  };
 
   const loadDetail = (runId) => fetchResearchRun(runId);
   useEffect(() => {
@@ -406,9 +418,16 @@ export default function ResearchHistoryPage() {
         </section>
       </main> : <main className="research-page-body">
         <aside className="research-history-list">
+          <label className="research-owner-filter">담당자
+            <select className="research-reviewer-filter" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} aria-label="담당자로 찾기">
+              <option value="all">담당자 전체</option>
+              <option value={UNASSIGNED}>미배정 / 검토자 기록 없음</option>
+              {reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name} · 대기 {reviewer.pendingCount}</option>)}
+            </select>
+          </label>
           <div className="research-filter-tabs" role="tablist" aria-label="검토 상태">
             {FILTERS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={status === key}
-              className={status === key ? "is-active" : ""} onClick={() => setStatus(key)}>{label} <small>{counts[key]}</small></button>)}
+              className={status === key ? "is-active" : ""} onClick={() => setStatus(key)}>{label} <small>{tabCounts[key]}</small></button>)}
           </div>
           <div className="research-search">
             <select value={searchBy} onChange={(event) => { setSearchBy(event.target.value); setQuery(""); }} aria-label="검색 기준">
@@ -417,11 +436,6 @@ export default function ResearchHistoryPage() {
             <input type="search" inputMode={searchBy === "id" ? "numeric" : "text"} placeholder={searchBy === "id" ? "실행 번호 (예: 5)" : "모델명으로 찾기"}
               value={query} onChange={(event) => setQuery(event.target.value)} aria-label="조사 실행 검색" />
           </div>
-          <select className="research-reviewer-filter" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} aria-label="검토 작업자로 찾기">
-            <option value="all">담당자 전체</option>
-            <option value={UNASSIGNED}>미배정 / 검토자 기록 없음</option>
-            {reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name} · 대기 {reviewer.pendingCount}</option>)}
-          </select>
 
           {!runs ? <p className="admin-help">불러오는 중...</p> : !visibleRuns.length
             ? <p className="admin-help">{!runs.length ? "아직 AI 조사 실행이 없습니다. 모델 관리의 “+ 새 모델 → AI로 정보 채우기”로 조사하면 여기에 쌓입니다." : status === "pending" ? "조건에 맞는 검토 대기 실행이 없습니다." : "조건에 맞는 조사 실행이 없습니다."}</p> : (

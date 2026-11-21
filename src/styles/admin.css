@@ -543,3 +543,4 @@
 .research-review-owner { color:#25364a; font-size:.86rem; }
 .research-review-owner.is-unassigned b { color:#a33b3b; }
 @media(max-width:980px){.research-manage{grid-template-columns:1fr}.research-assign-filters{grid-template-columns:1fr}.research-assign{overflow-x:auto}}
+.research-owner-filter { display:grid; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:8px; color:#25364a; font-size:.84rem; font-weight:700; }
