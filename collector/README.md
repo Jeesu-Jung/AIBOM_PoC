@@ -30,6 +30,7 @@ sh run-collect.sh Qwen/Qwen2.5-7B
 | `--out DIR` | `data/model_lists` | 출력 폴더. 그 아래 루트 모델별 폴더가 생깁니다 |
 | `--sort KEY` | `downloads` | 정렬 기준: `trending`, `likes`, `downloads`, `created`, `modified`, `most_params`, `least_params` |
 | `--top N` | 0 | 필터링 후 정렬 순서대로 상위 N개만 남김 (0이면 전체) |
+| `--downloaded-only` | | 다운로드 수가 1 이상인 모델만 남김 (창에서는 "다운로드 수 1 이상인 모델만" 체크박스) |
 | `--workers N` | 16 | README 동시 다운로드 수 |
 | `--keep-readme` | | README 원문을 출력 폴더의 `readme/`에 보관 |
 | `--no-gui` | | 창 없이 콘솔에서 실행 (루트 모델 이름 필수) |
@@ -47,7 +48,10 @@ Hugging Face 토큰은 쓰지 않습니다. 공개된 모델 목록과 README만
      YAML front matter와 공백 · 빈 줄 차이는 무시합니다. 루트와 같은 조직의 모델은 그대로 둡니다.
    - **본문 없음**: front matter 외에 내용이 없는 경우
    - **README 없음**: 저장소에 `README.md`가 없는 경우
-4. **상위 N개**: 개수를 지정했으면 필터링을 통과한 모델 중 정렬 순서대로 앞의 N개만 남깁니다.
+4. **다운로드 수 필터 (선택)**: "다운로드 수 1 이상인 모델만"을 켜면 README 필터를 통과한 모델 중 다운로드 수가 0인 모델을 제외합니다.
+   상위 N개를 자르기 전에 적용하므로, 다운로드 0인 모델이 상위 N개 자리를 차지하지 않습니다.
+   기준 값은 Hugging Face 목록 API의 `downloads`(최근 30일 다운로드 수, `1-finetunes.csv`의 `downloads` 열)입니다.
+5. **상위 N개**: 개수를 지정했으면 필터링을 통과한 모델 중 정렬 순서대로 앞의 N개만 남깁니다.
    하위 모델은 개수와 상관없이 항상 전부 수집하고, 자르는 것은 필터링 뒤입니다.
    Trending처럼 정렬 값이 드러나지 않는 기준도 있어서, 값으로 다시 정렬하지 않고 Hugging Face가 돌려준 순서(`rank`)를 그대로 씁니다.
 
@@ -60,8 +64,9 @@ Hugging Face 토큰은 쓰지 않습니다. 공개된 모델 목록과 README만
 | `1-finetunes.csv` | 1차 수집 전체, 정렬 순서대로 (순위 `rank`, 모델 ID, 다운로드, 좋아요, 생성일, 수정일, gated, README 유무) |
 | `<모델>-based-model-list.md` | 최종 조사 대상. 한 줄에 모델 하나, 정렬 순서대로 |
 | `<모델>-based-model-list-<정렬>-top<N>.md` | 상위 N개를 지정했을 때의 최종 목록. 전체 목록 파일을 덮어쓰지 않습니다 |
-| `2-excluded.csv` | 제외한 모델과 사유 (`official_copy`, `empty_body`, `no_readme`, `readme_error`, 상위 N개 밖은 `over_limit`), 복사 원본 |
-| `summary.json` | 루트 모델, 정렬 기준, 상위 개수, 수집 시각, 건수 |
+| `<모델>-based-model-list[-<정렬>-top<N>]-dl1.md` | 다운로드 수 필터를 켰을 때의 최종 목록 (이름 끝에 `-dl1`) |
+| `2-excluded.csv` | 제외한 모델과 사유 (`official_copy`, `empty_body`, `no_readme`, `readme_error`, 다운로드 0은 `no_downloads`, 상위 N개 밖은 `over_limit`), 복사 원본 |
+| `summary.json` | 루트 모델, 정렬 기준, 상위 개수, 다운로드 수 필터, 수집 시각, 건수 |
 
 `2-excluded.csv`와 `summary.json`은 마지막 실행 기준으로 덮어씁니다.
 

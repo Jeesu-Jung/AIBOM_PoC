@@ -20,7 +20,7 @@ STAGE_TEXT = {"": "루트 모델 확인 중…", "list": "1차: 하위 모델 �
 
 class App:
     def __init__(self, root: tk.Tk, model: str = "", out_dir: str | Path = DEFAULT_OUT_DIR, workers: int = 16,
-                 keep_readme: bool = False, sort: str = DEFAULT_SORT, top: int = 0):
+                 keep_readme: bool = False, sort: str = DEFAULT_SORT, top: int = 0, downloaded_only: bool = False):
         self.root = root
         self.collector: Collector | None = None
         self._was_running = False
@@ -34,6 +34,7 @@ class App:
         self.keep_var = tk.BooleanVar(value=keep_readme)
         self.sort_var = tk.StringVar(value=SORTS[sort if sort in SORTS else DEFAULT_SORT][0])
         self.top_var = tk.IntVar(value=max(0, top))
+        self.downloaded_var = tk.BooleanVar(value=downloaded_only)
         self.status_var = tk.StringVar(value="루트 모델 이름을 입력하고 시작을 누르세요. 예: Qwen/Qwen2.5-7B")
 
         form = ttk.Frame(root, padding=(10, 10, 10, 4))
@@ -68,7 +69,12 @@ class App:
         ttk.Label(settings, text="동시 다운로드").pack(side="left")
         self.workers_spin = ttk.Spinbox(settings, from_=1, to=32, width=4, textvariable=self.workers_var)
         self.workers_spin.pack(side="left", padx=(4, 12))
-        self.keep_check = ttk.Checkbutton(settings, text="README 원문을 출력 폴더에 보관", variable=self.keep_var)
+
+        checks = ttk.Frame(root, padding=(10, 0, 10, 4))
+        checks.pack(fill="x")
+        self.downloaded_check = ttk.Checkbutton(checks, text="다운로드 수 1 이상인 모델만", variable=self.downloaded_var)
+        self.downloaded_check.pack(side="left", padx=(0, 12))
+        self.keep_check = ttk.Checkbutton(checks, text="README 원문을 출력 폴더에 보관", variable=self.keep_var)
         self.keep_check.pack(side="left")
 
         status = ttk.Frame(root, padding=(10, 4))
@@ -124,7 +130,8 @@ class App:
             return
         self.top_var.set(top)
         self.collector = Collector(model, out_dir, HubClient(), workers=workers, keep_readme=self.keep_var.get(),
-                                   sort=SORT_KEYS.get(self.sort_var.get(), DEFAULT_SORT), top=top)
+                                   sort=SORT_KEYS.get(self.sort_var.get(), DEFAULT_SORT), top=top,
+                                   downloaded_only=self.downloaded_var.get())
         self.collector.start()
         self._was_running = True
         self._set_running(True)
@@ -144,7 +151,7 @@ class App:
     def _set_running(self, running: bool) -> None:
         idle = "disabled" if running else "normal"
         for widget in (self.model_entry, self.out_entry, self.browse_button, self.workers_spin, self.keep_check,
-                       self.top_spin, self.start_button):
+                       self.downloaded_check, self.top_spin, self.start_button):
             widget.configure(state=idle)
         self.sort_combo.configure(state="disabled" if running else "readonly")
         self.stop_button.configure(state="normal" if running else "disabled")
@@ -202,10 +209,10 @@ class App:
 
 
 def run_gui(model: str = "", out_dir: str | Path = DEFAULT_OUT_DIR, workers: int = 16, keep_readme: bool = False,
-            sort: str = DEFAULT_SORT, top: int = 0) -> None:
+            sort: str = DEFAULT_SORT, top: int = 0, downloaded_only: bool = False) -> None:
     try:
         root = tk.Tk()
     except tk.TclError as error:
         raise SystemExit(f"창을 열 수 없습니다 ({error}). --no-gui 로 콘솔에서 실행할 수 있습니다.") from error
-    App(root, model, out_dir, workers, keep_readme, sort, top)
+    App(root, model, out_dir, workers, keep_readme, sort, top, downloaded_only)
     root.mainloop()

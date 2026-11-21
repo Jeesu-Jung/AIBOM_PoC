@@ -148,6 +148,25 @@ class CollectTests(unittest.TestCase):
             self.assertEqual((collector.summary["passedFilter"], collector.summary["kept"]), (5, 3))
             self.assertFalse((folder / "Base-7B-based-model-list.md").exists())
 
+    def test_downloaded_only_is_applied_before_the_top_n_cut(self):
+        listing = [entry("user/real", 0), MODELS[2], entry("user/twin-1", 0), MODELS[7], MODELS[0], MODELS[9]]
+        with tempfile.TemporaryDirectory() as tmp, MockHub(ROOT, "# Base\n", listing, READMES) as hub:
+            collector = self.run_collector(hub, Path(tmp), sort="trending", top=2, downloaded_only=True)
+            folder = Path(tmp) / "out" / "Org__Base-7B"
+            kept = (folder / "Base-7B-based-model-list-trending-top2-dl1.md").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(kept, ["user/twin-2", "Org/Base-7B-Instruct"])  # zero-download models do not use up the top 2
+            with (folder / "2-excluded.csv").open(encoding="utf-8", newline="") as handle:
+                excluded = [(row["model_id"], row["reason"]) for row in csv.DictReader(handle)]
+            self.assertEqual(excluded, [("user/copy-instruct", "official_copy"), ("user/real", "no_downloads"),
+                                        ("user/twin-1", "no_downloads"), ("user/slow", "over_limit")])
+            summary = collector.summary
+            self.assertEqual((summary["minDownloads"], summary["passedFilter"], summary["kept"]), (1, 3, 2))
+
+            collector = self.run_collector(hub, Path(tmp), sort="trending")  # unchecked: zero downloads stay
+            kept = (folder / "Base-7B-based-model-list.md").read_text(encoding="utf-8").splitlines()
+            self.assertEqual(kept[0], "user/real")
+            self.assertIsNone(collector.summary["minDownloads"])
+
     def test_least_parameters_sort_and_unknown_sort(self):
         with tempfile.TemporaryDirectory() as tmp, MockHub(ROOT, "# Base\n", MODELS[:2], READMES) as hub:
             self.run_collector(hub, Path(tmp), sort="least_params")

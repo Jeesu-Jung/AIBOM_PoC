@@ -28,9 +28,10 @@ NO_README = "no_readme"          # the repository has no README.md
 EMPTY_BODY = "empty_body"        # nothing but YAML front matter
 OFFICIAL_COPY = "official_copy"  # body equals a card of the root model's organisation
 README_ERROR = "readme_error"    # README.md could not be downloaded
+NO_DOWNLOADS = "no_downloads"    # passed the README filter but the hub reports 0 downloads
 OVER_LIMIT = "over_limit"        # passed the filter but ranked below the requested top N
 REASON_LABELS = {OFFICIAL_COPY: "공식 카드 복사본", EMPTY_BODY: "본문 없음", NO_README: "README 없음",
-                 README_ERROR: "README 다운로드 실패", OVER_LIMIT: "상위 N개 밖"}
+                 README_ERROR: "README 다운로드 실패", NO_DOWNLOADS: "다운로드 0", OVER_LIMIT: "상위 N개 밖"}
 
 _FRONT_MATTER = re.compile(r"\A﻿?---\s*\n.*?\n---\s*(?:\n|\Z)", re.DOTALL)
 
@@ -59,9 +60,9 @@ def safe_name(model_id: str) -> str:
     return model_id.replace("/", "__")
 
 
-def list_file_name(root_id: str, sort: str = DEFAULT_SORT, top: int = 0) -> str:
-    """A top-N list gets its own name so it does not replace the full list."""
-    suffix = f"-{sort}-top{top}" if top else ""
+def list_file_name(root_id: str, sort: str = DEFAULT_SORT, top: int = 0, downloaded_only: bool = False) -> str:
+    """A narrowed list (top N, downloaded only) gets its own name so it does not replace the full list."""
+    suffix = (f"-{sort}-top{top}" if top else "") + ("-dl1" if downloaded_only else "")
     return f"{root_id.split('/')[-1]}-based-model-list{suffix}.md"
 
 
@@ -127,7 +128,7 @@ class Collector:
 
     def __init__(self, root_input: str, out_dir: str | Path = DEFAULT_OUT_DIR, client: HubClient | None = None,
                  workers: int = 16, keep_readme: bool = False, work_root: str | Path = WORK_ROOT,
-                 sort: str = DEFAULT_SORT, top: int = 0):
+                 sort: str = DEFAULT_SORT, top: int = 0, downloaded_only: bool = False):
         if sort not in SORTS:
             raise ValueError(f"알 수 없는 정렬 기준입니다: {sort!r} ({', '.join(SORTS)})")
         self.root_input = root_input
@@ -138,6 +139,7 @@ class Collector:
         self.work_root = Path(work_root)
         self.sort = sort
         self.top = max(0, int(top))  # 0: keep everything that passes the filter
+        self.downloaded_only = bool(downloaded_only)  # drop models the hub lists with 0 downloads
         self.logs: queue.Queue[str] = queue.Queue()
         self.stage = ""            # "", "list", "readme", "done"
         self.done = 0
@@ -236,17 +238,20 @@ class Collector:
             raise Cancelled()
 
         kept, excluded = classify(root_id, root_readme, ordered, readmes)
+        if self.downloaded_only:  # before the top N cut, so the cut is filled with downloaded models
+            excluded += [Excluded(child, NO_DOWNLOADS) for child in kept if child.downloads < 1]
+            kept = [child for child in kept if child.downloads >= 1]
         passed = len(kept)
         if self.top:  # cut after filtering, so the list holds the top N of what passed
             excluded += [Excluded(child, OVER_LIMIT) for child in kept[self.top:]]
             kept = kept[:self.top]
-        list_path = self.out_dir / list_file_name(root_id, self.sort, self.top)
+        list_path = self.out_dir / list_file_name(root_id, self.sort, self.top, self.downloaded_only)
         list_path.write_text("".join(f"{child.model_id}\n" for child in kept), encoding="utf-8", newline="\n")
         self._write_excluded(excluded)
         counts = Counter(item.reason for item in excluded)
         self.summary = {
             "root": root_id, "relation": "finetune", "collectedAt": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "sort": self.sort, "top": self.top or None,
+            "sort": self.sort, "top": self.top or None, "minDownloads": 1 if self.downloaded_only else None,
             "collected": len(ordered), "passedFilter": passed, "kept": len(kept), "excluded": dict(counts),
             "files": {"collected": CHILDREN_FILE, "list": list_path.name, "excluded": EXCLUDED_FILE},
         }

@@ -17,6 +17,8 @@ def main() -> int:
     parser.add_argument("--sort", choices=list(SORTS), default=DEFAULT_SORT,
                         help="하위 모델 정렬 기준 (Hugging Face 목록의 Sort와 같음)")
     parser.add_argument("--top", type=int, default=0, help="필터링 후 정렬 순서대로 상위 N개만 남김 (0: 전체)")
+    parser.add_argument("--downloaded-only", action="store_true",
+                        help="다운로드 수가 1 이상인 모델만 남김 (상위 N개를 자르기 전에 적용)")
     parser.add_argument("--workers", type=int, default=16, help="README 동시 다운로드 수")
     parser.add_argument("--keep-readme", action="store_true", help="README 원문을 출력 폴더에 보관")
     parser.add_argument("--no-gui", action="store_true", help="창 없이 콘솔에서 실행")
@@ -33,7 +35,7 @@ def main() -> int:
                          "또는 --no-gui 로 콘솔에서 실행하세요."):
                 print(line, file=sys.stderr)
             return 2
-        run_gui(args.model, args.out, workers, args.keep_readme, args.sort, top)
+        run_gui(args.model, args.out, workers, args.keep_readme, args.sort, top, args.downloaded_only)
         return 0
 
     for stream in (sys.stdout, sys.stderr):
@@ -46,7 +48,7 @@ def main() -> int:
         print(error, file=sys.stderr)
         return 2
     collector = Collector(model, args.out, HubClient(), workers=workers, keep_readme=args.keep_readme,
-                          sort=args.sort, top=top)
+                          sort=args.sort, top=top, downloaded_only=args.downloaded_only)
     collector.start()
     try:
         while collector.running or not collector.logs.empty():
