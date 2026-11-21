@@ -82,6 +82,8 @@ class App:
         self.progress = ttk.Progressbar(status, mode="determinate")
         self.progress.pack(fill="x")
         ttk.Label(status, textvariable=self.status_var).pack(anchor="w", pady=(4, 0))
+        self.alert_var = tk.StringVar()
+        self.alert_label = ttk.Label(status, textvariable=self.alert_var, foreground="#c2410c")
 
         self.log_box = ScrolledText(root, height=12, state="disabled", wrap="word", font=LOG_FONT)
         self.log_box.pack(fill="both", expand=True, padx=10, pady=(4, 10))
@@ -189,8 +191,18 @@ class App:
             self.progress.configure(mode="determinate", maximum=max(1, collector.total), value=collector.done)
             text += f"  ·  {collector.done} / {collector.total}"
         self.status_var.set(text)
+        self._show_alert(collector.alert())
+
+    def _show_alert(self, alert: str) -> None:
+        """A line under the status that appears only while the hub is blocking, failing or silent."""
+        if alert:
+            self.alert_var.set(f"⚠ {alert}")
+            self.alert_label.pack(anchor="w", pady=(2, 0))
+        else:
+            self.alert_label.pack_forget()
 
     def _show_result(self, collector: Collector) -> None:
+        self._show_alert("")
         self.progress.configure(mode="determinate", maximum=1, value=1 if collector.summary else 0)
         summary = collector.summary
         if summary:

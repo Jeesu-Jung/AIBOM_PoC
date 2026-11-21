@@ -167,6 +167,43 @@ class CollectTests(unittest.TestCase):
             self.assertEqual(kept[0], "user/real")
             self.assertIsNone(collector.summary["minDownloads"])
 
+    def test_rate_limit_is_waited_out_and_reported(self):
+        client = HubClient("http://127.0.0.1:1")
+        self.assertEqual(client._rate_limit_delay({"RateLimit": '"resolvers";r=0;t=129'}, 1), 130.0)
+        self.assertEqual(client._rate_limit_delay({"Retry-After": "30", "RateLimit": '"api";r=0;t=5'}, 1), 31.0)
+        self.assertEqual(client._rate_limit_delay({"RateLimit": '"api";r=0;t=99999'}, 1), 600.0)
+        self.assertEqual(client._rate_limit_delay({}, 2), 8.0)
+
+        with tempfile.TemporaryDirectory() as tmp, MockHub(ROOT, "# Base\n", MODELS[:2], READMES) as hub:
+            hub.rate_limit_times["user/real"] = 4  # more 429s than `attempts`: a rate limit is not a failure
+            collector = self.run_collector(hub, Path(tmp))
+            self.assertEqual((collector.summary["kept"], collector.error), (2, ""))
+            logs = []
+            while not collector.logs.empty():
+                logs.append(collector.logs.get())
+            self.assertEqual(len([line for line in logs if "[대기] HTTP 429 (요청 한도 초과)" in line]), 1)
+            self.assertEqual(collector.alert(), "")
+
+    def test_wait_and_silence_are_shown(self):
+        collector = Collector(ROOT, "unused", HubClient("http://127.0.0.1:1"))
+        collector._on_wait("HTTP 429 (요청 한도 초과)", 120)
+        self.assertRegex(collector.alert(), r"^HTTP 429 \(요청 한도 초과\) · 1[12]\d초 뒤 다시 시도$")
+        collector._notice = ("", 0.0, 0.0)
+        collector.client._in_flight = 1
+        collector.client._last_activity -= 25
+        self.assertRegex(collector.alert(), r"^Hugging Face 응답 없음 · 2\d초째 기다리는 중$")
+
+    def test_server_errors_are_reported_before_giving_up(self):
+        with tempfile.TemporaryDirectory() as tmp, MockHub(ROOT, "# Base\n", MODELS[:2], READMES) as hub:
+            hub.fail_always.add("user/real")
+            collector = self.run_collector(hub, Path(tmp))
+            logs = []
+            while not collector.logs.empty():
+                logs.append(collector.logs.get())
+            self.assertTrue(any("[대기] HTTP 500" in line for line in logs))
+            self.assertTrue(any("README 실패: user/real (HTTP 500" in line for line in logs))
+            self.assertTrue(collector.error)
+
     def test_least_parameters_sort_and_unknown_sort(self):
         with tempfile.TemporaryDirectory() as tmp, MockHub(ROOT, "# Base\n", MODELS[:2], READMES) as hub:
             self.run_collector(hub, Path(tmp), sort="least_params")

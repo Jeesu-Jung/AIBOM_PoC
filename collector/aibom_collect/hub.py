@@ -5,6 +5,7 @@ import http.client
 import json
 import re
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -30,6 +31,8 @@ MODEL_ID = re.compile(rf"{_SEGMENT}/[\w.\-]+")
 _INPUT_ID = re.compile(rf"{_SEGMENT}(?:/[\w.\-]+)?")
 _HUB_PREFIX = re.compile(r"^(?:https?://)?(?:www\.)?huggingface\.co/", re.IGNORECASE)
 _NEXT_LINK = re.compile(r'<([^>]+)>;\s*rel="next"')
+_RESET_IN = re.compile(r"\bt=(\d+)")  # `RateLimit: "resolvers";r=0;t=129`: seconds until the window resets
+MAX_RATE_LIMIT_WAIT = 600.0
 
 
 class HubError(Exception):
@@ -56,40 +59,97 @@ def parse_model_id(text: str) -> str:
 
 class HubClient:
     def __init__(self, base_url: str = DEFAULT_HUB_URL, attempts: int = 5, backoff_seconds: float = 2.0,
-                 timeout: float = 60.0, stop: threading.Event | None = None):
+                 timeout: float = 60.0, stop: threading.Event | None = None, rate_limit_waits: int = 6):
         self.base_url = base_url.rstrip("/")
         self.attempts = max(1, attempts)
         self.backoff_seconds = backoff_seconds
         self.timeout = timeout
         self.stop = stop or threading.Event()
+        self.rate_limit_waits = max(1, rate_limit_waits)  # 429 answers waited out per request before giving up
+        self.on_wait = None  # callable(reason, seconds): a request failed and will be tried again after a wait
+        self._lock = threading.Lock()
+        self._resume_at = 0.0     # no request starts before this (set by a 429, shared by every thread)
+        self._in_flight = 0
+        self._last_activity = time.monotonic()
+
+    def silent_seconds(self) -> float:
+        """How long requests have been pending without any answer from the hub (0 when none is pending)."""
+        with self._lock:
+            return time.monotonic() - self._last_activity if self._in_flight else 0.0
+
+    def _rate_limit_delay(self, headers, count: int) -> float:
+        """Seconds to wait after a 429: Retry-After, else the reset time of the RateLimit header, else a backoff."""
+        retry_after = ((headers.get("Retry-After") or "") if headers else "").strip()
+        reset = _RESET_IN.search((headers.get("RateLimit") or "") if headers else "")
+        if retry_after.isdigit():
+            seconds = float(retry_after)
+        elif reset:
+            seconds = float(reset.group(1))
+        else:
+            return min(60.0, self.backoff_seconds * 2 ** count)
+        return min(seconds + 1.0, MAX_RATE_LIMIT_WAIT) if seconds else 0.0  # +1s: start after the reset, not on it
+
+    def _notify(self, reason: str, delay: float) -> None:
+        if self.on_wait:
+            self.on_wait(reason, delay)
 
     def _get(self, url: str) -> tuple[bytes, object]:
-        """GET with retries on 429, 5xx and network errors. Other HTTP errors fail at once."""
+        """GET with retries. A 429 pauses every request until the limit resets; 5xx, timeouts and network
+        errors are retried `attempts` times. Other HTTP errors fail at once."""
         if not url.startswith(self.base_url + "/"):
             raise HubError(f"예상하지 못한 주소입니다: {url}")
-        last, status = "", None
-        for attempt in range(1, self.attempts + 1):
-            if self.stop.is_set():
-                raise Cancelled()
+        failures = rate_limits = 0
+        while True:
+            while True:  # wait while the hub is rate limiting us
+                if self.stop.is_set():
+                    raise Cancelled()
+                with self._lock:
+                    remaining = self._resume_at - time.monotonic()
+                if remaining <= 0:
+                    break
+                if self.stop.wait(min(remaining, 0.5)):
+                    raise Cancelled()
             request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-            delay = self.backoff_seconds * attempt
+            with self._lock:
+                if not self._in_flight:
+                    self._last_activity = time.monotonic()
+                self._in_flight += 1
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
                     return response.read(), response.headers
             except urllib.error.HTTPError as error:
-                status = error.code
+                status, headers = error.code, error.headers
                 error.close()
-                if status != 429 and status < 500:
+                if status == 429:
+                    rate_limits += 1
+                    last = "HTTP 429 (요청 한도 초과)"
+                    if rate_limits >= self.rate_limit_waits:
+                        raise HubError(f"{last}, {rate_limits}회 기다렸지만 풀리지 않음", status) from None
+                    delay = self._rate_limit_delay(headers, rate_limits)
+                    with self._lock:
+                        self._resume_at = max(self._resume_at, time.monotonic() + delay)
+                    self._notify(last, delay)
+                    continue
+                if status < 500:
                     raise HubError(f"HTTP {status}", status) from None
-                last = f"HTTP {status}"
-                retry_after = (error.headers.get("Retry-After") or "") if error.headers else ""
-                if retry_after.isdigit():
-                    delay = min(float(retry_after), 120.0)
+                last = f"HTTP {status} (Hugging Face 서버 오류)"
             except (urllib.error.URLError, http.client.HTTPException, TimeoutError, OSError) as error:
-                status, last = None, f"연결 오류 ({getattr(error, 'reason', None) or type(error).__name__})"
-            if attempt < self.attempts and self.stop.wait(delay):
+                status, cause = None, getattr(error, "reason", None) or error
+                if isinstance(cause, TimeoutError):
+                    last = f"응답 없음 ({self.timeout:.0f}초 시간 초과)"
+                else:
+                    last = f"연결 오류 ({cause if isinstance(cause, str) else type(cause).__name__})"
+            finally:
+                with self._lock:
+                    self._in_flight -= 1
+                    self._last_activity = time.monotonic()
+            failures += 1
+            if failures >= self.attempts:
+                raise HubError(f"{last}, {failures}회 시도", status)
+            delay = self.backoff_seconds * failures
+            self._notify(last, delay)
+            if self.stop.wait(delay):
                 raise Cancelled()
-        raise HubError(f"{last}, {self.attempts}회 시도", status)
 
     def model_info(self, model_id: str) -> dict:
         data, _headers = self._get(f"{self.base_url}/api/models/{urllib.parse.quote(model_id)}")

@@ -152,6 +152,8 @@ class Collector:
         self.finished_at: float | None = None
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
+        self._notice = ("", 0.0, 0.0)  # (reason, retry time, time it was last logged) of the latest wait
+        self.client.on_wait = self._on_wait
 
     # --- control --------------------------------------------------------------------------------
     @property
@@ -171,6 +173,25 @@ class Collector:
 
     def log(self, message: str) -> None:
         self.logs.put(f"{time.strftime('%H:%M:%S')}  {message}")
+
+    def _on_wait(self, reason: str, delay: float) -> None:
+        """The hub answered with an error or not at all, and the request is waiting to be tried again."""
+        now = time.monotonic()
+        with self._lock:
+            last_reason, _until, logged_at = self._notice
+            quiet = reason == last_reason and now - logged_at < 10  # one line for a burst from all workers
+            self._notice = (reason, now + delay, logged_at if quiet else now)
+        if not quiet:
+            self.log(f"[대기] {reason} · {delay:.0f}초 뒤 다시 시도합니다.")
+
+    def alert(self) -> str:
+        """What is holding the run up right now, for the status line. Empty when requests are being answered."""
+        now = time.monotonic()
+        reason, until, _logged_at = self._notice
+        if reason and until - now >= 1:
+            return f"{reason} · {until - now:.0f}초 뒤 다시 시도"
+        silent = self.client.silent_seconds()
+        return f"Hugging Face 응답 없음 · {silent:.0f}초째 기다리는 중" if silent >= 10 else ""
 
     def run(self) -> None:
         self.started_at = time.time()

@@ -17,6 +17,7 @@ class MockHub:
             self.readmes[root] = root_readme
         self.fail_always: set[str] = set()   # README requests answered with 500
         self.rate_limit_once: set[str] = set()  # README requests answered with 429 the first time
+        self.rate_limit_times: dict[str, int] = {}  # README requests answered with 429 + RateLimit header N times
         self.requests: list[str] = []
         self.auth_headers: list[str | None] = []
         hub = self
@@ -61,6 +62,9 @@ class MockHub:
                     if model_id in hub.rate_limit_once:
                         hub.rate_limit_once.discard(model_id)
                         return self._send(429, b"", {"Retry-After": "0"})
+                    if hub.rate_limit_times.get(model_id):
+                        hub.rate_limit_times[model_id] -= 1
+                        return self._send(429, b"", {"RateLimit": '"resolvers";r=0;t=0'})
                     if model_id in hub.readmes:
                         return self._send(200, hub.readmes[model_id].encode("utf-8"))
                 return self._send(404, b"")
