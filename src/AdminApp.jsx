@@ -1039,7 +1039,7 @@ function ConfirmSaveModal({ open, title, message, warningItems = [], confirmLabe
           <h2 id="confirm-save-title">{title}</h2>
           <p id="admin-modal-message">{message}</p>
           {warningItems.length > 0 && <div className="admin-modal-warning" role="alert">
-            <strong>근거가 없는 데이터셋이 {warningItems.length}개 있습니다. 그대로 저장할까요?</strong>
+            <strong>근거가 없는 데이터셋이 {warningItems.length}개 있습니다. 확정하시겠습니까?</strong>
             <ul>{warningItems.map((item, index) => <li key={index}>{item}</li>)}</ul>
           </div>}
         </div>

@@ -54,7 +54,9 @@
 .admin-modal-actions button { min-width:86px; }
 .admin-modal-warning { margin-top:12px; padding:10px 12px; border:1px solid #f1c4c4; border-radius:10px; background:#fff4f4; color:#a33b3b; font-size:.86rem; line-height:1.5; }
 .admin-modal-warning ul { max-height:140px; margin:6px 0 0; padding-left:18px; overflow:auto; font-size:.8rem; overflow-wrap:anywhere; }
-.aibom-missing-evidence { grid-column:1 / -1; margin:0; color:#c0392b; font-size:.8rem; font-weight:700; line-height:1.5; }
+.aibom-missing-evidence { display:flex; grid-column:1 / -1; align-items:flex-start; gap:8px; margin:0; padding:10px 12px; border:1px solid #f1c4c4; border-left:4px solid #d9534f; border-radius:8px; background:#fdecec; color:#a12d2d; font-size:.84rem; font-weight:700; line-height:1.55; }
+.aibom-missing-evidence::before { content:"!"; flex:none; display:grid; place-items:center; width:18px; height:18px; margin-top:1px; border-radius:50%; background:#d9534f; color:#fff; font-size:.72rem; font-weight:800; }
+.aibom-card:has(.aibom-missing-evidence) { border-color:#e9a8a8; box-shadow:0 0 0 2px #fdecec; }
 @keyframes admin-fade-in { from { opacity:0; } }
 @keyframes admin-modal-in { from { opacity:0; transform:translateY(8px) scale(.98); } }
 .create-backdrop { overflow:auto; }
