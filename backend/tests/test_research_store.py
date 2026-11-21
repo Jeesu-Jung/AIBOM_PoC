@@ -310,6 +310,14 @@ def test_research_run_page_filters_counts_and_pages() -> None:
     assert mine["counts"] == {"all": 2, "pending": 2, "saved": 0}
     assert page_research_runs(db, reviewer="none")["counts"] == {"all": 3, "pending": 2, "saved": 1}
     assert page_research_runs(db, reviewer=str(kim), status="saved")["total"] == 0
+
+    # The result badge filter: every run has a found merged result and no Hugging Face result.
+    assert page_research_runs(db, label="merged:found")["total"] == 5
+    assert page_research_runs(db, label="merged:not_found")["total"] == 0
+    missing = page_research_runs(db, label="huggingface:missing", reviewer=str(kim))
+    assert (missing["total"], missing["counts"]) == (2, {"all": 2, "pending": 2, "saved": 0})
+    assert page_research_runs(db, label="merged:missing")["counts"]["all"] == 0
+    assert page_research_runs(db, label="nonsense")["total"] == 5
     assert [run["runId"] for run in page_research_runs(db, status="saved")["items"]] == [run_ids[0]]
 
     assert page_research_runs(db, query="MODEL-3")["total"] == 1                  # requested name, any case

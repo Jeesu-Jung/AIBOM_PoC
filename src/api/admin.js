@@ -85,8 +85,9 @@ export const fetchResearchRuns = ({ modelName, modelId, limit } = {}) => {
   return request(`/api/v1/admin/research-runs${query ? `?${query}` : ""}`);
 };
 // One page of the research history, filtered on the server: { items, total, nextOffset, counts, stats }.
-export const fetchResearchRunPage = ({ status = "all", reviewer = "all", query = "", searchBy = "model", offset = 0, limit = 100 } = {}) => {
-  const params = new URLSearchParams({ status, reviewer, searchBy, offset: String(offset), limit: String(limit) });
+// label: one result badge as `<source>:<status>` (e.g. `huggingface:not_found`), or "all".
+export const fetchResearchRunPage = ({ status = "all", reviewer = "all", label = "all", query = "", searchBy = "model", offset = 0, limit = 100 } = {}) => {
+  const params = new URLSearchParams({ status, reviewer, label, searchBy, offset: String(offset), limit: String(limit) });
   if (query) params.set("query", query);
   return request(`/api/v1/admin/research-runs/page?${params}`);
 };

@@ -239,9 +239,31 @@ def _count_if(condition):
     return func.coalesce(func.sum(case((condition, 1), else_=0)), 0)
 
 
+RESULT_SOURCES = ("huggingface", "paper", "merged")
+RESULT_STATUSES = ("found", "ambiguous", "not_found")
+
+
+def _result_label_condition(label: str):
+    """Runs whose result of one source has one status: `<source>:<status>`, e.g. `huggingface:not_found`.
+
+    The status `missing` selects the runs that have no result of that source. These are the badges
+    of the research history list. Anything else (including `all`) is no filter.
+    """
+    source, _, state = (label or "").partition(":")
+    if source not in RESULT_SOURCES or state not in (*RESULT_STATUSES, "missing"):
+        return None
+    of_source = select(ModelResearchResult.id).where(ModelResearchResult.run_id == ModelResearchRun.id,
+                                                     ModelResearchResult.source == source)
+    return ~of_source.exists() if state == "missing" else of_source.where(ModelResearchResult.status == state).exists()
+
+
 def page_research_runs(session: Session, status: str = "all", reviewer: str = "all", query: str | None = None,
-                       search_by: str = "model", offset: int = 0, limit: int = 100) -> dict[str, Any]:
+                       search_by: str = "model", offset: int = 0, limit: int = 100,
+                       label: str = "all") -> dict[str, Any]:
     """One page of run summaries (newest first) for the research history page.
+
+    `label` narrows the list to the runs carrying one result badge (see `_result_label_condition`).
+    Like the reviewer filter it also applies to `counts`.
 
     `reviewer` is "all", "none" or a reviewer id and follows the run's current owner: the assignee
     while it waits, the person who reviewed it once saved. `counts` are the status totals inside
@@ -256,6 +278,9 @@ def page_research_runs(session: Session, status: str = "all", reviewer: str = "a
             conditions.append(owner.is_(None))
         else:
             conditions.append(owner == int(reviewer) if reviewer.isdigit() else false())
+    label_condition = _result_label_condition(label)
+    if label_condition is not None:
+        conditions.append(label_condition)
     counts = session.execute(select(func.count(), _count_if(pending), _count_if(saved)).where(*conditions)).one()
     stats = session.execute(select(func.count(), _count_if(pending), _count_if(saved),
                                    _count_if(pending & run.reviewer_id.is_(None)))).one()

@@ -596,6 +596,7 @@ paths:
         - { name: reviewer, in: query, required: false, schema: { type: string, default: all } }
         - { name: query, in: query, required: false, schema: { type: string } }
         - { name: searchBy, in: query, required: false, schema: { type: string, enum: [model, id], default: model } }
+        - { name: label, in: query, required: false, description: '조사 결과 배지로 좁히기. `<source>:<status>` 형식 (source = huggingface | paper | merged, status = found | ambiguous | not_found | missing). 예: `huggingface:not_found`. `counts` 에도 적용됩니다.', schema: { type: string, default: all } }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
       responses:

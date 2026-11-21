@@ -10,6 +10,19 @@ import AibomAreas from "../aibom/AibomAreas.jsx";
 
 const SOURCES = [["huggingface", "Hugging Face"], ["paper", "논문 · 기술 보고서"], ["merged", "AI 병합"]];
 const STATUS = { found: "확인됨", ambiguous: "후보 여러 개", not_found: "찾지 못함" };
+// Short source names for the result badges of a run and for the badge filter.
+const SOURCE_SHORT = { huggingface: "HF", paper: "논문", merged: "AI" };
+const BADGE_STATES = [...Object.entries(STATUS), ["missing", "없음"]];
+
+/** Narrow the run list to one result badge: value `<source>:<status>`, as the server expects. */
+function BadgeFilter({ value, onChange }) {
+  return <select className="research-reviewer-filter" value={value} onChange={(event) => onChange(event.target.value)} aria-label="조사 결과 배지로 찾기">
+    <option value="all">조사 결과 전체</option>
+    {SOURCES.map(([key, label]) => <optgroup key={key} label={label}>
+      {BADGE_STATES.map(([state, text]) => <option key={state} value={`${key}:${state}`}>{SOURCE_SHORT[key]} {text}</option>)}
+    </optgroup>)}
+  </select>;
+}
 const DECISIONS = { huggingface: "HF 값", paper: "논문 값", combined: "두 결과 결합", none: "값 없음" };
 
 const formatDateTime = (value) => {
@@ -28,7 +41,7 @@ function SourceBadges({ run }) {
   return <span className="research-run-badges">{SOURCES.map(([key, label]) => {
     const item = run.results[key];
     return <b key={key} className={item ? `is-${item.status}` : "is-missing"} title={label}>
-      {label.split(" ")[0]} {item ? STATUS[item.status] || item.status : "없음"}
+      {SOURCE_SHORT[key]} {item ? STATUS[item.status] || item.status : "없음"}
     </b>;
   })}</span>;
 }
@@ -235,6 +248,7 @@ export default function ResearchHistoryPage() {
   const [search, setSearch] = useState(""); // `query` once typing pauses: what the server is asked for
   const [status, setStatus] = useState(FILTERS.some(([key]) => key === params.get("status")) ? params.get("status") : "all");
   const [reviewerFilter, setReviewerFilter] = useState(params.get("reviewer") || "all"); // all | none | reviewer id
+  const [badgeFilter, setBadgeFilter] = useState("all"); // all | <source>:<status> (one result badge)
   const [selectedId, setSelectedId] = useState(Number(params.get("run")) || null);
   const [checked, setChecked] = useState(() => new Set());
   const [assignTo, setAssignTo] = useState("");
@@ -264,7 +278,7 @@ export default function ResearchHistoryPage() {
     const mine = ++ticket.current;
     if (!offset) reloading.current = true;
     try {
-      const data = await fetchResearchRunPage({ status: listStatus, reviewer: reviewerFilter, query: search, searchBy, offset, limit });
+      const data = await fetchResearchRunPage({ status: listStatus, reviewer: reviewerFilter, label: badgeFilter, query: search, searchBy, offset, limit });
       if (mine !== ticket.current) return;
       setRuns((current) => {
         if (!offset) return data.items;
@@ -286,7 +300,7 @@ export default function ResearchHistoryPage() {
   useEffect(() => {
     loadRuns({ keep: keepSelection.current });
     keepSelection.current = false;
-  }, [listStatus, reviewerFilter, search, searchBy]);
+  }, [listStatus, reviewerFilter, badgeFilter, search, searchBy]);
   async function loadMore() {
     if (page.nextOffset == null || loadingMore || reloading.current) return;
     setLoadingMore(true);
@@ -434,6 +448,7 @@ export default function ResearchHistoryPage() {
               <option value={UNASSIGNED}>미배정만</option>
               {reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name} · 대기 {reviewer.pendingCount}</option>)}
             </select>
+            <BadgeFilter value={badgeFilter} onChange={setBadgeFilter} />
           </div>
           <div className="research-assign-bar">
             <label>일괄 배정 대상
@@ -487,6 +502,9 @@ export default function ResearchHistoryPage() {
               <option value={UNASSIGNED}>미배정 / 검토자 기록 없음</option>
               {reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name} · 대기 {reviewer.pendingCount}</option>)}
             </select>
+          </label>
+          <label className="research-owner-filter">필터
+            <BadgeFilter value={badgeFilter} onChange={setBadgeFilter} />
           </label>
           <div className="research-filter-tabs" role="tablist" aria-label="검토 상태">
             {FILTERS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={status === key}
