@@ -147,6 +147,8 @@ export function parseRunIdRange(text) {
   return ids;
 }
 const UNASSIGNED = "none";
+// The page has two workspaces: reviewing runs (everyone) and handing them out (project manager).
+const VIEWS = [["review", "검토 작업", "조사 결과를 확인하고 모델로 저장"], ["manage", "배정 · 작업자 관리", "프로젝트 관리자용"]];
 
 /** Who a run belongs to: the assignee while it waits, the person who reviewed it once saved. */
 function RunReviewer({ run }) {
@@ -174,8 +176,8 @@ function ReviewerManager({ reviewers, onChange, onError }) {
     const waiting = reviewer.pendingCount ? ` 담당 중인 검토 대기 ${reviewer.pendingCount}건은 미배정으로 돌아갑니다.` : "";
     if (window.confirm(`검토 작업자 '${reviewer.name}'을(를) 삭제할까요?${waiting} 이미 검토한 기록은 그대로 남고, 같은 이름으로 다시 추가하면 복구됩니다.`)) run(deleteReviewer(reviewer.id));
   };
-  return <details className="reviewer-manager">
-    <summary>검토 작업자 관리 <small>{reviewers.length}명</small></summary>
+  return <section className="reviewer-manager">
+    <h2>검토 작업자 <small>{reviewers.length}명</small></h2>
     <ul>{reviewers.map((reviewer) => <li key={reviewer.id}>
       {editing?.id === reviewer.id
         ? <form onSubmit={rename}><input autoFocus value={editing.name} maxLength="100" onChange={(event) => setEditing({ ...editing, name: event.target.value })} aria-label="작업자 이름" /><button type="submit">저장</button><button type="button" onClick={() => setEditing(null)}>취소</button></form>
@@ -189,7 +191,7 @@ function ReviewerManager({ reviewers, onChange, onError }) {
     {!reviewers.length && <p className="admin-help">등록된 검토 작업자가 없습니다. 이름을 추가하면 조사 실행을 배정할 수 있습니다.</p>}
     <form className="reviewer-add" onSubmit={add}><input value={name} maxLength="100" placeholder="새 작업자 이름" onChange={(event) => setName(event.target.value)} aria-label="새 작업자 이름" /><button type="submit" disabled={!name.trim()}>추가</button></form>
     <p className="admin-help">삭제한 작업자는 목록에서 사라지고 맡고 있던 검토 대기 실행은 미배정이 됩니다. 이미 검토한 기록에는 이름이 남으며, 같은 이름을 다시 추가하면 복구됩니다.</p>
-  </details>;
+  </section>;
 }
 
 /**
@@ -202,6 +204,8 @@ export default function ResearchHistoryPage() {
   const params = new URLSearchParams(window.location.search);
   const [runs, setRuns] = useState(null);
   const [reviewers, setReviewers] = useState([]);
+  const [view, setView] = useState(params.get("view") === "manage" ? "manage" : "review");
+  const managing = view === "manage";
   const [searchBy, setSearchBy] = useState("model"); // model: requested / result model name, id: run number
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState(FILTERS.some(([key]) => key === params.get("status")) ? params.get("status") : "all");
@@ -229,8 +233,10 @@ export default function ResearchHistoryPage() {
       : `${run.modelName} ${run.resultModelId || ""} ${run.modelId || ""}`.toLowerCase().includes(text));
     const matchesReviewer = (run) => reviewerFilter === "all"
       || (reviewerFilter === UNASSIGNED ? ownerId(run) == null : String(ownerId(run)) === reviewerFilter);
-    return (runs || []).filter((run) => (status === "all" || run.reviewStatus === status) && matchesReviewer(run) && matchesQuery(run));
-  }, [runs, query, searchBy, status, reviewerFilter]);
+    // Only pending runs can be handed out, so the manage view lists just those.
+    const wanted = managing ? "pending" : status;
+    return (runs || []).filter((run) => (wanted === "all" || run.reviewStatus === wanted) && matchesReviewer(run) && matchesQuery(run));
+  }, [runs, query, searchBy, status, reviewerFilter, managing]);
   const counts = useMemo(() => ({
     all: runs?.length || 0,
     pending: (runs || []).filter((run) => run.reviewStatus === "pending").length,
@@ -240,17 +246,20 @@ export default function ResearchHistoryPage() {
 
   // Keep a run selected that is visible under the current filter.
   useEffect(() => {
-    if (!runs) return;
+    if (!runs || managing) return;
     if (!visibleRuns.some((run) => run.runId === selectedId)) setSelectedId(visibleRuns[0]?.runId ?? null);
-  }, [runs, visibleRuns, selectedId]);
+  }, [runs, visibleRuns, selectedId, managing]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
     if (selectedId) url.searchParams.set("run", selectedId); else url.searchParams.delete("run");
     if (status === "all") url.searchParams.delete("status"); else url.searchParams.set("status", status);
     if (reviewerFilter === "all") url.searchParams.delete("reviewer"); else url.searchParams.set("reviewer", reviewerFilter);
+    if (managing) url.searchParams.set("view", "manage"); else url.searchParams.delete("view");
     window.history.replaceState({}, "", url);
-  }, [selectedId, status, reviewerFilter]);
+  }, [selectedId, status, reviewerFilter, managing]);
+  const switchView = (next) => { setView(next); setChecked(new Set()); setMessage(null); setError(null); };
+  const openRun = (runId) => { setQuery(""); setReviewerFilter("all"); setStatus("all"); setSelectedId(runId); switchView("review"); };
 
   const loadDetail = (runId) => fetchResearchRun(runId);
   useEffect(() => {
@@ -316,7 +325,7 @@ export default function ResearchHistoryPage() {
     <div className="admin-shell research-page">
       <header className="admin-header">
         <div><p className="eyebrow">AI RESEARCH HISTORY</p><h1>AI 조사 이력</h1>
-          <p>“AI로 정보 채우기”를 실행할 때마다 Hugging Face · 논문 조사와 AI 병합 결과가 실행 단위로 저장됩니다. 검토해서 모델로 저장한 실행과, 아직 조사 결과만 남아 있는 실행을 구분해 보고, 검토 작업자에게 나눠 배정할 수 있습니다.</p></div>
+          <p>“AI로 정보 채우기”를 실행할 때마다 Hugging Face · 논문 조사와 AI 병합 결과가 실행 단위로 저장됩니다. 검토해서 모델로 저장한 실행과, 아직 조사 결과만 남아 있는 실행을 구분해 보고 검토할 수 있습니다.</p></div>
         <div className="admin-header-actions"><a href="/" className="admin-secondary">메인으로</a><a href="/admin" className="admin-primary">모델 관리</a></div>
       </header>
       <div className="admin-stats">
@@ -325,9 +334,77 @@ export default function ResearchHistoryPage() {
         <span><strong>{counts.unassigned}</strong> 미배정</span>
         <span><strong>{counts.saved}</strong> 저장 완료</span>
       </div>
+      <nav className="research-view-tabs" role="tablist" aria-label="작업 화면">
+        {VIEWS.map(([key, label, hint]) => <button key={key} type="button" role="tab" aria-selected={view === key}
+          className={view === key ? "is-active" : ""} onClick={() => switchView(key)}>{label}<small>{hint}</small></button>)}
+      </nav>
       {error && <p className="ai-save-state is-error">{error}</p>}
       {message && <p className="ai-save-state is-saved">{message}</p>}
-      <main className="research-page-body">
+      {managing ? <main className="research-manage">
+        <ReviewerManager reviewers={reviewers} onChange={() => refresh()} onError={setError} />
+        <section className="research-assign">
+          <div className="research-assign-head">
+            <div><h2>검토 대기 배정</h2>
+              <p className="admin-help">검토 대기 {counts.pending}건 중 미배정 {counts.unassigned}건. 저장된 실행은 다시 배정하지 않습니다.</p></div>
+            <button type="button" className="admin-primary" disabled={!counts.unassigned || !activeReviewers.length} onClick={distribute}
+              title="미배정 검토 대기 실행을 검토 작업자에게, 대기 건이 적은 사람부터 고르게 나눕니다.">미배정 {counts.unassigned}건 자동 분배</button>
+          </div>
+          <div className="research-assign-filters">
+            <div className="research-search">
+              <select value={searchBy} onChange={(event) => { setSearchBy(event.target.value); setQuery(""); }} aria-label="검색 기준">
+                <option value="model">모델명</option><option value="id">실행 ID</option>
+              </select>
+              <input type="search" inputMode={searchBy === "id" ? "numeric" : "text"} placeholder={searchBy === "id" ? "실행 번호 (예: 5)" : "모델명으로 찾기"}
+                value={query} onChange={(event) => setQuery(event.target.value)} aria-label="조사 실행 검색" />
+            </div>
+            <select className="research-reviewer-filter" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} aria-label="담당자로 찾기">
+              <option value="all">모든 담당자</option>
+              <option value={UNASSIGNED}>미배정만</option>
+              {reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name} · 대기 {reviewer.pendingCount}</option>)}
+            </select>
+          </div>
+          <div className="research-assign-bar">
+            <label>일괄 배정 대상
+              <select value={assignTo} onChange={(event) => setAssignTo(event.target.value)} aria-label="배정할 검토 작업자">
+                <option value="">작업자 선택</option>
+                {activeReviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
+                <option value={UNASSIGNED}>배정 해제</option>
+              </select>
+            </label>
+            <button type="button" disabled={!checkedIds.length || !assignTo} onClick={() => assign(checkedIds, assignTo === UNASSIGNED ? null : Number(assignTo))}>선택 {checkedIds.length}건 배정</button>
+            <span className="research-assign-or">또는</span>
+            <div className="research-range">
+              <input value={rangeText} onChange={(event) => setRangeText(event.target.value)} placeholder="실행 ID 범위 (예: 10-25 또는 3, 5, 8-12)" aria-label="배정할 실행 ID 범위" />
+              <button type="button" disabled={!rangePendingIds.length || !assignTo} onClick={() => assign(rangePendingIds, assignTo === UNASSIGNED ? null : Number(assignTo))}>범위 {rangePendingIds.length}건 배정</button>
+            </div>
+            {rangeText.trim() && <small className={`research-range-note${rangeIds ? "" : " is-error"}`}>{!rangeIds
+              ? "숫자와 범위만 입력할 수 있습니다. 예: 10-25 또는 3, 5, 8-12"
+              : !rangeRuns.length ? "이 범위에 해당하는 조사 실행이 없습니다."
+                : `범위 안의 실행 ${rangeRuns.length}건 중 검토 대기 ${rangePendingIds.length}건이 배정됩니다${rangeRuns.length > rangePendingIds.length ? ` (저장된 ${rangeRuns.length - rangePendingIds.length}건은 제외)` : ""}.${assignTo ? "" : " 작업자를 선택하세요."}`}</small>}
+          </div>
+          {!runs ? <p className="admin-help">불러오는 중...</p> : !visibleRuns.length
+            ? <p className="admin-help">{counts.pending ? "조건에 맞는 검토 대기 실행이 없습니다." : "배정할 검토 대기 실행이 없습니다."}</p>
+            : <table className="research-assign-table">
+              <thead><tr>
+                <th><input type="checkbox" checked={checkedIds.length === assignable.length}
+                  onChange={(event) => setChecked(event.target.checked ? new Set(assignable.map((run) => run.runId)) : new Set())} aria-label={`대기 ${assignable.length}건 전체 선택`} /></th>
+                <th>실행</th><th>모델</th><th>조사 시각</th><th>담당</th><th></th>
+              </tr></thead>
+              <tbody>{visibleRuns.map((run) => <tr key={run.runId} className={checked.has(run.runId) ? "is-checked" : ""}>
+                <td><input type="checkbox" checked={checked.has(run.runId)} onChange={() => toggle(run.runId)} aria-label={`#${run.runId} 선택`} /></td>
+                <td>#{run.runId}</td>
+                <td><strong>{run.modelName}</strong></td>
+                <td>{formatDateTime(run.createdAt)}</td>
+                <td><select className={run.reviewerId == null ? "is-unassigned" : ""} value={run.reviewerId ?? ""} aria-label={`#${run.runId} 담당`}
+                  onChange={(event) => assign([run.runId], event.target.value ? Number(event.target.value) : null)}>
+                  <option value="">미배정</option>
+                  {reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
+                </select></td>
+                <td><button type="button" className="research-assign-open" onClick={() => openRun(run.runId)}>결과 보기 →</button></td>
+              </tr>)}</tbody>
+            </table>}
+        </section>
+      </main> : <main className="research-page-body">
         <aside className="research-history-list">
           <div className="research-filter-tabs" role="tablist" aria-label="검토 상태">
             {FILTERS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={status === key}
@@ -341,41 +418,15 @@ export default function ResearchHistoryPage() {
               value={query} onChange={(event) => setQuery(event.target.value)} aria-label="조사 실행 검색" />
           </div>
           <select className="research-reviewer-filter" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} aria-label="검토 작업자로 찾기">
-            <option value="all">모든 검토 작업자</option>
+            <option value="all">담당자 전체</option>
             <option value={UNASSIGNED}>미배정 / 검토자 기록 없음</option>
             {reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name} · 대기 {reviewer.pendingCount}</option>)}
           </select>
 
-          <div className="research-assign-bar">
-            <label><input type="checkbox" disabled={!assignable.length} checked={assignable.length > 0 && checkedIds.length === assignable.length}
-              onChange={(event) => setChecked(event.target.checked ? new Set(assignable.map((run) => run.runId)) : new Set())} /> 대기 {assignable.length}건 전체 선택</label>
-            <div>
-              <select value={assignTo} onChange={(event) => setAssignTo(event.target.value)} aria-label="배정할 검토 작업자">
-                <option value="">작업자 선택</option>
-                {activeReviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
-                <option value={UNASSIGNED}>배정 해제</option>
-              </select>
-              <button type="button" disabled={!checkedIds.length || !assignTo} onClick={() => assign(checkedIds, assignTo === UNASSIGNED ? null : Number(assignTo))}>선택 {checkedIds.length}건 배정</button>
-            </div>
-            <div className="research-range">
-              <input value={rangeText} onChange={(event) => setRangeText(event.target.value)} placeholder="실행 ID 범위 (예: 10-25 또는 3, 5, 8-12)" aria-label="배정할 실행 ID 범위" />
-              <button type="button" disabled={!rangePendingIds.length || !assignTo} onClick={() => assign(rangePendingIds, assignTo === UNASSIGNED ? null : Number(assignTo))}>범위 {rangePendingIds.length}건 배정</button>
-            </div>
-            {rangeText.trim() && <small className={`research-range-note${rangeIds ? "" : " is-error"}`}>{!rangeIds
-              ? "숫자와 범위만 입력할 수 있습니다. 예: 10-25 또는 3, 5, 8-12"
-              : !rangeRuns.length ? "이 범위에 해당하는 조사 실행이 없습니다."
-                : `범위 안의 실행 ${rangeRuns.length}건 중 검토 대기 ${rangePendingIds.length}건이 배정됩니다${rangeRuns.length > rangePendingIds.length ? ` (저장된 ${rangeRuns.length - rangePendingIds.length}건은 제외)` : ""}.${assignTo ? "" : " 위에서 작업자를 선택하세요."}`}</small>}
-            <button type="button" className="research-distribute" disabled={!counts.unassigned || !activeReviewers.length} onClick={distribute}
-              title="미배정 검토 대기 실행을 검토 작업자에게, 대기 건이 적은 사람부터 고르게 나눕니다.">미배정 {counts.unassigned}건 자동 분배</button>
-          </div>
-          <ReviewerManager reviewers={reviewers} onChange={() => refresh()} onError={setError} />
-
           {!runs ? <p className="admin-help">불러오는 중...</p> : !visibleRuns.length
             ? <p className="admin-help">{!runs.length ? "아직 AI 조사 실행이 없습니다. 모델 관리의 “+ 새 모델 → AI로 정보 채우기”로 조사하면 여기에 쌓입니다." : status === "pending" ? "조건에 맞는 검토 대기 실행이 없습니다." : "조건에 맞는 조사 실행이 없습니다."}</p> : (
-              <ul className="research-run-list has-checks">{visibleRuns.map((run) => (
+              <ul className="research-run-list">{visibleRuns.map((run) => (
                 <li key={run.runId}>
-                  <input type="checkbox" checked={checked.has(run.runId)} disabled={run.reviewStatus !== "pending"} onChange={() => toggle(run.runId)}
-                    aria-label={`#${run.runId} 선택`} title={run.reviewStatus === "pending" ? "배정할 실행으로 선택" : "저장된 실행은 다시 배정하지 않습니다"} />
                   <button type="button" className={run.runId === selectedId ? "is-selected" : ""} onClick={() => setSelectedId(run.runId)}>
                     <strong>#{run.runId} {run.modelName}</strong>
                     <span>{formatDateTime(run.createdAt)} · 검색 {run.totalWebSearches ?? "-"} · {formatCost(run.totalCostUsd)}</span>
@@ -403,10 +454,7 @@ export default function ResearchHistoryPage() {
                   ? <>카탈로그에 <code>{detail.catalogModelId}</code> 모델이 이미 있어, 그 모델의 편집 화면에서 이 조사 결과의 값을 골라 반영합니다. 저장하면 검토 완료로 표시됩니다.</>
                   : "조사 결과만 저장되어 있습니다. 편집 화면에서 값과 근거를 확인하고 모델로 등록할 수 있습니다."}</p>
                 <div className="research-review-actions">
-                  <label>담당 <select value={detail.reviewerId ?? ""} onChange={(event) => assign([detail.runId], event.target.value ? Number(event.target.value) : null)}>
-                    <option value="">미배정</option>
-                    {reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
-                  </select></label>
+                  <span className={`research-review-owner${detail.reviewerName ? "" : " is-unassigned"}`}>담당 <b>{detail.reviewerName || "미배정"}</b></span>
                   <a className="admin-primary" href={reviewLink(detail.runId)}>{detail.catalogModelId ? "기존 모델에 반영하며 검토 →" : "검토 후 저장 →"}</a>
                 </div>
               </>}
@@ -419,7 +467,7 @@ export default function ResearchHistoryPage() {
             <SourceDetail key={`${detail.runId}-${tab}`} item={detail.results[tab]} fields={historyFields} sourceKey={tab} />
           </>}
         </div>
-      </main>
+      </main>}
     </div>
   );
 }
