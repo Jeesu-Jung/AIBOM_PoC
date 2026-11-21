@@ -19,9 +19,11 @@ macOS / Linux:
 sh run-batch.sh qwen2.5-7B-based-model-list.md
 ```
 
-- Python 3.10 이상이 필요합니다. `backend/.venv`가 있으면 그 Python을, 없으면 `python3`를 씁니다.
-- Homebrew Python에는 tkinter가 빠져 있습니다. `brew install python-tk`로 설치하거나 `--no-gui`로 실행하세요
-  (python.org 설치본에는 포함되어 있습니다).
+- Python 3.10 이상이 필요합니다. 실행 스크립트는 `backend/.venv`를 먼저 확인하고, 그 Python에
+  `tkinter`가 없으면 `tkinter`를 쓸 수 있는 시스템 Python으로 자동 전환합니다. 배치 도구는 표준
+  라이브러리만 사용하므로 기존 백엔드 가상환경이나 실행 중인 백엔드에는 영향을 주지 않습니다.
+- GUI를 쓸 수 있는 Python이 없다면 Homebrew에서는 해당 Python 버전에 맞는 `python-tk` 패키지를
+  설치하세요 (예: Python 3.15는 `brew install python-tk@3.15`).
 
 또는 `batch/` 폴더에서:
 

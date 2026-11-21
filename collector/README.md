@@ -7,6 +7,11 @@
 
 추가로 설치할 패키지는 없습니다 (Python 3.10 이상, 표준 라이브러리만 사용).
 
+macOS / Linux 실행 스크립트는 `backend/.venv`의 Python에서 `tkinter`를 사용할 수 없으면
+GUI가 지원되는 시스템 Python으로 자동 전환합니다. 기존 백엔드 가상환경과 실행 중인 백엔드에는
+영향을 주지 않습니다. GUI 지원 Python이 없다면 Homebrew에서는 해당 Python 버전에 맞는
+`python-tk` 패키지를 설치하세요 (예: Python 3.15는 `brew install python-tk@3.15`).
+
 ```bat
 run-collect.bat
 run-collect.bat Qwen/Qwen2.5-7B
