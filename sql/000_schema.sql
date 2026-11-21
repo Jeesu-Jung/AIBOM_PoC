@@ -1,13 +1,13 @@
 -- MySQL 8.0.17+
 -- Empty AIBOM database for a new server: every table and view the application uses, without any
--- data. It is the structure that sql/001 and sql/003 - sql/010 build up step by step (sql/002 only
+-- data. It is the structure that sql/001 and sql/003 - sql/013 build up step by step (sql/002 only
 -- imports sample models), generated from the working database, so a server created from this
 -- file behaves exactly like the current one.
 --
 --   mysql -u root -p < sql/000_schema.sql
 --
 -- Use this file alone on a new server; do not run the numbered scripts after it. When a later
--- migration is added (sql/011, ...), run that script on servers created from this file.
+-- migration is added (sql/015, ...), run that script on servers created from this file.
 -- The MySQL account for the MCP connection is created separately: scripts/mysql-mcp/grant_aibom_mcp.sql.
 
 CREATE DATABASE IF NOT EXISTS aibom
@@ -36,8 +36,8 @@ CREATE TABLE IF NOT EXISTS `model_info` (
   `package_url` varchar(1000) DEFAULT NULL,
   `model_url` varchar(1000) NOT NULL,
   `license_reported` json DEFAULT NULL,
-  `artifact_format` varchar(100) DEFAULT NULL,
-  `tensor_type` varchar(100) DEFAULT NULL,
+  `artifact_format` varchar(500) DEFAULT NULL,
+  `tensor_type` varchar(500) DEFAULT NULL,
   `parameter_scale` varchar(100) DEFAULT NULL,
   `artifact_revision` varchar(255) DEFAULT NULL,
   `description` text,

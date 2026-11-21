@@ -33,8 +33,8 @@ class AdminModelWrite(BaseModel):
     package_url: str | None = Field(default=None, alias="packageUrl", max_length=1000)
     model_url: str = Field(alias="modelUrl", min_length=1, max_length=1000)
     license_reported: Any | None = Field(default=None, alias="licenseReported")
-    artifact_format: str | None = Field(default=None, alias="artifactFormat", max_length=100)
-    tensor_type: str | None = Field(default=None, alias="tensorType", max_length=100)
+    artifact_format: str | None = Field(default=None, alias="artifactFormat", max_length=500)
+    tensor_type: str | None = Field(default=None, alias="tensorType", max_length=500)
     parameter_scale: str | None = Field(default=None, alias="parameterScale", max_length=100)
     artifact_revision: str | None = Field(default=None, alias="artifactRevision", max_length=255)
     description: str | None = None

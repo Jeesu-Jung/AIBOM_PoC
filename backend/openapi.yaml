@@ -1178,8 +1178,8 @@ components:
         licenseReported:
           description: 임의 JSON (보통 문자열 배열)
           default: null
-        artifactFormat: { type: [string, 'null'], maxLength: 100, default: null }
-        tensorType: { type: [string, 'null'], maxLength: 100, default: null }
+        artifactFormat: { type: [string, 'null'], maxLength: 500, default: null }
+        tensorType: { type: [string, 'null'], maxLength: 500, default: null }
         parameterScale: { type: [string, 'null'], maxLength: 100, default: null }
         artifactRevision: { type: [string, 'null'], maxLength: 255, default: null }
         description: { type: [string, 'null'], default: null }

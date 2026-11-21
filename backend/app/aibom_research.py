@@ -51,10 +51,12 @@ class TokenizerDraft(_Strict):
 
 class ArtifactDraft(_Strict):
     format: str | None = Field(
-        description="Primary weight file format of this repository, e.g. `safetensors`, `pytorch`, `gguf`, `mlx`, "
-                    "`PEFT LoRA adapter`.")
+        description="Primary weight file format of this repository as a short label of a few words (not a "
+                    "sentence; 500 characters at most), e.g. `safetensors`, `pytorch`, `gguf`, `mlx`, "
+                    "`PEFT LoRA adapter`. Put explanations in `aibom.unknowns` or the model limitations.")
     tensor_type: str | None = Field(
-        description="Weight precision shown on the model page or config, e.g. `BF16`, `FP16`, `Q4_K_M`; repository spelling.")
+        description="Weight precision shown on the model page or config as a short label (not a sentence; 500 "
+                    "characters at most), e.g. `BF16`, `FP16`, `Q4_K_M`, `BF16 / 8-bit mixed`; repository spelling.")
 
 
 class ModalityDraft(_Strict):
