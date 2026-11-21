@@ -799,7 +799,7 @@ components:
     ModelRole:
       type: string
       enum: [BASE, DERIVED]
-      description: BASE = 패밀리 개발사의 공식 체크포인트(사전학습 모델과 공식 Instruct 모델), DERIVED = 파인튜닝/양자화/병합/변환 등 파생 모델
+      description: BASE = 다른 체크포인트에서 파생되지 않은 계보의 루트(사전학습 체크포인트), DERIVED = 부모 체크포인트가 있는 모든 모델(개발사 공식 Instruct/Chat 포함, 파인튜닝/양자화/병합/변환 등)
 
     # ---------- families ----------
     FamilyIndex:

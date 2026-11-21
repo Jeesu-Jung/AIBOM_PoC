@@ -86,7 +86,7 @@ def research_content() -> dict:
             "modelName": "model",
             "familyKey": "model-family",
             "familyName": "Model Family",
-            "modelRole": "BASE",
+            "modelRole": "DERIVED",  # the AIBOM below names `org/model-base` as its base
             "supplier": "Example Org",
             "primaryPurpose": "Text generation",
             "modelVersion": "1.0",
@@ -193,7 +193,10 @@ def test_prompt_separates_catalog_roots_from_aibom_lineage() -> None:
     payload = build_openrouter_payload("org/model", context=CatalogContext(datasets=(("cais/mmlu", "MMLU"),)))
     system_prompt = payload["messages"][0]["content"]
 
-    assert "An official instruction-tuned checkpoint is BASE in the catalog" in system_prompt
+    assert "an official instruction/chat model built on a released pretrained checkpoint\n     is DERIVED" in system_prompt
+    assert "`cardData.base_model`" in system_prompt
+    assert "A model with a parent candidate is always DERIVED." in (
+        payload["response_format"]["json_schema"]["schema"]["$defs"]["ResearchDraft"]["properties"]["modelRole"]["description"])
     assert "Do not copy leaderboard numbers or claims that are not needed" not in system_prompt
     assert "- cais/mmlu | MMLU" in payload["messages"][1]["content"]
     assert "aibom" in payload["response_format"]["json_schema"]["schema"]["properties"]
@@ -568,6 +571,48 @@ def test_lineage_is_re_resolved_against_the_current_catalog() -> None:
     assert result["draft"]["parentModelId"] is None
     assert (result["draft"]["familyKey"], result["draft"]["familyName"]) == ("huatuogpto1", "HuatuoGPT-o1")
     assert sum("카탈로그에 등록되어 있지 않아" in warning for warning in result["warnings"]) == 1
+
+
+def _official_chat_content() -> dict:
+    """An official chat checkpoint the research model called BASE although it names its base."""
+    content = research_content()
+    content["draft"].update({"modelId": "Qwen/Qwen3.5-9B", "namespace": "Qwen", "modelName": "Qwen3.5-9B",
+                             "modelRole": "BASE", "familyKey": "qwen35", "familyName": "Qwen 3.5"})
+    content["aibom"]["transformation"]["inputs"] = [{"model": "qwen/qwen3.5-9b-base", "role": "base"},
+                                                    {"model": "GPT-4o", "role": "verifier"}]
+    return content
+
+
+def test_base_role_with_a_stated_parent_becomes_derived_under_that_parent() -> None:
+    from app.research import ROLE_CORRECTED_WARNING, CatalogModel, resolve_catalog_lineage
+
+    context = CatalogContext(models=(
+        CatalogModel(model_id="Qwen/Qwen3.5-9B-Base", family_key="qwen35", family_name="Qwen 3.5"),))
+    upstream = {"choices": [{"message": {"content": json.dumps(_official_chat_content())}}]}
+
+    result = parse_openrouter_response(upstream, context=context)
+    draft = result["draft"]
+
+    assert draft["modelRole"] == "DERIVED"
+    assert draft["parentModelId"] == "Qwen/Qwen3.5-9B-Base"
+    assert draft["relationshipType"] == "instructionTunedFrom"  # from aibom.provenance.relation
+    assert draft["hierarchyDepth"] == 1
+    assert result["parentCandidates"] == []  # the research model's answer is kept as given
+
+    resolve_catalog_lineage(result, context)  # reloading a stored result does not repeat the warning
+    assert result["warnings"].count(ROLE_CORRECTED_WARNING) == 1
+
+
+def test_base_role_is_corrected_without_a_catalog_and_kept_for_real_roots() -> None:
+    upstream = {"choices": [{"message": {"content": json.dumps(_official_chat_content())}}]}
+    assert parse_openrouter_response(upstream)["draft"]["modelRole"] == "DERIVED"
+
+    root = _official_chat_content()
+    root["aibom"]["provenance"]["relation"] = "pretrained"
+    root["aibom"]["transformation"]["inputs"] = []
+    result = parse_openrouter_response({"choices": [{"message": {"content": json.dumps(root)}}]})
+    assert result["draft"]["modelRole"] == "BASE"
+    assert not any("DERIVED" in warning for warning in result["warnings"])
 
 
 def test_prompt_lists_family_and_parent_of_existing_models() -> None:

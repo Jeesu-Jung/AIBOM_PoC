@@ -98,12 +98,17 @@ class ResearchDraft(BaseModel):
     model_role: Literal["BASE", "DERIVED"] = Field(
         alias="modelRole",
         description=(
-            "BASE: a primary official checkpoint of the family released by the family developer, "
-            "shown as a root of the family tree: the pretrained checkpoint and its official "
-            "instruction/chat counterpart (e.g. both `Qwen/Qwen2.5-7B` and "
-            "`Qwen/Qwen2.5-7B-Instruct`). DERIVED: everything else, including official variants "
-            "with additional modification (long-context, quantized, distilled, preview), every "
-            "third-party fine-tune, adapter, merge, conversion, or re-upload."
+            "Decided by lineage, never by who published the model or how it is named. BASE: a "
+            "lineage root, i.e. no source derives this checkpoint from another released checkpoint "
+            "(no `base_model` metadata, no parent named by the card or paper); typically the family "
+            "developer's pretrained checkpoint such as `Qwen/Qwen2.5-7B` or `Qwen/Qwen3.5-9B-Base`. "
+            "DERIVED: every model that a source says was trained, adapted, quantized, converted, or "
+            "merged from another checkpoint. This includes the family developer's own official "
+            "instruction/chat checkpoints (`Qwen/Qwen2.5-7B-Instruct` has `base_model: "
+            "Qwen/Qwen2.5-7B`) and official models whose name carries no suffix (`Qwen/Qwen3.5-9B` "
+            "has `base_model: Qwen/Qwen3.5-9B-Base`), as well as long-context, quantized, distilled "
+            "and preview variants and every third-party fine-tune, adapter, merge, conversion, or "
+            "re-upload. A model with a parent candidate is always DERIVED."
         ),
     )
     supplier: str | None = Field(
@@ -355,19 +360,31 @@ Research rules:
    derivative (the catalog context shows each model's family and parent), use the parent's family
    and never coin a family named after the intermediate model. Coin a new key only when no listed
    family matches, and say so in warnings.
-8. Lineage has two views that must not be mixed up:
-   - Catalog tree (`parentCandidates`): empty for the BASE role, because the catalog UI shows the
-     family's official checkpoints as roots. For DERIVED, list the immediate technical parent, not
-     merely the family root, and only when a source explicitly states the relationship. The parent
-     may itself be a DERIVED model (the tree can be any number of levels deep). Use
-     relationshipType values from the camelCase vocabulary in the catalog context; if none fits,
-     coin a camelCase verb ending in `From` and flag it in warnings.
-   - AIBOM (`aibom.transformation.inputs`, `aibom.provenance.relation`): the real technical lineage
-     for every role. An official instruction-tuned checkpoint is BASE in the catalog but still has
-     its pretrained checkpoint as the input with role `base`; only models trained from scratch have no inputs (relation `pretrained`).
-     Models that only generated data, rewards, or verification (e.g. GPT-4o) are inputs with those
-     roles. `aibom.provenance.relation` must be one of the snake_case AIBOM relations in the
-     catalog context.
+8. Lineage is recorded twice and both records must describe the same technical lineage:
+   - Catalog tree (`modelRole`, `parentCandidates`): decide the role from the lineage evidence
+     before anything else. If the repository metadata (`base_model`, the "Model tree" / "Base
+     model" section of the page), the model card, or the paper names a checkpoint this model was
+     trained, adapted, quantized, converted, or merged from, the role is DERIVED and that
+     checkpoint is a parent candidate. This holds for the family developer's own official
+     checkpoints too: an official instruction/chat model built on a released pretrained checkpoint
+     is DERIVED with that checkpoint as its parent. Do not judge the role from the model name: a
+     name without a `-Instruct` / `-Chat` suffix can still be a fine-tune of a `-Base` repository,
+     so check the metadata. The role is BASE, with empty parentCandidates, only when no source
+     names a parent checkpoint. List the immediate technical parent, not merely the family root,
+     and only when a source explicitly states the relationship (`base_model` metadata counts as
+     an explicit statement). The parent may itself be a DERIVED model (the tree can be any number
+     of levels deep) and does not have to be in the catalog context yet. Use relationshipType
+     values from the camelCase vocabulary in the catalog context; if none fits, coin a camelCase
+     verb ending in `From` and flag it in warnings.
+   - AIBOM (`aibom.transformation.inputs`, `aibom.provenance.relation`): the same lineage in
+     AIBOM terms. The immediate parent is the input with role `base` (or `merge_source`); only
+     models trained from scratch have no inputs (relation `pretrained`). Models that only
+     generated data, rewards, or verification (e.g. GPT-4o) are inputs with those roles and are
+     not parent candidates. `aibom.provenance.relation` must be one of the snake_case AIBOM
+     relations in the catalog context.
+   - Consistency check before answering: modelRole is BASE exactly when parentCandidates is empty,
+     `aibom.transformation.inputs` has no `base` / `merge_source` input, and the relation is
+     `pretrained`. If any of these names a parent, the role is DERIVED.
 9. Every non-null draft field except modelId, namespace, and modelName must be covered by at least
    one fieldEvidence entry whose fields list uses the draft's exact key names. In `aibom`, put the
    supporting URLs in the `evidence_urls` / `source_url` fields and list every opened source in
@@ -411,7 +428,13 @@ SOURCE_PROMPTS: dict[str, str] = {
   extensions for aibom.model.artifact.format, the tensor type badge for aibom.model.artifact.tensor_type,
   the exact parameter count (safetensors metadata) for aibom.model.architecture.parameter_count, and
   the main-branch commit short SHA for modelVersion.
-- Use `base_model` metadata as the primary lineage signal. Map `finetune` to an instruction, task,
+- Use `base_model` metadata as the primary lineage signal, and look for it explicitly: the YAML
+  front matter of the README and the "Model tree" / "Base model" section of the repository page
+  (also exposed as `cardData.base_model` by `huggingface.co/api/models/<id>`). Any `base_model`
+  that is another repository makes this model DERIVED with that repository as the parent
+  candidate (confidence `high`), even when the model is the family developer's official release.
+  Report BASE only after checking that the repository declares no `base_model` and the card
+  names no parent. Map `finetune` to an instruction, task,
   domain, or preference relationship according to the card's own description; map `adapter` to
   `adapterTrainedFrom`, `quantized` to `quantizedFrom`, `merge` to `mergedFrom`, and format-only
   conversions (GGUF, MLX, ONNX, AWQ re-uploads without training) to `convertedFrom`.
@@ -672,8 +695,54 @@ LEGACY_FAMILY_FIELDS: tuple[str, ...] = ("familyDeveloper", "familyReleaseDate",
 _CONFIDENCE_RANK = {"high": 0, "medium": 1, "low": 2}
 
 
+ROLE_CORRECTED_WARNING = (
+    "조사 결과가 부모 체크포인트를 명시하고 있어 Role 을 BASE 에서 DERIVED 로 바로잡았습니다. "
+    "부모 모델과 관계 유형을 확인하세요."
+)
+
+
+def _lineage_candidates(result: dict[str, Any], own_id: str) -> list[dict[str, Any]]:
+    """Parent candidates of a research result, best confidence first.
+
+    The research model's `parentCandidates` come first. The AIBOM lineage of the same result
+    (`transformation.inputs` with role `base` + `provenance.relation`) is added as a low-confidence
+    candidate when the list misses it, so a model whose AIBOM names a base checkpoint is never
+    left as a root only because the research model called it BASE.
+    """
+    candidates = [
+        item for item in (result.get("parentCandidates") or [])
+        if isinstance(item, dict) and item.get("modelId") and item.get("relationshipType")
+        and str(item["modelId"]).casefold() != own_id.casefold()
+    ]
+    aibom = result.get("aibomDraft") if isinstance(result.get("aibomDraft"), dict) else {}
+    provenance = aibom.get("provenance") if isinstance(aibom.get("provenance"), dict) else {}
+    transformation = aibom.get("transformation") if isinstance(aibom.get("transformation"), dict) else {}
+    relation = provenance.get("relation")
+    if isinstance(relation, str) and relation.endswith("_from"):
+        head, *rest = relation.split("_")
+        relationship_type = head + "".join(part.capitalize() for part in rest)
+        listed = {str(item["modelId"]).casefold() for item in candidates}
+        for item in transformation.get("inputs") or []:
+            model_id = str(item.get("model") or "") if isinstance(item, dict) else ""
+            if (item.get("role") if isinstance(item, dict) else None) != "base" or "/" not in model_id:
+                continue
+            if model_id.casefold() in listed or model_id.casefold() == own_id.casefold():
+                continue
+            listed.add(model_id.casefold())
+            candidates.append({
+                "modelId": model_id, "relationshipType": relationship_type, "confidence": "low",
+                "evidenceUrls": list(provenance.get("evidence_urls") or []),
+            })
+    candidates.sort(key=lambda item: _CONFIDENCE_RANK.get(item.get("confidence"), len(_CONFIDENCE_RANK)))
+    return candidates
+
+
 def resolve_catalog_lineage(result: dict[str, Any], context: CatalogContext | None) -> dict[str, Any]:
     """Place a research draft in the catalog tree, in place, from its parent candidates.
+
+    The role follows the lineage: a draft that names a parent (see `_lineage_candidates`) is
+    DERIVED even when the research model answered BASE, e.g. for an official instruction-tuned
+    checkpoint whose repository declares a `base_model`.
 
     The research model only names parent candidates. The first candidate (best confidence first)
     that is already a catalog record becomes `parentModelId`; the draft then takes that record's
@@ -684,7 +753,8 @@ def resolve_catalog_lineage(result: dict[str, Any], context: CatalogContext | No
     """
     draft = result.get("draft")
     if isinstance(draft, dict) and draft.get("modelRole") == "INSTRUCT":
-        # Results stored before the INSTRUCT role was folded into BASE (sql/009).
+        # Results stored before the INSTRUCT role was dropped (sql/009). The lineage check below
+        # turns it into DERIVED when the result names a parent.
         draft["modelRole"] = "BASE"
     if isinstance(draft, dict):
         for name in LEGACY_FAMILY_FIELDS:
@@ -693,7 +763,14 @@ def resolve_catalog_lineage(result: dict[str, Any], context: CatalogContext | No
             # Older results researched the model's release date in the AIBOM only.
             aibom_model = (result.get("aibomDraft") or {}).get("model") if isinstance(result.get("aibomDraft"), dict) else None
             draft["releaseDate"] = (aibom_model or {}).get("release_date")
-    if not isinstance(draft, dict) or context is None or not context.models:
+    if not isinstance(draft, dict):
+        return result
+    candidates = _lineage_candidates(result, str(draft.get("modelId") or ""))
+    if draft.get("modelRole") == "BASE" and candidates:
+        draft["modelRole"] = "DERIVED"
+        if ROLE_CORRECTED_WARNING not in (result.get("warnings") or []):
+            result["warnings"] = [*(result.get("warnings") or []), ROLE_CORRECTED_WARNING]
+    if context is None or not context.models:
         return result
 
     previous = result.get("catalogLineage") if isinstance(result.get("catalogLineage"), dict) else {}
@@ -705,13 +782,6 @@ def resolve_catalog_lineage(result: dict[str, Any], context: CatalogContext | No
 
     by_id = {model.model_id: model for model in context.models}
     by_folded = {model.model_id.casefold(): model for model in context.models}
-    own_id = str(draft.get("modelId") or "")
-    candidates = [
-        item for item in (result.get("parentCandidates") or [])
-        if isinstance(item, dict) and item.get("modelId") and item.get("relationshipType")
-        and str(item["modelId"]).casefold() != own_id.casefold()
-    ]
-    candidates.sort(key=lambda item: _CONFIDENCE_RANK.get(item.get("confidence"), len(_CONFIDENCE_RANK)))
 
     notes: list[str] = []
     parent: CatalogModel | None = None
@@ -933,15 +1003,18 @@ Merge rules:
      when the family is listed there, otherwise keep the key both inputs agree on. The family is
      the one of the lineage root: when a parent candidate is listed in the catalog context, use
      that model's family rather than a family named after the intermediate parent.
-   - modelRole follows the definitions in the schema; when the inputs disagree, prefer the input
-     whose lineage evidence is stronger.
+   - modelRole follows the definitions in the schema and is decided by lineage: DERIVED whenever
+     either input names a parent (a parent candidate, or an aibom transformation input with role
+     `base` / `merge_source`), even for the family developer's official checkpoints; BASE only
+     when neither input names one.
 3. Take a value from one input unchanged; never average, reformat, or invent. The only field you
    may compose from both inputs is description, which should mention the paper identifier when the
    paper input provides one.
 4. If both inputs are empty for a field, output null and mark the decision `none`.
 5. Every field of the draft object needs exactly one fieldDecisions entry with the exact field name.
 6. parentCandidates: union of both inputs, deduplicated by modelId and relationshipType, keeping
-   the higher confidence and merging evidenceUrls. Empty for the BASE role.
+   the higher confidence and merging evidenceUrls. Empty only when neither input names a parent
+   (the BASE role).
 7. warnings: keep every input warning that still applies after merging, add one Korean sentence for
    each field where the inputs conflicted, and note when one input was missing or not_found.
 8. AIBOM (`aibom`): merge the two input AIBOMs area by area and record one areaDecisions entry per
