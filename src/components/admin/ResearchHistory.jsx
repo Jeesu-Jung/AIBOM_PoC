@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { assignResearchRuns, createReviewer, deleteResearchRun, deleteReviewer, distributeResearchRuns, fetchResearchRun, fetchResearchRuns, fetchReviewers, updateReviewer } from "../../api/admin.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { assignResearchRuns, createReviewer, deleteResearchRun, deleteReviewer, distributeResearchRuns, fetchResearchRun, fetchResearchRunPage, fetchResearchRuns, fetchReviewers, previewAssignRuns, updateReviewer } from "../../api/admin.js";
 import { aibomDraftToView } from "../../domain/aibomView.js";
 import { historyFields } from "../../constants/researchFields.js";
 import { downloadJson, jsonFilename } from "../../utils/download.js";
@@ -194,68 +194,108 @@ function ReviewerManager({ reviewers, onChange, onError }) {
   </section>;
 }
 
+const PAGE_SIZE = 100;   // runs per request; the next page loads when the end of the list scrolls into view
+const MAX_ASSIGN = 500;  // run ids the assign API takes in one call
+const NO_COUNTS = { all: 0, pending: 0, saved: 0, unassigned: 0 };
+
+/** End of a paged list: asks for the next page once it scrolls into view. */
+function LoadMore({ hasMore, loading, shown, total, onLoad }) {
+  const ref = useRef(null);
+  const load = useRef(onLoad);
+  load.current = onLoad;
+  // Re-observed after every page, so a list that still does not fill the screen keeps loading.
+  useEffect(() => {
+    if (!hasMore || !ref.current) return undefined;
+    const observer = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) load.current(); }, { rootMargin: "200px" });
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [hasMore, shown]);
+  if (!hasMore) return total > PAGE_SIZE ? <p className="research-load-more">{total.toLocaleString()}건을 모두 불러왔습니다.</p> : null;
+  return <p className="research-load-more" ref={ref}>{shown.toLocaleString()} / {total.toLocaleString()}건 ·{" "}
+    {loading ? "더 불러오는 중..." : <button type="button" onClick={onLoad}>더 불러오기</button>}</p>;
+}
+
 /**
  * The research history as its own page (/admin/research). Every run is listed with whether a
  * human reviewed and saved it; a run that is only cached can be opened straight in the editor.
  * Review work is shared between reviewers: runs are assigned by hand or distributed evenly, and
  * the list can be narrowed to one reviewer's runs.
+ * The list is filtered and paged on the server (PAGE_SIZE runs at a time).
  */
 export default function ResearchHistoryPage() {
   const params = new URLSearchParams(window.location.search);
-  const [runs, setRuns] = useState(null);
+  const [runs, setRuns] = useState(null); // the pages loaded so far under the current filter
+  const [page, setPage] = useState({ total: 0, nextOffset: null, counts: NO_COUNTS, stats: NO_COUNTS });
+  const [loadingMore, setLoadingMore] = useState(false);
   const [reviewers, setReviewers] = useState([]);
   const [view, setView] = useState(params.get("view") === "manage" ? "manage" : "review");
   const managing = view === "manage";
   const [searchBy, setSearchBy] = useState("model"); // model: requested / result model name, id: run number
   const [query, setQuery] = useState("");
+  const [search, setSearch] = useState(""); // `query` once typing pauses: what the server is asked for
   const [status, setStatus] = useState(FILTERS.some(([key]) => key === params.get("status")) ? params.get("status") : "all");
   const [reviewerFilter, setReviewerFilter] = useState(params.get("reviewer") || "all"); // all | none | reviewer id
   const [selectedId, setSelectedId] = useState(Number(params.get("run")) || null);
   const [checked, setChecked] = useState(() => new Set());
   const [assignTo, setAssignTo] = useState("");
   const [rangeText, setRangeText] = useState("");
+  const [rangePreview, setRangePreview] = useState(null); // { found, pending } of the typed id range
   const [detail, setDetail] = useState(null);
   const [tab, setTab] = useState("merged");
   const [error, setError] = useState(null);
   const [message, setMessage] = useState(null);
 
-  const loadRuns = () => fetchResearchRuns({ limit: 500 }).then(setRuns).catch((err) => setError(err.message));
   const loadReviewers = () => fetchReviewers().then(setReviewers).catch((err) => setError(err.message));
-  useEffect(() => { loadRuns(); loadReviewers(); }, []);
+  useEffect(() => { loadReviewers(); }, []);
   const activeReviewers = reviewers; // the API lists only reviewers that can be given work
 
-  // The reviewer filter follows the run's current owner: the assignee while pending, the reviewer once saved.
-  const ownerId = (run) => (run.reviewStatus === "saved" ? run.reviewedById : run.reviewerId);
-  const matchesReviewer = (run) => reviewerFilter === "all"
-    || (reviewerFilter === UNASSIGNED ? ownerId(run) == null : String(ownerId(run)) === reviewerFilter);
-  // The reviewer filter is the outermost one: the status tabs and their counts work inside it.
-  const ownedRuns = useMemo(() => (runs || []).filter(matchesReviewer), [runs, reviewerFilter]);
-  const visibleRuns = useMemo(() => {
-    const text = query.trim().toLowerCase();
-    const matchesQuery = (run) => !text || (searchBy === "id"
-      ? String(run.runId) === text.replace(/^#/, "")
-      : `${run.modelName} ${run.resultModelId || ""} ${run.modelId || ""}`.toLowerCase().includes(text));
-    // Only pending runs can be handed out, so the manage view lists just those.
-    const wanted = managing ? "pending" : status;
-    return ownedRuns.filter((run) => (wanted === "all" || run.reviewStatus === wanted) && matchesQuery(run));
-  }, [ownedRuns, query, searchBy, status, managing]);
-  const tabCounts = useMemo(() => ({
-    all: ownedRuns.length,
-    pending: ownedRuns.filter((run) => run.reviewStatus === "pending").length,
-    saved: ownedRuns.filter((run) => run.reviewStatus === "saved").length
-  }), [ownedRuns]);
-  const counts = useMemo(() => ({
-    all: runs?.length || 0,
-    pending: (runs || []).filter((run) => run.reviewStatus === "pending").length,
-    saved: (runs || []).filter((run) => run.reviewStatus === "saved").length,
-    unassigned: (runs || []).filter((run) => run.reviewStatus === "pending" && run.reviewerId == null).length
-  }), [runs]);
-
-  // Keep a run selected that is visible under the current filter.
   useEffect(() => {
-    if (!runs || managing) return;
-    if (!visibleRuns.some((run) => run.runId === selectedId)) setSelectedId(visibleRuns[0]?.runId ?? null);
-  }, [runs, visibleRuns, selectedId, managing]);
+    const timer = setTimeout(() => setSearch(query.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+  // Only pending runs can be handed out, so the manage view lists just those.
+  const listStatus = managing ? "pending" : status;
+  const ticket = useRef(0);            // the newest list request wins
+  const reloading = useRef(false);     // a first-page load is running: no "next page" meanwhile
+  const keepSelection = useRef(true);  // keep the selected run even when the loaded pages do not hold it (?run= link)
+
+  /** Load from `offset`: 0 replaces the list (`limit` re-reads what is on screen), otherwise appends. */
+  async function loadRuns({ offset = 0, limit = PAGE_SIZE, keep = true } = {}) {
+    const mine = ++ticket.current;
+    if (!offset) reloading.current = true;
+    try {
+      const data = await fetchResearchRunPage({ status: listStatus, reviewer: reviewerFilter, query: search, searchBy, offset, limit });
+      if (mine !== ticket.current) return;
+      setRuns((current) => {
+        if (!offset) return data.items;
+        const loaded = new Set((current || []).map((run) => run.runId)); // a run saved meanwhile shifts the pages
+        return [...(current || []), ...data.items.filter((run) => !loaded.has(run.runId))];
+      });
+      setPage({ total: data.total, nextOffset: data.nextOffset, counts: data.counts, stats: data.stats });
+      if (!offset && !managing) {
+        setSelectedId((current) => (current != null && (keep || data.items.some((run) => run.runId === current))
+          ? current : data.items[0]?.runId ?? null));
+      }
+    } catch (err) {
+      if (mine === ticket.current) setError(err.message);
+    } finally {
+      if (mine === ticket.current) reloading.current = false;
+    }
+  }
+  // A changed filter starts again from the first page.
+  useEffect(() => {
+    loadRuns({ keep: keepSelection.current });
+    keepSelection.current = false;
+  }, [listStatus, reviewerFilter, search, searchBy]);
+  async function loadMore() {
+    if (page.nextOffset == null || loadingMore || reloading.current) return;
+    setLoadingMore(true);
+    try { await loadRuns({ offset: page.nextOffset }); } finally { setLoadingMore(false); }
+  }
+
+  const visibleRuns = runs || [];
+  const counts = page.stats;      // every stored run
+  const tabCounts = page.counts;  // inside the reviewer filter, which is the outermost one
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -265,12 +305,17 @@ export default function ResearchHistoryPage() {
     if (managing) url.searchParams.set("view", "manage"); else url.searchParams.delete("view");
     window.history.replaceState({}, "", url);
   }, [selectedId, status, reviewerFilter, managing]);
-  const switchView = (next) => { setView(next); setChecked(new Set()); setMessage(null); setError(null); };
-  // The reviewer filter stays as it is unless it would hide the run being opened.
+  const switchView = (next) => {
+    setView(next); setChecked(new Set()); setMessage(null); setError(null);
+    if (next === "review") setSelectedId((current) => current ?? runs?.[0]?.runId ?? null);
+  };
+  // Opens a pending run from the manage view. The reviewer filter stays unless it would hide the run.
   const openRun = (runId) => {
     const run = runs.find((item) => item.runId === runId);
-    if (run && !matchesReviewer(run)) setReviewerFilter("all");
-    setQuery(""); setStatus("all"); setSelectedId(runId); switchView("review");
+    const shown = reviewerFilter === "all" || (reviewerFilter === UNASSIGNED ? run?.reviewerId == null : String(run?.reviewerId) === reviewerFilter);
+    if (!shown) setReviewerFilter("all");
+    keepSelection.current = true;
+    setQuery(""); setSearch(""); setStatus("all"); setSelectedId(runId); switchView("review");
   };
 
   const loadDetail = (runId) => fetchResearchRun(runId);
@@ -289,23 +334,38 @@ export default function ResearchHistoryPage() {
   // Only pending runs can be (re)assigned; saved ones keep who reviewed them.
   const assignable = visibleRuns.filter((run) => run.reviewStatus === "pending");
   const checkedIds = assignable.filter((run) => checked.has(run.runId)).map((run) => run.runId);
-  // Bulk assignment by run id range: every pending run in the range, whatever the list is filtered to.
+  // Bulk assignment by run id range: every pending run in the range, whatever the list is filtered
+  // to or has loaded. The server counts what the range covers.
   const rangeIds = useMemo(() => (rangeText.trim() ? parseRunIdRange(rangeText.trim()) : new Set()), [rangeText]);
-  const rangeRuns = useMemo(() => (rangeIds ? (runs || []).filter((run) => rangeIds.has(run.runId)) : []), [runs, rangeIds]);
-  const rangePendingIds = rangeRuns.filter((run) => run.reviewStatus === "pending").map((run) => run.runId);
+  const rangeList = useMemo(() => (rangeIds ? [...rangeIds] : []), [rangeIds]);
+  const rangeTooLong = rangeList.length > MAX_ASSIGN;
+  useEffect(() => {
+    setRangePreview(null);
+    if (!rangeList.length || rangeTooLong) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => previewAssignRuns(rangeList)
+      .then((data) => { if (!cancelled) setRangePreview(data); })
+      .catch((err) => { if (!cancelled) setError(err.message); }), 300);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [rangeList]);
+  const rangePending = rangePreview?.pending || 0;
   const toggle = (runId) => setChecked((current) => {
     const next = new Set(current);
     if (next.has(runId)) next.delete(runId); else next.add(runId);
     return next;
   });
+  // Re-reads what is on screen in one request, so the scroll position and the loaded pages stay.
   const refresh = async () => {
-    await Promise.all([loadRuns(), loadReviewers()]);
+    await Promise.all([loadRuns({ limit: Math.min(Math.max(runs?.length || 0, PAGE_SIZE), 500) }), loadReviewers()]);
     if (selectedId) loadDetail(selectedId).then(setDetail).catch(() => {});
   };
   async function assign(runIds, reviewerId) {
     setError(null); setMessage(null);
     try {
-      const result = await assignResearchRuns(runIds, reviewerId);
+      const result = { assigned: 0 };
+      for (let start = 0; start < runIds.length; start += MAX_ASSIGN) {
+        result.assigned += (await assignResearchRuns(runIds.slice(start, start + MAX_ASSIGN), reviewerId)).assigned;
+      }
       const name = reviewers.find((reviewer) => reviewer.id === reviewerId)?.name;
       setMessage(reviewerId == null ? `${result.assigned}건의 배정을 해제했습니다.` : `${result.assigned}건을 ${name}에게 배정했습니다.`);
       setChecked(new Set());
@@ -387,19 +447,21 @@ export default function ResearchHistoryPage() {
             <span className="research-assign-or">또는</span>
             <div className="research-range">
               <input value={rangeText} onChange={(event) => setRangeText(event.target.value)} placeholder="실행 ID 범위 (예: 10-25 또는 3, 5, 8-12)" aria-label="배정할 실행 ID 범위" />
-              <button type="button" disabled={!rangePendingIds.length || !assignTo} onClick={() => assign(rangePendingIds, assignTo === UNASSIGNED ? null : Number(assignTo))}>범위 {rangePendingIds.length}건 배정</button>
+              <button type="button" disabled={!rangePending || !assignTo} onClick={() => assign(rangeList, assignTo === UNASSIGNED ? null : Number(assignTo))}>범위 {rangePending}건 배정</button>
             </div>
-            {rangeText.trim() && <small className={`research-range-note${rangeIds ? "" : " is-error"}`}>{!rangeIds
+            {rangeText.trim() && <small className={`research-range-note${rangeIds && !rangeTooLong ? "" : " is-error"}`}>{!rangeIds
               ? "숫자와 범위만 입력할 수 있습니다. 예: 10-25 또는 3, 5, 8-12"
-              : !rangeRuns.length ? "이 범위에 해당하는 조사 실행이 없습니다."
-                : `범위 안의 실행 ${rangeRuns.length}건 중 검토 대기 ${rangePendingIds.length}건이 배정됩니다${rangeRuns.length > rangePendingIds.length ? ` (저장된 ${rangeRuns.length - rangePendingIds.length}건은 제외)` : ""}.${assignTo ? "" : " 작업자를 선택하세요."}`}</small>}
+              : rangeTooLong ? `한 번에 ${MAX_ASSIGN}개 ID까지 배정할 수 있습니다. 범위를 나눠 입력하세요.`
+                : !rangePreview ? "범위를 확인하는 중..."
+                  : !rangePreview.found ? "이 범위에 해당하는 조사 실행이 없습니다."
+                    : `범위 안의 실행 ${rangePreview.found}건 중 검토 대기 ${rangePending}건이 배정됩니다${rangePreview.found > rangePending ? ` (저장된 ${rangePreview.found - rangePending}건은 제외)` : ""}.${assignTo ? "" : " 작업자를 선택하세요."}`}</small>}
           </div>
           {!runs ? <p className="admin-help">불러오는 중...</p> : !visibleRuns.length
             ? <p className="admin-help">{counts.pending ? "조건에 맞는 검토 대기 실행이 없습니다." : "배정할 검토 대기 실행이 없습니다."}</p>
-            : <table className="research-assign-table">
+            : <><table className="research-assign-table">
               <thead><tr>
                 <th><input type="checkbox" checked={checkedIds.length === assignable.length}
-                  onChange={(event) => setChecked(event.target.checked ? new Set(assignable.map((run) => run.runId)) : new Set())} aria-label={`대기 ${assignable.length}건 전체 선택`} /></th>
+                  onChange={(event) => setChecked(event.target.checked ? new Set(assignable.map((run) => run.runId)) : new Set())} aria-label={`불러온 ${assignable.length}건 전체 선택`} title="지금 불러온 행을 모두 선택합니다" /></th>
                 <th>실행</th><th>모델</th><th>조사 시각</th><th>담당</th><th></th>
               </tr></thead>
               <tbody>{visibleRuns.map((run) => <tr key={run.runId} className={checked.has(run.runId) ? "is-checked" : ""}>
@@ -414,7 +476,8 @@ export default function ResearchHistoryPage() {
                 </select></td>
                 <td><button type="button" className="research-assign-open" onClick={() => openRun(run.runId)}>결과 보기 →</button></td>
               </tr>)}</tbody>
-            </table>}
+            </table>
+            <LoadMore hasMore={page.nextOffset != null} loading={loadingMore} shown={visibleRuns.length} total={page.total} onLoad={loadMore} /></>}
         </section>
       </main> : <main className="research-page-body">
         <aside className="research-history-list">
@@ -438,7 +501,7 @@ export default function ResearchHistoryPage() {
           </div>
 
           {!runs ? <p className="admin-help">불러오는 중...</p> : !visibleRuns.length
-            ? <p className="admin-help">{!runs.length ? "아직 AI 조사 실행이 없습니다. 모델 관리의 “+ 새 모델 → AI로 정보 채우기”로 조사하면 여기에 쌓입니다." : status === "pending" ? "조건에 맞는 검토 대기 실행이 없습니다." : "조건에 맞는 조사 실행이 없습니다."}</p> : (
+            ? <p className="admin-help">{!counts.all ? "아직 AI 조사 실행이 없습니다. 모델 관리의 “+ 새 모델 → AI로 정보 채우기”로 조사하면 여기에 쌓입니다." : status === "pending" ? "조건에 맞는 검토 대기 실행이 없습니다." : "조건에 맞는 조사 실행이 없습니다."}</p> : (
               <ul className="research-run-list">{visibleRuns.map((run) => (
                 <li key={run.runId}>
                   <button type="button" className={run.runId === selectedId ? "is-selected" : ""} onClick={() => setSelectedId(run.runId)}>
@@ -450,9 +513,10 @@ export default function ResearchHistoryPage() {
                 </li>
               ))}</ul>
             )}
+          {runs && <LoadMore hasMore={page.nextOffset != null} loading={loadingMore} shown={visibleRuns.length} total={page.total} onLoad={loadMore} />}
         </aside>
         <div className="research-history-detail">
-          {!detail ? <p className="admin-help">{selectedId ? "불러오는 중..." : runs && !runs.length ? "조사 실행이 생기면 여기에서 결과를 확인하고 검토할 수 있습니다." : "왼쪽에서 조사 실행을 선택하세요."}</p> : <>
+          {!detail ? <p className="admin-help">{selectedId ? "불러오는 중..." : runs && !counts.all ? "조사 실행이 생기면 여기에서 결과를 확인하고 검토할 수 있습니다." : "왼쪽에서 조사 실행을 선택하세요."}</p> : <>
             <div className="research-detail-head">
               <div><h3>#{detail.runId} {detail.modelName}</h3>
                 <p><ReviewBadge run={detail} /> {formatDateTime(detail.createdAt)} · 결과 모델 {detail.resultModelId || "-"} · 총 검색 {detail.totalWebSearches ?? "-"} · 총 비용 {formatCost(detail.totalCostUsd)}</p></div>

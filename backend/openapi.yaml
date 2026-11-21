@@ -581,6 +581,55 @@ paths:
         '503':
           $ref: '#/components/responses/DatabaseUnavailable'
 
+  /api/v1/admin/research-runs/page:
+    get:
+      tags: [admin]
+      summary: '[관리자] AI 조사 이력 페이지 조회'
+      description: |
+        AI 조사 이력 화면용 목록입니다. 필터를 서버에서 적용하고 최신 실행부터 `limit` 건씩 반환합니다.
+        `reviewer` 는 `all`, `none`(미배정 / 검토자 기록 없음) 또는 검토 작업자 ID이며, 검토 대기 실행은 담당자,
+        저장된 실행은 검토자를 기준으로 합니다. `counts` 는 `reviewer` 필터 안에서의 상태별 건수,
+        `stats` 는 필터와 무관한 전체 건수입니다. 다음 페이지는 `nextOffset` 을 `offset` 으로 넘겨 조회합니다.
+      operationId: adminPageResearchRuns
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string, enum: [all, pending, saved], default: all } }
+        - { name: reviewer, in: query, required: false, schema: { type: string, default: all } }
+        - { name: query, in: query, required: false, schema: { type: string } }
+        - { name: searchBy, in: query, required: false, schema: { type: string, enum: [model, id], default: model } }
+        - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        '200':
+          description: 조사 실행 요약 한 페이지와 건수
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, offset, nextOffset, counts, stats]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ResearchRun'
+                  total: { type: integer, description: 필터에 맞는 전체 건수 }
+                  offset: { type: integer }
+                  nextOffset: { type: integer, nullable: true, description: 다음 페이지가 없으면 null }
+                  counts:
+                    type: object
+                    properties:
+                      all: { type: integer }
+                      pending: { type: integer }
+                      saved: { type: integer }
+                  stats:
+                    type: object
+                    properties:
+                      all: { type: integer }
+                      pending: { type: integer }
+                      saved: { type: integer }
+                      unassigned: { type: integer }
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
   /api/v1/admin/research-runs/{runId}:
     get:
       tags: [admin]

@@ -80,6 +80,12 @@ export const fetchResearchRuns = ({ modelName, modelId, limit } = {}) => {
   const query = params.toString();
   return request(`/api/v1/admin/research-runs${query ? `?${query}` : ""}`);
 };
+// One page of the research history, filtered on the server: { items, total, nextOffset, counts, stats }.
+export const fetchResearchRunPage = ({ status = "all", reviewer = "all", query = "", searchBy = "model", offset = 0, limit = 100 } = {}) => {
+  const params = new URLSearchParams({ status, reviewer, searchBy, offset: String(offset), limit: String(limit) });
+  if (query) params.set("query", query);
+  return request(`/api/v1/admin/research-runs/page?${params}`);
+};
 // resolve: results placed in the current catalog tree with evidence rows (what the editor needs).
 export const fetchResearchRun = (runId, resolve = false) => request(`/api/v1/admin/research-runs/${runId}${resolve ? "?resolve=true" : ""}`);
 // reviewedBy: reviewer who did the review; null records nobody.
@@ -96,6 +102,10 @@ export const updateReviewer = (reviewerId, reviewer) => request(`/api/v1/admin/r
 export const deleteReviewer = (reviewerId) => request(`/api/v1/admin/reviewers/${reviewerId}`, { method: "DELETE" });
 export const assignResearchRuns = (runIds, reviewerId) => request("/api/v1/admin/research-runs/assign", {
   method: "POST", body: JSON.stringify({ runIds, reviewerId })
+});
+// How many of the ids exist and still wait for review ({ found, pending }); nothing is changed.
+export const previewAssignRuns = (runIds) => request("/api/v1/admin/research-runs/assign", {
+  method: "POST", body: JSON.stringify({ runIds, dryRun: true })
 });
 export const distributeResearchRuns = () => request("/api/v1/admin/research-runs/distribute", { method: "POST" });
 export const deleteResearchRun = (runId) => request(`/api/v1/admin/research-runs/${runId}`, { method: "DELETE" });

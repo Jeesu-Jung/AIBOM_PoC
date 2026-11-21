@@ -12,7 +12,7 @@ from typing import Any, Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from sqlalchemy import delete, select
+from sqlalchemy import case, delete, false, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from .models import ModelInfo, ModelResearchResult, ModelResearchRun, Reviewer
@@ -235,6 +235,63 @@ def list_research_runs(session: Session, model_name: str | None = None, model_id
     return [_add_review_state(_run_to_dict(run, include_results=False), catalog_ids, names) for run in runs[:limit]]
 
 
+def _count_if(condition):
+    return func.coalesce(func.sum(case((condition, 1), else_=0)), 0)
+
+
+def page_research_runs(session: Session, status: str = "all", reviewer: str = "all", query: str | None = None,
+                       search_by: str = "model", offset: int = 0, limit: int = 100) -> dict[str, Any]:
+    """One page of run summaries (newest first) for the research history page.
+
+    `reviewer` is "all", "none" or a reviewer id and follows the run's current owner: the assignee
+    while it waits, the person who reviewed it once saved. `counts` are the status totals inside
+    that reviewer filter (the status tabs); `stats` are the totals of every stored run.
+    """
+    run = ModelResearchRun
+    pending, saved = run.model_id.is_(None), run.model_id.is_not(None)
+    conditions = []
+    if reviewer != "all":
+        owner = case((saved, run.reviewed_by), else_=run.reviewer_id)
+        if reviewer == "none":
+            conditions.append(owner.is_(None))
+        else:
+            conditions.append(owner == int(reviewer) if reviewer.isdigit() else false())
+    counts = session.execute(select(func.count(), _count_if(pending), _count_if(saved)).where(*conditions)).one()
+    stats = session.execute(select(func.count(), _count_if(pending), _count_if(saved),
+                                   _count_if(pending & run.reviewer_id.is_(None)))).one()
+
+    if status in ("pending", "saved"):
+        conditions.append(pending if status == "pending" else saved)
+    text = (query or "").strip()
+    if text and search_by == "id":
+        number = text.lstrip("#")
+        conditions.append(run.id == int(number) if number.isdigit() else false())
+    elif text:
+        escaped = text.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+
+        def contains(column):
+            return func.lower(column).like(pattern, escape="\\")
+        conditions.append(or_(contains(run.requested_model), contains(run.model_id), select(ModelResearchResult.id).where(
+            ModelResearchResult.run_id == run.id, contains(ModelResearchResult.result_model_id)).exists()))
+
+    total = session.scalar(select(func.count()).select_from(run).where(*conditions)) or 0
+    rows = list(session.scalars(_run_query().where(*conditions).order_by(run.created_at.desc(), run.id.desc())
+                                .offset(offset).limit(limit)))
+    catalog_ids = set(session.scalars(select(ModelInfo.model_id)))
+    names = _reviewer_names(session)
+    end = offset + len(rows)
+    return {
+        "items": [_add_review_state(_run_to_dict(row, include_results=False), catalog_ids, names) for row in rows],
+        "total": total,
+        "offset": offset,
+        "nextOffset": end if rows and end < total else None,
+        # int(): MySQL returns SUM() as Decimal
+        "counts": {"all": int(counts[0]), "pending": int(counts[1]), "saved": int(counts[2])},
+        "stats": {"all": int(stats[0]), "pending": int(stats[1]), "saved": int(stats[2]), "unassigned": int(stats[3])},
+    }
+
+
 def get_research_run(session: Session, run_id: int) -> dict[str, Any]:
     run = session.scalar(_run_query().where(ModelResearchRun.id == run_id))
     if run is None:
@@ -282,6 +339,7 @@ class AssignRunsRequest(BaseModel):
 
     run_ids: list[int] = Field(alias="runIds", min_length=1, max_length=500)
     reviewer_id: int | None = Field(default=None, alias="reviewerId", description="null removes the assignment")
+    dry_run: bool = Field(default=False, alias="dryRun", description="Only count what the ids cover; change nothing.")
 
 
 def _pending_load(session: Session) -> dict[int, int]:
@@ -355,7 +413,15 @@ def _active_reviewer(session: Session, reviewer_id: int) -> Reviewer:
 
 
 def assign_runs(session: Session, payload: AssignRunsRequest) -> dict[str, Any]:
-    """Assign runs to a reviewer (or unassign them). Runs that are already saved are left alone."""
+    """Assign runs to a reviewer (or unassign them). Runs that are already saved are left alone.
+
+    A dry run changes nothing and reports how many of the ids exist (`found`) and still wait for
+    review (`pending`), so a range of ids can be previewed without loading those runs.
+    """
+    if payload.dry_run:
+        found, waiting = session.execute(select(func.count(), _count_if(ModelResearchRun.model_id.is_(None)))
+                                         .where(ModelResearchRun.id.in_(payload.run_ids))).one()
+        return {"found": int(found), "pending": int(waiting)}
     if payload.reviewer_id is not None:
         _active_reviewer(session, payload.reviewer_id)
     now = datetime.now(timezone.utc).replace(tzinfo=None)

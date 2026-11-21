@@ -280,3 +280,50 @@ def test_reviewer_endpoints_validate_names_and_targets() -> None:
         assert client.get("/api/v1/admin/reviewers").json()[0]["pendingCount"] == 0
     finally:
         main.app.dependency_overrides.clear()
+
+
+def test_research_run_page_filters_counts_and_pages() -> None:
+    from app.admin import AdminModelWrite, create_admin_model
+    from app.research_store import (AssignRunsRequest, ReviewerWrite, assign_runs, link_research_run,
+                                    page_research_runs, save_reviewer)
+
+    db = session()
+    run_ids = [save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": f"org/model-{index}", "replacePrevious": True,
+        "results": {"merged": result("merged", f"Org/Result_{index}")}}))["runId"] for index in range(5)]
+    kim = save_reviewer(db, ReviewerWrite(name="Kim"))[0]["id"]
+    assign_runs(db, AssignRunsRequest(runIds=run_ids[:3], reviewerId=kim))
+    create_admin_model(db, AdminModelWrite.model_validate({
+        "modelId": "org/model-0", "namespace": "org", "modelName": "model-0", "familyKey": "family",
+        "familyName": "Family", "modelRole": "BASE", "modelUrl": "https://example.test/model", "detailsJson": {}}))
+    link_research_run(db, run_ids[0], "org/model-0")  # saved without a recorded reviewer
+
+    first = page_research_runs(db, limit=2)
+    assert (len(first["items"]), first["total"], first["nextOffset"]) == (2, 5, 2)
+    assert first["stats"] == {"all": 5, "pending": 4, "saved": 1, "unassigned": 2}
+    rest = page_research_runs(db, offset=2, limit=100)
+    assert rest["nextOffset"] is None
+    assert sorted(run["runId"] for run in first["items"] + rest["items"]) == sorted(run_ids)
+
+    # The reviewer filter follows the owner: Kim's two pending runs; the saved one has no reviewer.
+    mine = page_research_runs(db, reviewer=str(kim))
+    assert mine["counts"] == {"all": 2, "pending": 2, "saved": 0}
+    assert page_research_runs(db, reviewer="none")["counts"] == {"all": 3, "pending": 2, "saved": 1}
+    assert page_research_runs(db, reviewer=str(kim), status="saved")["total"] == 0
+    assert [run["runId"] for run in page_research_runs(db, status="saved")["items"]] == [run_ids[0]]
+
+    assert page_research_runs(db, query="MODEL-3")["total"] == 1                  # requested name, any case
+    assert page_research_runs(db, query="result_4")["total"] == 1                 # result model id; _ is literal
+    assert page_research_runs(db, query="result%")["total"] == 0                  # % is literal too
+    assert page_research_runs(db, query=f"#{run_ids[1]}", search_by="id")["items"][0]["runId"] == run_ids[1]
+    assert page_research_runs(db, query="abc", search_by="id")["total"] == 0
+
+    preview = assign_runs(db, AssignRunsRequest(runIds=run_ids + [9999], dryRun=True))
+    assert preview == {"found": 5, "pending": 4}
+
+    main.app.dependency_overrides[get_db] = lambda: db
+    try:
+        page = TestClient(main.app).get("/api/v1/admin/research-runs/page", params={"status": "pending", "limit": 3}).json()
+        assert (len(page["items"]), page["total"], page["nextOffset"]) == (3, 4, 3)
+    finally:
+        main.app.dependency_overrides.clear()

@@ -43,6 +43,7 @@ from .research_store import (
     get_research_run,
     link_research_run,
     list_research_runs,
+    page_research_runs,
     load_research_results,
     save_research_results,
 )
@@ -286,6 +287,18 @@ def admin_research_runs(modelName: str | None = None, modelId: str | None = None
     """Every stored research run (newest first) with per-source summaries."""
     try:
         return list_research_runs(db, model_name=modelName, model_id=modelId, limit=max(1, min(limit, 500)))
+    except SQLAlchemyError as error:
+        raise _database_unavailable() from error
+
+
+@app.get("/api/v1/admin/research-runs/page", tags=["admin"])
+def admin_research_run_page(status: str = "all", reviewer: str = "all", query: str | None = None,
+                            searchBy: str = "model", offset: int = 0, limit: int = 100,
+                            db: Session = Depends(get_db)) -> dict:
+    """One page of research runs for the history page, filtered on the server, with the totals."""
+    try:
+        return page_research_runs(db, status=status, reviewer=reviewer, query=query, search_by=searchBy,
+                                  offset=max(0, offset), limit=max(1, min(limit, 500)))
     except SQLAlchemyError as error:
         raise _database_unavailable() from error
 
