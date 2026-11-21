@@ -16,9 +16,11 @@ class MockBackend:
     """
 
     def __init__(self, script: dict | None = None, delay: float = 0.02, existing: dict | None = None,
-                 max_concurrent: int | None = None):
+                 max_concurrent: int | None = None, delays: dict | None = None):
         self.script = {key: list(value) for key, value in (script or {}).items()}
         self.delay = delay
+        self.delays = delays or {}            # phase -> seconds, instead of `delay`
+        self.timeline: list[tuple[str, str, float, float]] = []  # (model, phase, started, ended) of answered calls
         self.existing = existing or {}        # model name -> run summary returned by research-runs
         self.max_concurrent = max_concurrent  # more concurrent LLM calls than this answer 429
         self.calls: list[tuple[str, str]] = []
@@ -71,6 +73,7 @@ class MockBackend:
                 self.wfile.flush()
 
             def _stream(self, name, phase):
+                started = time.monotonic()
                 with backend.lock:
                     backend.calls.append((name, phase))
                     queue = backend.script.get((name, phase)) or []
@@ -91,12 +94,14 @@ class MockBackend:
                     if outcome == "key":
                         return self._event("error", {"message": "OPENROUTER_API_KEY is not configured."})
                     self._event("status", {"stage": "researching", "message": "..."})
-                    time.sleep(backend.delay)
+                    time.sleep(backend.delays.get(phase, backend.delay))
                     self._event("content", {"delta": "x" * 10, "characters": 10})
                     if outcome == "invalid":
                         return self._event("error", {"message": "OpenRouter returned an invalid draft."})
                     if outcome == "drop":
                         return None
+                    with backend.lock:
+                        backend.timeline.append((name, phase, started, time.monotonic()))
                     self._event("complete", {"result": {
                         "status": "found", "draft": {"modelId": name},
                         "research": {"source": phase, "usage": {"cost": 0.5}}}})

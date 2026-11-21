@@ -59,6 +59,24 @@ class LimiterTests(unittest.TestCase):
         self.assertIsNotNone(limiter.acquire(cancel))  # waits for the cool-down
         self.assertGreaterEqual(time.monotonic() - started, 0.03)
 
+    def test_held_slot_is_not_given_to_waiting_callers(self):
+        limiter = AdaptiveLimiter(1, 1)
+        cancel = threading.Event()
+        token = limiter.acquire(cancel)
+        got = []
+        waiter = threading.Thread(target=lambda: got.append(limiter.acquire(cancel)), daemon=True)
+        waiter.start()
+        limiter.release(token, "ok", hold=True)
+        time.sleep(0.15)
+        self.assertEqual(got, [])  # the slot is still the first caller's
+        self.assertEqual(limiter.snapshot()["inFlight"], 1)
+        limiter.release(limiter.resume_held(cancel), "ok")
+        waiter.join(2)
+        self.assertEqual(len(got), 1)
+        limiter.release(got[0], "ok", hold=True)
+        limiter.release_held()
+        self.assertEqual(limiter.snapshot()["inFlight"], 0)
+
     def test_acquire_stops_when_cancelled(self):
         limiter = AdaptiveLimiter(1, 1)
         cancel = threading.Event()
@@ -100,6 +118,26 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(sorted(task.run_id for task in runner.tasks), [101, 102, 103])
         self.assertAlmostEqual(runner.total_cost(), 4.5)
         self.assertEqual(list((self.work / "results").glob("*.json")), [])  # checkpoints are cleaned up
+
+    def test_merge_starts_as_soon_as_both_research_calls_end(self):
+        # Slow papers: when a model's Hugging Face call ends, its slot goes to another model's research.
+        # The merge must still start the moment the paper ends, not wait behind that other research.
+        names = [f"org/m{index}" for index in range(6)]
+        runner = self.run_batch(names, Options(start_calls=3, max_calls=3, **FAST),
+                                delays={"huggingface": 0.1, "paper": 0.3, "merged": 0.1})
+        self.assertEqual([task.status for task in runner.tasks], [DONE] * 6)
+        self.assertLessEqual(self.backend.peak, 3)
+        self.assertEqual(runner.limiter.snapshot()["inFlight"], 0)
+        for name in names:
+            calls = {phase: (started, ended) for model, phase, started, ended in self.backend.timeline if model == name}
+            waited = calls["merged"][0] - max(calls["huggingface"][1], calls["paper"][1])
+            self.assertLess(waited, 0.08, f"{name}: merge waited {waited:.2f}s for a slot")
+
+    def test_held_slot_is_freed_when_the_other_research_fails(self):
+        runner = self.run_batch(["org/a", "org/b"], Options(start_calls=2, max_calls=2, max_attempts=1, **FAST),
+                                script={("org/a", "paper"): [500]}, delays={"huggingface": 0.2, "paper": 0.02})
+        self.assertEqual([task.status for task in runner.tasks], [FAILED, DONE])
+        self.assertEqual(runner.limiter.snapshot()["inFlight"], 0)
 
     def test_rate_limit_and_temporary_errors_are_retried(self):
         runner = self.run_batch(["org/a", "org/b"], script={

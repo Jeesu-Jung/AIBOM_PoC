@@ -63,11 +63,16 @@ class AdaptiveLimiter:
                     self._priority_waiting -= 1
                     self._cond.notify_all()
 
-    def release(self, token: float, outcome: str) -> None:
-        """`outcome`: "ok", "rate_limit", or anything else (no effect on the limit)."""
+    def release(self, token: float, outcome: str, hold: bool = False) -> None:
+        """`outcome`: "ok", "rate_limit", or anything else (no effect on the limit).
+
+        `hold` keeps the slot for the caller's next call instead of freeing it: continue with
+        `resume_held`, or give it back with `release_held`.
+        """
         with self._cond:
             now = time.monotonic()
-            self._in_flight -= 1
+            if not hold:
+                self._in_flight -= 1
             if outcome == "ok":
                 if token >= self._last_cut:
                     self._strikes = 0
@@ -87,6 +92,25 @@ class AdaptiveLimiter:
                     self._last_cut = self._ceiling_at = now
                     pause = min(self._max_cooldown, self._cooldown * 2 ** (self._strikes - 1))
                     self._resume_at = max(self._resume_at, now + pause)
+            self._cond.notify_all()
+
+    def resume_held(self, cancel: threading.Event) -> float | None:
+        """Start the next call in a slot kept by `release(hold=True)`. It never queues behind other
+        callers; it only waits out a 429 cool-down. Returns None (slot freed) when cancelled."""
+        with self._cond:
+            while not cancel.is_set():
+                now = time.monotonic()
+                if now >= self._resume_at:
+                    return now
+                self._cond.wait(min(0.5, max(0.05, self._resume_at - now)))
+            self._in_flight -= 1
+            self._cond.notify_all()
+            return None
+
+    def release_held(self) -> None:
+        """Free a slot kept by `release(hold=True)` that will not be used after all."""
+        with self._cond:
+            self._in_flight -= 1
             self._cond.notify_all()
 
     def _recover_ceiling(self, now: float) -> None:

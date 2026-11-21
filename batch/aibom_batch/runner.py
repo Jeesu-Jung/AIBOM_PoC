@@ -2,7 +2,7 @@
 
 Per model, the same calls the admin UI makes:
   1. research stream x2 (huggingface, paper) in parallel
-  2. merge stream with both results
+  2. merge stream with both results, started at once in the slot of the research call that ended last
   3. one save of all three results as a new run -> the run shows up as "검토 대기"
 
 The save happens once, after the merge, so a run without a merged result is never stored.
@@ -256,36 +256,52 @@ class BatchRunner:
         self._update(task, cost=sum(_result_cost(results[phase]) for phase in PHASES))
 
         errors: dict[str, BaseException] = {}
+        outstanding = {source for source in SOURCES if not results[source]}
+        slot = {"held": False}
+
+        def hold_for_merge(source: str) -> bool:
+            """Called when a research call succeeds. The one that ends last keeps its slot for the merge,
+            so a model whose research is done is merged before the slot goes to another model."""
+            with self._lock:
+                outstanding.discard(source)
+                slot["held"] = not outstanding and not errors and not results["merged"]
+                return slot["held"]
 
         def research(source: str) -> None:
             if results[source]:
                 return
             try:
                 results[source] = self._call(task, source, lambda on_event: self.client.research(
-                    task.name, source, on_event, self.cancel))
+                    task.name, source, on_event, self.cancel), hold=lambda: hold_for_merge(source))
                 self._checkpoint(task, results)
                 self._update(task, cost=sum(_result_cost(results[phase]) for phase in PHASES))
             except BaseException as error:  # noqa: BLE001 - reported by the worker below
-                errors[source] = error
+                with self._lock:
+                    errors[source] = error
 
-        paper = threading.Thread(target=research, args=("paper",), daemon=True)
-        paper.start()
-        research("huggingface")
-        paper.join()
-        if errors:
-            ranked = sorted(errors.items(), key=lambda item: (
-                0 if isinstance(item[1], ApiError) and item[1].kind == FATAL else
-                1 if isinstance(item[1], Cancelled) else 2))
-            source, error = ranked[0]
-            if isinstance(error, ApiError):
-                raise ApiError(f"{PHASE_LABELS[source]} 조사 실패: {error}", error.kind, error.status)
-            raise error
+        try:
+            paper = threading.Thread(target=research, args=("paper",), daemon=True)
+            paper.start()
+            research("huggingface")
+            paper.join()
+            if errors:
+                ranked = sorted(errors.items(), key=lambda item: (
+                    0 if isinstance(item[1], ApiError) and item[1].kind == FATAL else
+                    1 if isinstance(item[1], Cancelled) else 2))
+                source, error = ranked[0]
+                if isinstance(error, ApiError):
+                    raise ApiError(f"{PHASE_LABELS[source]} 조사 실패: {error}", error.kind, error.status)
+                raise error
 
-        if not results["merged"]:
-            self._update(task, status=MERGING)
-            results["merged"] = self._call(task, "merged", lambda on_event: self.client.merge(
-                task.name, {source: results[source] for source in SOURCES}, on_event, self.cancel))
-            self._checkpoint(task, results)
+            if not results["merged"]:
+                self._update(task, status=MERGING)
+                held, slot["held"] = slot["held"], False  # from here the merge call owns the slot
+                results["merged"] = self._call(task, "merged", lambda on_event: self.client.merge(
+                    task.name, {source: results[source] for source in SOURCES}, on_event, self.cancel), held=held)
+                self._checkpoint(task, results)
+        finally:
+            if slot["held"]:  # research failed after the other call kept its slot
+                self.limiter.release_held()
 
         self._update(task, status=SAVING)
         saved_run = self._request(lambda: self.client.save_results(task.name, results, replace_previous=True))
@@ -298,8 +314,12 @@ class BatchRunner:
             self._session_done += 1
         self.log(f"✓ {task.name}: AI 조사 #{task.run_id} 검토 대기로 저장 (${cost:.2f}, {task.finished - task.started:.0f}초)")
 
-    def _call(self, task: Task, phase: str, send) -> dict:
-        """One LLM call through the limiter, retried on rate limits and temporary errors."""
+    def _call(self, task: Task, phase: str, send, hold=None, held: bool = False) -> dict:
+        """One LLM call through the limiter, retried on rate limits and temporary errors.
+
+        `held`: the first attempt runs in a slot the model already holds instead of queueing.
+        `hold`: asked when the call succeeds; True keeps the slot for the model's next call.
+        """
         def on_event(event: str, data: dict) -> None:
             if event == "content" and isinstance(data.get("characters"), int):
                 self._update(task, phase, f"작성 중 {data['characters']:,}자")
@@ -310,8 +330,12 @@ class BatchRunner:
 
         attempts = rate_limited = 0
         while True:
-            self._update(task, phase, "순서 대기")
-            token = self.limiter.acquire(self.cancel, priority=phase == "merged")
+            if held:
+                held = False
+                token = self.limiter.resume_held(self.cancel)
+            else:
+                self._update(task, phase, "순서 대기")
+                token = self.limiter.acquire(self.cancel, priority=phase == "merged")
             if token is None:
                 raise Cancelled()
             self._update(task, phase, "요청 중")
@@ -324,7 +348,7 @@ class BatchRunner:
                 if error.kind == RATE_LIMIT:
                     outcome = RATE_LIMIT
             finally:
-                self.limiter.release(token, outcome)
+                self.limiter.release(token, outcome, hold=outcome == "ok" and hold is not None and hold())
             if outcome == "ok":
                 self._update(task, phase, "완료")
                 return result
