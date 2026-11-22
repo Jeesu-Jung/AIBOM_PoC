@@ -135,6 +135,8 @@ def test_openrouter_payload_switches_to_paper_strategy() -> None:
     assert "HUGGING FACE REPOSITORY" not in system_prompt
     assert "arXiv" in system_prompt
     assert "official paper or technical report" in payload["messages"][1]["content"]
+    assert "such as a Hugging Face model README" in system_prompt
+    assert "Hugging Face model README" not in build_openrouter_payload("org/model")["messages"][0]["content"]
     assert payload["response_format"]["json_schema"]["schema"] == build_openrouter_payload("org/model")["response_format"]["json_schema"]["schema"]
 
 
@@ -843,3 +845,14 @@ def test_stream_reads_the_repository_for_the_huggingface_strategy_only(monkeypat
 
     assert "Repository facts read directly from huggingface.co" in prompts[0]
     assert "Repository facts" not in prompts[1]
+
+
+def test_paper_not_found_warns_about_the_missing_paper_not_the_model() -> None:
+    content = research_content()
+    content["status"] = "not_found"
+
+    paper = parse_openrouter_response({"choices": [{"message": {"content": json.dumps(content)}}]}, source="paper")
+    repository = parse_openrouter_response({"choices": [{"message": {"content": json.dumps(content)}}]})
+
+    assert paper["warnings"][0] == research.PAPER_NOT_FOUND_WARNING
+    assert repository["warnings"][0] == research.STATUS_WARNINGS["not_found"]
