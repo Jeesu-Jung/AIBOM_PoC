@@ -12,9 +12,11 @@ ALTER TABLE model_research_result
   ADD COLUMN family_name VARCHAR(255) NULL COMMENT 'draft.familyName of the result' AFTER result_model_id,
   ADD COLUMN parent_model_id VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL COMMENT 'draft.parentModelId of the result' AFTER family_name;
 
--- Results stored before this migration.
+-- Results stored before this migration. `WHERE id > 0` covers every row and keeps MySQL
+-- Workbench's safe update mode (error 1175) from refusing the statement.
 UPDATE model_research_result
 SET family_name = CASE WHEN JSON_TYPE(JSON_EXTRACT(result_json, '$.draft.familyName')) = 'STRING'
                        THEN NULLIF(LEFT(TRIM(JSON_UNQUOTE(JSON_EXTRACT(result_json, '$.draft.familyName'))), 255), '') END,
     parent_model_id = CASE WHEN JSON_TYPE(JSON_EXTRACT(result_json, '$.draft.parentModelId')) = 'STRING'
-                           THEN NULLIF(LEFT(TRIM(JSON_UNQUOTE(JSON_EXTRACT(result_json, '$.draft.parentModelId'))), 512), '') END;
+                           THEN NULLIF(LEFT(TRIM(JSON_UNQUOTE(JSON_EXTRACT(result_json, '$.draft.parentModelId'))), 512), '') END
+WHERE id > 0;
