@@ -591,8 +591,8 @@ paths:
       description: |
         AI 조사 이력 화면용 목록입니다. 필터를 서버에서 적용하고 최신 실행부터 `limit` 건씩 반환합니다.
         `reviewer` 는 `all`, `none`(미배정 / 검토자 기록 없음) 또는 검토 작업자 ID이며, 검토 대기 실행은 담당자,
-        저장된 실행은 검토자를 기준으로 합니다. `family` 는 family name(대소문자 무시, 일치), `parent` 는 parent 모델 ID의
-        일부이고 병합 결과가 있으면 병합 결과, 없으면 다른 결과의 값을 봅니다. `verified=true` 는 Hugging Face · 논문 ·
+        저장된 실행은 검토자를 기준으로 합니다. `family` 는 family name(대소문자 무시, 일치), `parent` 는 parent 모델 ID이며
+        저장된 ID와 정확히 같으면 그 ID만, 아니면 ID의 일부로 찾고, 병합 결과가 있으면 병합 결과, 없으면 다른 결과의 값을 봅니다. `verified=true` 는 Hugging Face · 논문 ·
         병합 결과가 모두 `found` 인 실행만 남깁니다. `counts` 는 `reviewer` · `label` · `family` · `parent` · `verified` 필터 안에서의 상태별 건수,
         `stats` 는 필터와 무관한 전체 건수입니다. 다음 페이지는 `nextOffset` 을 `offset` 으로 넘겨 조회합니다.
       operationId: adminPageResearchRuns

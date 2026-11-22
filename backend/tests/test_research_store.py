@@ -338,7 +338,7 @@ def test_research_run_page_filters_counts_and_pages() -> None:
 
 
 def test_research_run_page_filters_by_family_parent_and_verified_sources() -> None:
-    from app.research_store import page_research_runs, research_filter_options
+    from app.research_store import delete_research_run, page_research_runs, research_filter_options
 
     def stored(source: str, family: str | None, parent: str | None, status: str = "found") -> dict:
         data = result(source)
@@ -365,6 +365,11 @@ def test_research_run_page_filters_by_family_parent_and_verified_sources() -> No
     assert ids(family="Llama 3") == []                      # a family is matched whole
     assert ids(parent="base_a") == [full]                   # part of the id, any case; _ is literal
     assert ids(parent="base") == [full, mixed]
+    longer = save("org/longer", merged=stored("merged", "Llama 3.1", "meta/Base_A-Instruct"))
+    assert ids(parent="META/base_a") == [full]              # a whole id leaves out the ids that only start with it
+    assert ids(parent="base_a") == [full, longer]
+    assert ids(parent="base") == [full, mixed, longer]
+    delete_research_run(db, longer)
     assert ids(verified=True) == [full]
     assert ids(family="qwen2.5", verified=True) == []
     assert page_research_runs(db, family="Qwen2.5")["counts"] == {"all": 1, "pending": 1, "saved": 0}

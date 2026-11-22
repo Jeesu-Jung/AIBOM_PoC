@@ -314,7 +314,7 @@ def page_research_runs(session: Session, status: str = "all", reviewer: str = "a
     while it waits, the person who reviewed it once saved. `counts` are the status totals inside
     that reviewer filter (the status tabs); `stats` are the totals of every stored run.
 
-    `family` is a family name (any case), `parent` a part of the parent model id, and `verified`
+    `family` is a family name (any case), `parent` a parent model id or a part of one, and `verified`
     keeps the runs whose Hugging Face, paper and merged results were all found. They apply to
     `counts` too.
     """
@@ -333,7 +333,11 @@ def page_research_runs(session: Session, status: str = "all", reviewer: str = "a
     if (family or "").strip():
         conditions.append(_shown_result(func.lower(ModelResearchResult.family_name) == family.strip().lower()))
     if (parent or "").strip():
-        conditions.append(_shown_result(_like(ModelResearchResult.parent_model_id, parent.strip())))
+        # A whole parent id (picked from the list) is matched as it is, so "…-8B" leaves out
+        # "…-8B-Instruct"; anything else is taken as a part of the id.
+        whole = func.lower(ModelResearchResult.parent_model_id) == parent.strip().lower()
+        known = session.scalar(select(ModelResearchResult.id).where(whole).limit(1)) is not None
+        conditions.append(_shown_result(whole if known else _like(ModelResearchResult.parent_model_id, parent.strip())))
     if verified:
         conditions.append(select(func.count()).where(
             ModelResearchResult.run_id == run.id, ModelResearchResult.status == "found",
