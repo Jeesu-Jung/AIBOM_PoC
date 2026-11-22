@@ -455,6 +455,8 @@ SOURCE_PROMPTS: dict[str, str] = {
   developer's own blog or report page. Search with the model name plus `arXiv`, `technical report`,
   or `paper`. Prefer the latest version of the paper by the model's own authors; treat third-party
   papers that merely evaluate the model as corroborating sources only.
+- Do not reference pages that are neither in the form of a paper nor a description of a paper,
+  such as a Hugging Face model README.
 - From the paper derive: familyName, primaryPurpose, aibom.model.release_date (the release date of
   the requested model that the paper or its official announcement states; the first arXiv
   submission date when the paper introduces exactly this model), and lineage (which base model or prior version the paper says it was trained,
@@ -774,6 +776,9 @@ STATUS_WARNINGS = {
     "not_found": "신뢰할 수 있는 출처에서 요청한 모델을 찾지 못했습니다. 초안 값은 채워지지 않았습니다.",
 }
 
+# The paper strategy reads papers only, so its `not_found` says nothing about the repository.
+PAPER_NOT_FOUND_WARNING = "이 모델을 소개하는 논문이나 기술 보고서를 찾지 못했습니다. 논문 조사 초안 값은 채워지지 않았습니다."
+
 
 FAMILY_FIELDS: tuple[str, ...] = ("familyKey", "familyName")
 # Draft fields of results stored before the family developer / release date / license were dropped (sql/012).
@@ -970,7 +975,9 @@ def parse_openrouter_response(
     })
 
     warnings: list[str] = []
-    if content.status in STATUS_WARNINGS:
+    if source == "paper" and content.status == "not_found":
+        warnings.append(PAPER_NOT_FOUND_WARNING)
+    elif content.status in STATUS_WARNINGS:
         warnings.append(STATUS_WARNINGS[content.status])
     warnings.extend(context.warnings if context else ())
     warnings.extend(content.warnings)
