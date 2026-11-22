@@ -429,6 +429,9 @@ paths:
         OpenRouter(웹 검색 도구 포함)를 호출해 모델 메타데이터 초안과 근거(evidence) 맵을 **Server-Sent Events** 로 스트리밍합니다.
         **DB에는 쓰지 않고 읽기만 합니다.** 프롬프트에 기존 카탈로그의 `familyKey`/`familyName` 목록, `relationshipType` 어휘, 모델 ID 목록을 주입해
         초안이 기존 식별자를 재사용하도록 합니다. DB를 읽지 못하면 컨텍스트 없이 조사하고 `warnings` 에 한국어 경고를 추가합니다.
+        `source: huggingface` 이고 `modelName` 이 `namespace/model-name`(또는 Hugging Face URL)이면 서버가 먼저 `huggingface.co` 에서
+        저장소의 API 레코드, `README.md`, `config.json` 을 직접 읽어 프롬프트에 넣습니다. 웹 검색 색인에 없는 저장소도 `not_found` 가 되지 않게 하기 위한 것이며,
+        저장소를 읽지 못하면(404, 429, 시간 초과) 웹 검색만으로 조사합니다. 결과의 `research.repositoryFetched` 로 확인할 수 있습니다.
         `complete` 이벤트의 `result.draft` 는 `AdminModelWrite` 와 호환되며, 검토 후 `POST /api/v1/admin/models` 에 그대로 사용할 수 있습니다.
         `bomFormat`/`bomSpecVersion`/`bomSerialNumber`/`bomVersion` 은 웹 조사 대상이 아니므로 서버가 항상 `null` 로 채웁니다.
         `result.status` 가 `ambiguous` 또는 `not_found` 이면 `warnings` 첫 항목에 그 사유가 들어가고, `not_found` 인 초안은 식별자 외 값이 모두 `null` 입니다.
@@ -1539,6 +1542,9 @@ components:
         webSearchRequests:
           type: [integer, 'null']
           description: '`usage.server_tool_use.web_search_requests`'
+        repositoryFetched:
+          type: boolean
+          description: 서버가 Hugging Face 저장소(API 레코드, README, config.json)를 직접 읽어 프롬프트에 넣었는지 여부. `huggingface` 조사에서 요청이 `namespace/model-name` 형식이고 저장소를 읽을 수 있을 때만 `true`
         usage:
           type: object
           additionalProperties: true

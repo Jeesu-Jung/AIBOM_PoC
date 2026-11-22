@@ -711,3 +711,135 @@ def test_stream_completion_measures_the_openrouter_call(monkeypatch) -> None:
     assert "responseCharacters" not in metrics
     assert metrics["contentCharacters"] == 5  # "ab" + "cde": the generated answer only
     assert isinstance(metrics["responseTimeMs"], int) and metrics["responseTimeMs"] >= 0
+
+
+def _huggingface_transport(routes: dict[str, tuple[int, object]], seen: list[str] | None = None):
+    """httpx transport answering huggingface.co paths from `routes`; unknown paths are 404."""
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if seen is not None:
+            seen.append(request.url.path)
+        status_code, body = routes.get(request.url.path, (404, "Not Found"))
+        return httpx.Response(status_code, json=body) if isinstance(body, dict) else httpx.Response(status_code, text=body)
+
+    return httpx.MockTransport(handler)
+
+
+def _fetch_repository_facts(monkeypatch, model_name: str, routes: dict, seen: list[str] | None = None) -> str | None:
+    import asyncio
+
+    import httpx
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(research.httpx, "AsyncClient", lambda **kwargs: real_client(
+        transport=_huggingface_transport(routes, seen), **kwargs))
+    return asyncio.run(research.fetch_repository_facts(model_name))
+
+
+REPOSITORY_ROUTES = {
+    "/api/models/org/model": (200, {
+        "id": "Org/Model", "sha": "003b99eb0000", "createdAt": "2025-01-13T23:47:25.000Z", "gated": False,
+        "cardData": {"base_model": "meta-llama/Llama-3.1-8B-Instruct", "license": "llama3.1"},
+        "safetensors": {"parameters": {"BF16": 8030261248}, "total": 8030261248},
+        "siblings": [{"rfilename": "README.md"}, {"rfilename": "model.safetensors"}],
+        "downloads": 8,
+    }),
+    "/Org/Model/raw/main/README.md": (200, "---\nbase_model: meta-llama/Llama-3.1-8B-Instruct\n---\n# Model"),
+    "/Org/Model/raw/main/config.json": (200, '{"num_hidden_layers": 32}'),
+}
+
+
+def test_repository_facts_carry_the_api_record_card_and_config(monkeypatch) -> None:
+    facts = _fetch_repository_facts(monkeypatch, "https://huggingface.co/org/model", REPOSITORY_ROUTES)
+
+    assert "https://huggingface.co/api/models/Org/Model" in facts  # canonical id from the API record
+    assert '"sha": "003b99eb0000"' in facts and '"total": 8030261248' in facts
+    assert '"files": ["README.md", "model.safetensors"]' in facts
+    assert "downloads" not in facts
+    assert '<file name="README.md">\n---\nbase_model: meta-llama/Llama-3.1-8B-Instruct' in facts
+    assert '<file name="config.json">\n{"num_hidden_layers": 32}' in facts
+    assert "You must still use web search" in facts
+
+    payload = build_openrouter_payload("org/model", repository_facts=facts)
+    assert payload["messages"][1]["content"].endswith(facts)
+    assert payload["tools"][0]["type"] == "openrouter:web_search"  # the search stays on
+    assert "Repository facts" not in build_openrouter_payload("org/model")["messages"][1]["content"]
+
+
+def test_repository_facts_of_a_gated_repository_keep_the_api_record(monkeypatch) -> None:
+    routes = {**REPOSITORY_ROUTES, "/Org/Model/raw/main/README.md": (401, "Access restricted"),
+              "/Org/Model/raw/main/config.json": (401, "Access restricted")}
+
+    facts = _fetch_repository_facts(monkeypatch, "org/model", routes)
+
+    assert '"sha": "003b99eb0000"' in facts
+    assert "- README.md: not readable without authentication or missing (HTTP 401)." in facts
+    assert "<file" not in facts
+
+
+def test_repository_facts_cut_a_long_model_card(monkeypatch) -> None:
+    limit = dict(research.REPOSITORY_FILE_LIMITS)["README.md"]
+    routes = {**REPOSITORY_ROUTES, "/Org/Model/raw/main/README.md": (200, "a" * (limit + 500))}
+
+    facts = _fetch_repository_facts(monkeypatch, "org/model", routes)
+
+    assert "a" * limit + "\n[truncated]\n</file>" in facts
+    assert "a" * (limit + 1) not in facts
+
+
+@pytest.mark.parametrize("status_code", [404, 429, 500])
+def test_repository_facts_are_skipped_when_the_repository_cannot_be_read(monkeypatch, status_code) -> None:
+    routes = {"/api/models/org/model": (status_code, "error")}
+
+    assert _fetch_repository_facts(monkeypatch, "org/model", routes) is None
+
+
+def test_repository_facts_are_skipped_on_network_errors(monkeypatch) -> None:
+    import asyncio
+
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("unreachable", request=request)
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(research.httpx, "AsyncClient",
+                        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+
+    assert asyncio.run(research.fetch_repository_facts("org/model")) is None
+
+
+def test_repository_facts_need_a_repository_id(monkeypatch) -> None:
+    seen: list[str] = []
+
+    assert _fetch_repository_facts(monkeypatch, "Llama 3.1 8B Instruct", REPOSITORY_ROUTES, seen) is None
+    assert seen == []  # a free-text name is left to the web search
+    assert research.repository_id(" https://huggingface.co/Qwen/Qwen2.5-7B/ ") == "Qwen/Qwen2.5-7B"
+    assert research.repository_id("Qwen/Qwen2.5-7B/tree/main") is None
+
+
+def test_stream_reads_the_repository_for_the_huggingface_strategy_only(monkeypatch) -> None:
+    import httpx
+
+    prompts: list[str] = []
+    hub = _huggingface_transport(REPOSITORY_ROUTES)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "huggingface.co":
+            return hub.handle_request(request)
+        prompts.append(json.loads(request.content)["messages"][1]["content"])
+        return httpx.Response(400, json={"error": {"message": "stop here", "code": 400}})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(research.httpx, "AsyncClient",
+                        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    monkeypatch.setattr(research, "settings", replace(research.settings, openrouter_api_key="test-key"))
+    monkeypatch.setattr(main, "_load_research_context", lambda: CatalogContext())
+
+    client = TestClient(main.app)
+    for source in ("huggingface", "paper"):
+        client.post("/api/v1/admin/model-research/stream", json={"modelName": "org/model", "source": source})
+
+    assert "Repository facts read directly from huggingface.co" in prompts[0]
+    assert "Repository facts" not in prompts[1]
