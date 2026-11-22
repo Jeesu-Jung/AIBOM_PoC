@@ -241,6 +241,8 @@ CREATE TABLE IF NOT EXISTS `model_research_result` (
   `source` enum('huggingface','paper','merged') NOT NULL,
   `status` varchar(20) DEFAULT NULL COMMENT 'found | ambiguous | not_found',
   `result_model_id` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'draft.modelId of the result',
+  `family_name` varchar(255) DEFAULT NULL COMMENT 'draft.familyName of the result',
+  `parent_model_id` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'draft.parentModelId of the result',
   `research_model` varchar(255) DEFAULT NULL COMMENT 'OpenRouter model that produced the result',
   `web_search_requests` int unsigned DEFAULT NULL,
   `cost_usd` decimal(12,6) DEFAULT NULL,

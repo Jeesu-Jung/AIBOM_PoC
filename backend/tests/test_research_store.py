@@ -335,3 +335,49 @@ def test_research_run_page_filters_counts_and_pages() -> None:
         assert (len(page["items"]), page["total"], page["nextOffset"]) == (3, 4, 3)
     finally:
         main.app.dependency_overrides.clear()
+
+
+def test_research_run_page_filters_by_family_parent_and_verified_sources() -> None:
+    from app.research_store import page_research_runs, research_filter_options
+
+    def stored(source: str, family: str | None, parent: str | None, status: str = "found") -> dict:
+        data = result(source)
+        data["status"] = status
+        data["draft"] |= {"familyName": family, "parentModelId": parent}
+        return data
+
+    def save(name: str, **results: dict) -> int:
+        return save_research_results(db, SaveResearchResultsRequest.model_validate({
+            "modelName": name, "replacePrevious": True, "results": results}))["runId"]
+
+    db = session()
+    full = save("org/full", huggingface=stored("huggingface", "Llama 3.1", "meta/Base_A"),
+                paper=stored("paper", "Llama 3.1", "meta/Base_A"), merged=stored("merged", "Llama 3.1", "meta/Base_A"))
+    # The merged result decides: Hugging Face said another family and parent.
+    mixed = save("org/mixed", huggingface=stored("huggingface", "Llama 3.1", "meta/Base_A"),
+                 paper=stored("paper", "Qwen2.5", None, status="not_found"), merged=stored("merged", "Qwen2.5", "qwen/Base-B"))
+    partial = save("org/partial", huggingface=stored("huggingface", "llama 3.1 ", None))  # no merge: any result counts
+
+    def ids(**filters) -> list[int]:
+        return sorted(run["runId"] for run in page_research_runs(db, **filters)["items"])
+
+    assert ids(family="LLAMA 3.1") == [full, partial]
+    assert ids(family="Llama 3") == []                      # a family is matched whole
+    assert ids(parent="base_a") == [full]                   # part of the id, any case; _ is literal
+    assert ids(parent="base") == [full, mixed]
+    assert ids(verified=True) == [full]
+    assert ids(family="qwen2.5", verified=True) == []
+    assert page_research_runs(db, family="Qwen2.5")["counts"] == {"all": 1, "pending": 1, "saved": 0}
+    assert page_research_runs(db, family="Qwen2.5")["stats"]["all"] == 3
+    shown = {run["runId"]: (run["familyName"], run["parentModelId"]) for run in page_research_runs(db)["items"]}
+    assert shown == {full: ("Llama 3.1", "meta/Base_A"), mixed: ("Qwen2.5", "qwen/Base-B"), partial: ("llama 3.1", None)}
+    assert research_filter_options(db) == {"families": ["Llama 3.1", "Qwen2.5"], "parents": ["meta/Base_A", "qwen/Base-B"]}
+
+    main.app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(main.app)
+        page = client.get("/api/v1/admin/research-runs/page", params={"family": "llama 3.1", "verified": "true"}).json()
+        assert [run["runId"] for run in page["items"]] == [full]
+        assert client.get("/api/v1/admin/research-runs/filter-options").json()["families"] == ["Llama 3.1", "Qwen2.5"]
+    finally:
+        main.app.dependency_overrides.clear()

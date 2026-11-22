@@ -551,3 +551,16 @@
 .research-owner-filter { display:grid; grid-template-columns:3em minmax(0,1fr); align-items:center; gap:8px; color:#25364a; font-size:.84rem; font-weight:700; }
 .research-load-more { margin:4px 0 0; padding:8px 0; color:var(--text-soft); font-size:.78rem; text-align:center; }
 .research-load-more button { padding:0; border:0; background:none; color:#2251cc; font:inherit; font-weight:650; cursor:pointer; }
+/* research history: family / parent / "all three found" filters */
+.research-owner-filter { grid-template-columns:3.6em minmax(0,1fr); }
+.research-parent-filter { min-width:0; min-height:38px; padding:7px 9px; border:1px solid #cad4e1; border-radius:9px; background:#fff; font:inherit; font-size:.84rem; }
+.research-filter-foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 12px; min-height:38px; }
+.research-verified-filter { display:inline-flex; align-items:center; gap:7px; color:#25364a; font-size:.84rem; font-weight:650; cursor:pointer; }
+.research-history-list .research-verified-filter input,.research-assign-filters .research-verified-filter input { width:16px; height:16px; min-height:0; margin:0; padding:0; accent-color:#2251cc; }
+.research-filter-reset { padding:0; border:0; background:none; color:#2251cc; font:inherit; font-size:.8rem; font-weight:650; cursor:pointer; }
+.research-assign-filters { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.research-assign-lineage { color:#25364a; }
+.research-assign-lineage small { display:block; color:var(--text-soft); font-size:.74rem; word-break:break-all; }
+@media(max-width:980px){.research-assign-filters{grid-template-columns:1fr}}
+.research-assign-count { margin:0; color:var(--text-soft); font-size:.8rem; }
+.research-assign-count strong { color:#172033; }

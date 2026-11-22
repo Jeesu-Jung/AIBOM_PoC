@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { assignResearchRuns, createReviewer, deleteResearchRun, deleteReviewer, distributeResearchRuns, fetchResearchRun, fetchResearchRunPage, fetchResearchRuns, fetchReviewers, previewAssignRuns, updateReviewer } from "../../api/admin.js";
+import { assignResearchRuns, createReviewer, deleteResearchRun, deleteReviewer, distributeResearchRuns, fetchResearchFilterOptions, fetchResearchRun, fetchResearchRunPage, fetchResearchRuns, fetchReviewers, previewAssignRuns, updateReviewer } from "../../api/admin.js";
 import { aibomDraftToView } from "../../domain/aibomView.js";
 import { historyFields } from "../../constants/researchFields.js";
 import { downloadJson, jsonFilename } from "../../utils/download.js";
@@ -22,6 +22,36 @@ function BadgeFilter({ value, onChange }) {
       {BADGE_STATES.map(([state, text]) => <option key={state} value={`${key}:${state}`}>{SOURCE_SHORT[key]} {text}</option>)}
     </optgroup>)}
   </select>;
+}
+
+/**
+ * Narrow the run list by what the research found: the model's family, its parent model, and
+ * whether all three results (Hugging Face, paper, merge) were found. Shared by both workspaces;
+ * `labelled` puts a caption before each control (the narrow review sidebar).
+ */
+function LineageFilters({ options, family, parent, verified, onFamily, onParent, onVerified, active, onReset, labelled }) {
+  const same = (name) => name.toLowerCase() === family.toLowerCase();
+  // A family from an old link that no result has any more still shows as the chosen one.
+  const families = family && !options.families.some(same) ? [family, ...options.families] : options.families;
+  const familySelect = <select className="research-reviewer-filter" value={families.find(same) || ""} onChange={(event) => onFamily(event.target.value)} aria-label="Family name으로 찾기">
+    <option value="">Family 전체</option>
+    {families.map((name) => <option key={name} value={name}>{name}</option>)}
+  </select>;
+  const parentInput = <>
+    <input type="search" className="research-parent-filter" list="research-parent-options" value={parent} onChange={(event) => onParent(event.target.value)}
+      placeholder={labelled ? "모델 ID 일부 또는 목록에서 선택" : "Parent 모델 ID 일부 또는 목록에서 선택"} aria-label="Parent 모델로 찾기" />
+    <datalist id="research-parent-options">{options.parents.map((id) => <option key={id} value={id} />)}</datalist>
+  </>;
+  return <>
+    {labelled ? <label className="research-owner-filter">Family {familySelect}</label> : familySelect}
+    {labelled ? <label className="research-owner-filter">Parent {parentInput}</label> : parentInput}
+    <div className="research-filter-foot">
+      <label className="research-verified-filter" title="Hugging Face · 논문 · AI 병합 결과가 모두 ‘확인됨’인 실행만 봅니다.">
+        <input type="checkbox" checked={verified} onChange={(event) => onVerified(event.target.checked)} /> HF · 논문 · AI 모두 확인됨만
+      </label>
+      {active && <button type="button" className="research-filter-reset" onClick={onReset}>필터 초기화</button>}
+    </div>
+  </>;
 }
 const DECISIONS = { huggingface: "HF 값", paper: "논문 값", combined: "두 결과 결합", none: "값 없음" };
 
@@ -249,6 +279,11 @@ export default function ResearchHistoryPage() {
   const [status, setStatus] = useState(FILTERS.some(([key]) => key === params.get("status")) ? params.get("status") : "all");
   const [reviewerFilter, setReviewerFilter] = useState(params.get("reviewer") || "all"); // all | none | reviewer id
   const [badgeFilter, setBadgeFilter] = useState("all"); // all | <source>:<status> (one result badge)
+  const [filterOptions, setFilterOptions] = useState({ families: [], parents: [] });
+  const [family, setFamily] = useState(params.get("family") || "");       // family name, "" = all
+  const [parentText, setParentText] = useState(params.get("parent") || ""); // part of a parent model id
+  const [parent, setParent] = useState(parentText.trim());                // `parentText` once typing pauses
+  const [verifiedOnly, setVerifiedOnly] = useState(params.get("verified") === "1"); // Hugging Face, paper and merge all found
   const [selectedId, setSelectedId] = useState(Number(params.get("run")) || null);
   const [checked, setChecked] = useState(() => new Set());
   const [assignTo, setAssignTo] = useState("");
@@ -260,7 +295,17 @@ export default function ResearchHistoryPage() {
   const [message, setMessage] = useState(null);
 
   const loadReviewers = () => fetchReviewers().then(setReviewers).catch((err) => setError(err.message));
-  useEffect(() => { loadReviewers(); }, []);
+  const loadFilterOptions = () => fetchResearchFilterOptions().then(setFilterOptions).catch((err) => setError(err.message));
+  useEffect(() => { loadReviewers(); loadFilterOptions(); }, []);
+  useEffect(() => {
+    const timer = setTimeout(() => setParent(parentText.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [parentText]);
+  // Filters on what the research found (the reviewer, status and search stay as they are when reset).
+  const resultFiltered = badgeFilter !== "all" || Boolean(family || parentText || verifiedOnly);
+  const resetResultFilters = () => { setBadgeFilter("all"); setFamily(""); setParentText(""); setParent(""); setVerifiedOnly(false); };
+  const lineageFilters = (labelled) => <LineageFilters options={filterOptions} family={family} parent={parentText} verified={verifiedOnly}
+    onFamily={setFamily} onParent={setParentText} onVerified={setVerifiedOnly} active={resultFiltered} onReset={resetResultFilters} labelled={labelled} />;
   const activeReviewers = reviewers; // the API lists only reviewers that can be given work
 
   useEffect(() => {
@@ -278,7 +323,7 @@ export default function ResearchHistoryPage() {
     const mine = ++ticket.current;
     if (!offset) reloading.current = true;
     try {
-      const data = await fetchResearchRunPage({ status: listStatus, reviewer: reviewerFilter, label: badgeFilter, query: search, searchBy, offset, limit });
+      const data = await fetchResearchRunPage({ status: listStatus, reviewer: reviewerFilter, label: badgeFilter, family, parent, verified: verifiedOnly, query: search, searchBy, offset, limit });
       if (mine !== ticket.current) return;
       setRuns((current) => {
         if (!offset) return data.items;
@@ -300,7 +345,7 @@ export default function ResearchHistoryPage() {
   useEffect(() => {
     loadRuns({ keep: keepSelection.current });
     keepSelection.current = false;
-  }, [listStatus, reviewerFilter, badgeFilter, search, searchBy]);
+  }, [listStatus, reviewerFilter, badgeFilter, search, searchBy, family, parent, verifiedOnly]);
   async function loadMore() {
     if (page.nextOffset == null || loadingMore || reloading.current) return;
     setLoadingMore(true);
@@ -317,8 +362,11 @@ export default function ResearchHistoryPage() {
     if (status === "all") url.searchParams.delete("status"); else url.searchParams.set("status", status);
     if (reviewerFilter === "all") url.searchParams.delete("reviewer"); else url.searchParams.set("reviewer", reviewerFilter);
     if (managing) url.searchParams.set("view", "manage"); else url.searchParams.delete("view");
+    if (family) url.searchParams.set("family", family); else url.searchParams.delete("family");
+    if (parent) url.searchParams.set("parent", parent); else url.searchParams.delete("parent");
+    if (verifiedOnly) url.searchParams.set("verified", "1"); else url.searchParams.delete("verified");
     window.history.replaceState({}, "", url);
-  }, [selectedId, status, reviewerFilter, managing]);
+  }, [selectedId, status, reviewerFilter, managing, family, parent, verifiedOnly]);
   const switchView = (next) => {
     setView(next); setChecked(new Set()); setMessage(null); setError(null);
     if (next === "review") setSelectedId((current) => current ?? runs?.[0]?.runId ?? null);
@@ -370,7 +418,7 @@ export default function ResearchHistoryPage() {
   });
   // Re-reads what is on screen in one request, so the scroll position and the loaded pages stay.
   const refresh = async () => {
-    await Promise.all([loadRuns({ limit: Math.min(Math.max(runs?.length || 0, PAGE_SIZE), 500) }), loadReviewers()]);
+    await Promise.all([loadRuns({ limit: Math.min(Math.max(runs?.length || 0, PAGE_SIZE), 500) }), loadReviewers(), loadFilterOptions()]);
     if (selectedId) loadDetail(selectedId).then(setDetail).catch(() => {});
   };
   async function assign(runIds, reviewerId) {
@@ -449,7 +497,9 @@ export default function ResearchHistoryPage() {
               {reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name} · 대기 {reviewer.pendingCount}</option>)}
             </select>
             <BadgeFilter value={badgeFilter} onChange={setBadgeFilter} />
+            {lineageFilters(false)}
           </div>
+          {runs && <p className="research-assign-count">조건에 맞는 검토 대기 <strong>{page.total.toLocaleString()}</strong>건</p>}
           <div className="research-assign-bar">
             <label>일괄 배정 대상
               <select value={assignTo} onChange={(event) => setAssignTo(event.target.value)} aria-label="배정할 검토 작업자">
@@ -477,12 +527,13 @@ export default function ResearchHistoryPage() {
               <thead><tr>
                 <th><input type="checkbox" checked={checkedIds.length === assignable.length}
                   onChange={(event) => setChecked(event.target.checked ? new Set(assignable.map((run) => run.runId)) : new Set())} aria-label={`불러온 ${assignable.length}건 전체 선택`} title="지금 불러온 행을 모두 선택합니다" /></th>
-                <th>실행</th><th>모델</th><th>조사 시각</th><th>담당</th><th></th>
+                <th>실행</th><th>모델</th><th>Family / Parent</th><th>조사 시각</th><th>담당</th><th></th>
               </tr></thead>
               <tbody>{visibleRuns.map((run) => <tr key={run.runId} className={checked.has(run.runId) ? "is-checked" : ""}>
                 <td><input type="checkbox" checked={checked.has(run.runId)} onChange={() => toggle(run.runId)} aria-label={`#${run.runId} 선택`} /></td>
                 <td>#{run.runId}</td>
                 <td><strong>{run.modelName}</strong></td>
+                <td className="research-assign-lineage">{run.familyName || "-"}<small>{run.parentModelId || "parent 없음"}</small></td>
                 <td>{formatDateTime(run.createdAt)}</td>
                 <td><select className={run.reviewerId == null ? "is-unassigned" : ""} value={run.reviewerId ?? ""} aria-label={`#${run.runId} 담당`}
                   onChange={(event) => assign([run.runId], event.target.value ? Number(event.target.value) : null)}>
@@ -503,9 +554,10 @@ export default function ResearchHistoryPage() {
               {reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name} · 대기 {reviewer.pendingCount}</option>)}
             </select>
           </label>
-          <label className="research-owner-filter">필터
+          <label className="research-owner-filter">결과
             <BadgeFilter value={badgeFilter} onChange={setBadgeFilter} />
           </label>
+          {lineageFilters(true)}
           <div className="research-filter-tabs" role="tablist" aria-label="검토 상태">
             {FILTERS.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={status === key}
               className={status === key ? "is-active" : ""} onClick={() => setStatus(key)}>{label} <small>{tabCounts[key]}</small></button>)}

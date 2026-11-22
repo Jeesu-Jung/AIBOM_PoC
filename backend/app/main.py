@@ -45,6 +45,7 @@ from .research_store import (
     link_research_run,
     list_research_runs,
     page_research_runs,
+    research_filter_options,
     load_research_results,
     save_research_results,
 )
@@ -318,11 +319,22 @@ def admin_research_runs(modelName: str | None = None, modelId: str | None = None
 @app.get("/api/v1/admin/research-runs/page", tags=["admin"])
 def admin_research_run_page(status: str = "all", reviewer: str = "all", query: str | None = None,
                             searchBy: str = "model", offset: int = 0, limit: int = 100, label: str = "all",
+                            family: str | None = None, parent: str | None = None, verified: bool = False,
                             db: Session = Depends(get_db)) -> dict:
     """One page of research runs for the history page, filtered on the server, with the totals."""
     try:
         return page_research_runs(db, status=status, reviewer=reviewer, query=query, search_by=searchBy,
-                                  offset=max(0, offset), limit=max(1, min(limit, 500)), label=label)
+                                  offset=max(0, offset), limit=max(1, min(limit, 500)), label=label,
+                                  family=family, parent=parent, verified=verified)
+    except SQLAlchemyError as error:
+        raise _database_error(error) from error
+
+
+@app.get("/api/v1/admin/research-runs/filter-options", tags=["admin"])
+def admin_research_filter_options(db: Session = Depends(get_db)) -> dict:
+    """Family names and parent model ids the stored research results hold (choices for the history filters)."""
+    try:
+        return research_filter_options(db)
     except SQLAlchemyError as error:
         raise _database_error(error) from error
 

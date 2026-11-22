@@ -226,6 +226,9 @@ class ModelResearchResult(Base):
     source: Mapped[str] = mapped_column(String(20))
     status: Mapped[str | None] = mapped_column(String(20))
     result_model_id: Mapped[str | None] = mapped_column(String(512))
+    # draft.familyName / draft.parentModelId, kept as columns so the history can filter on them (sql/015).
+    family_name: Mapped[str | None] = mapped_column(String(255))
+    parent_model_id: Mapped[str | None] = mapped_column(String(512))
     research_model: Mapped[str | None] = mapped_column(String(255))
     web_search_requests: Mapped[int | None]
     cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))

@@ -86,11 +86,17 @@ export const fetchResearchRuns = ({ modelName, modelId, limit } = {}) => {
 };
 // One page of the research history, filtered on the server: { items, total, nextOffset, counts, stats }.
 // label: one result badge as `<source>:<status>` (e.g. `huggingface:not_found`), or "all".
-export const fetchResearchRunPage = ({ status = "all", reviewer = "all", label = "all", query = "", searchBy = "model", offset = 0, limit = 100 } = {}) => {
+// family: a family name; parent: part of a parent model id; verified: Hugging Face, paper and merged all found.
+export const fetchResearchRunPage = ({ status = "all", reviewer = "all", label = "all", family = "", parent = "", verified = false, query = "", searchBy = "model", offset = 0, limit = 100 } = {}) => {
   const params = new URLSearchParams({ status, reviewer, label, searchBy, offset: String(offset), limit: String(limit) });
+  if (family) params.set("family", family);
+  if (parent) params.set("parent", parent);
+  if (verified) params.set("verified", "true");
   if (query) params.set("query", query);
   return request(`/api/v1/admin/research-runs/page?${params}`);
 };
+// { families, parents }: the family names and parent model ids the stored results hold.
+export const fetchResearchFilterOptions = () => request("/api/v1/admin/research-runs/filter-options");
 // resolve: results placed in the current catalog tree with evidence rows (what the editor needs).
 export const fetchResearchRun = (runId, resolve = false) => request(`/api/v1/admin/research-runs/${runId}${resolve ? "?resolve=true" : ""}`);
 // reviewedBy: reviewer who did the review; null records nobody.

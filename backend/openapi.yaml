@@ -591,7 +591,9 @@ paths:
       description: |
         AI 조사 이력 화면용 목록입니다. 필터를 서버에서 적용하고 최신 실행부터 `limit` 건씩 반환합니다.
         `reviewer` 는 `all`, `none`(미배정 / 검토자 기록 없음) 또는 검토 작업자 ID이며, 검토 대기 실행은 담당자,
-        저장된 실행은 검토자를 기준으로 합니다. `counts` 는 `reviewer` 필터 안에서의 상태별 건수,
+        저장된 실행은 검토자를 기준으로 합니다. `family` 는 family name(대소문자 무시, 일치), `parent` 는 parent 모델 ID의
+        일부이고 병합 결과가 있으면 병합 결과, 없으면 다른 결과의 값을 봅니다. `verified=true` 는 Hugging Face · 논문 ·
+        병합 결과가 모두 `found` 인 실행만 남깁니다. `counts` 는 `reviewer` · `label` · `family` · `parent` · `verified` 필터 안에서의 상태별 건수,
         `stats` 는 필터와 무관한 전체 건수입니다. 다음 페이지는 `nextOffset` 을 `offset` 으로 넘겨 조회합니다.
       operationId: adminPageResearchRuns
       parameters:
@@ -599,6 +601,9 @@ paths:
         - { name: reviewer, in: query, required: false, schema: { type: string, default: all } }
         - { name: query, in: query, required: false, schema: { type: string } }
         - { name: searchBy, in: query, required: false, schema: { type: string, enum: [model, id], default: model } }
+        - { name: family, in: query, required: false, schema: { type: string } }
+        - { name: parent, in: query, required: false, schema: { type: string } }
+        - { name: verified, in: query, required: false, schema: { type: boolean, default: false } }
         - { name: label, in: query, required: false, description: '조사 결과 배지로 좁히기. `<source>:<status>` 형식 (source = huggingface | paper | merged, status = found | ambiguous | not_found | missing). 예: `huggingface:not_found`. `counts` 에도 적용됩니다.', schema: { type: string, default: all } }
         - { name: offset, in: query, required: false, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
@@ -631,6 +636,26 @@ paths:
                       pending: { type: integer }
                       saved: { type: integer }
                       unassigned: { type: integer }
+        '503':
+          $ref: '#/components/responses/DatabaseUnavailable'
+
+  /api/v1/admin/research-runs/filter-options:
+    get:
+      tags: [admin]
+      summary: '[관리자] AI 조사 이력 필터 선택지'
+      description: 저장된 조사 결과에 나온 family name 과 parent 모델 ID 목록입니다(이름순, 대소문자만 다른 값은 하나로).
+      operationId: adminResearchFilterOptions
+      responses:
+        '200':
+          description: 필터 선택지
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [families, parents]
+                properties:
+                  families: { type: array, items: { type: string } }
+                  parents: { type: array, items: { type: string } }
         '503':
           $ref: '#/components/responses/DatabaseUnavailable'
 
@@ -1337,6 +1362,8 @@ components:
         modelName: { type: string, description: 관리자가 입력한 모델명 }
         modelId: { type: [string, 'null'], description: 이 실행으로 등록된 카탈로그 모델 }
         resultModelId: { type: [string, 'null'], description: 조사 결과가 가리키는 모델 ID (병합 → HF → 논문 순) }
+        familyName: { type: [string, 'null'], description: 조사 결과의 family name (병합 → HF → 논문 순) }
+        parentModelId: { type: [string, 'null'], description: 조사 결과의 parent 모델 ID (병합 → HF → 논문 순) }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         totalCostUsd: { type: [number, 'null'] }

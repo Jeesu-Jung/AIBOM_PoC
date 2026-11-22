@@ -13,7 +13,7 @@ from typing import Any, Literal
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import case, delete, false, func, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, aliased, selectinload
 
 from .models import ModelInfo, ModelResearchResult, ModelResearchRun, Reviewer
 
@@ -83,6 +83,12 @@ def _metric(result: dict[str, Any], key: str) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
+def _draft_text(draft: dict[str, Any], key: str, limit: int) -> str | None:
+    """A draft value as stored in its filter column: trimmed text, None when empty or not text."""
+    value = draft.get(key)
+    return value.strip()[:limit] or None if isinstance(value, str) else None
+
+
 def _row_to_dict(row: ModelResearchResult, include_result: bool = True) -> dict[str, Any]:
     result = row.result_json or {}
     summary = {
@@ -91,6 +97,8 @@ def _row_to_dict(row: ModelResearchResult, include_result: bool = True) -> dict[
         "source": row.source,
         "status": row.status,
         "resultModelId": row.result_model_id,
+        "familyName": row.family_name,
+        "parentModelId": row.parent_model_id,
         "researchModel": row.research_model,
         "webSearchRequests": row.web_search_requests,
         "costUsd": float(row.cost_usd) if row.cost_usd is not None else None,
@@ -114,12 +122,16 @@ def _run_to_dict(run: ModelResearchRun, include_results: bool = True) -> dict[st
         results[row.source] = _row_to_dict(row, include_results)
     costs = [row.cost_usd for row in run.results if row.cost_usd is not None]
     searches = [row.web_search_requests for row in run.results if row.web_search_requests is not None]
+    # What the run says about the model: the merged result, else Hugging Face, else the paper.
+    shown = next((results[key] for key in ("merged", "huggingface", "paper") if results[key]), None) or {}
     return {
         "runId": run.id,
         "modelName": run.requested_model,
         "modelId": run.model_id,
         "resultModelId": next((results[k]["resultModelId"] for k in ("merged", "huggingface", "paper")
                                if results[k] and results[k]["resultModelId"]), None),
+        "familyName": shown.get("familyName"),
+        "parentModelId": shown.get("parentModelId"),
         "reviewerId": run.reviewer_id,
         "assignedAt": _iso(run.assigned_at),
         "reviewedById": run.reviewed_by,
@@ -205,6 +217,8 @@ def save_research_results(session: Session, payload: SaveResearchResultsRequest)
         research = result.get("research") if isinstance(result.get("research"), dict) else {}
         row.status = result.get("status")
         row.result_model_id = draft.get("modelId")
+        row.family_name = _draft_text(draft, "familyName", 255)
+        row.parent_model_id = _draft_text(draft, "parentModelId", 512)
         row.research_model = research.get("model")
         row.web_search_requests = _web_searches(result)
         row.cost_usd = _cost(result)
@@ -257,9 +271,40 @@ def _result_label_condition(label: str):
     return ~of_source.exists() if state == "missing" else of_source.where(ModelResearchResult.status == state).exists()
 
 
+def _like(column, text: str):
+    """Case-insensitive "contains"; % and _ in the text are literal."""
+    escaped = text.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return func.lower(column).like(f"%{escaped}%", escape="\\")
+
+
+def _shown_result(condition):
+    """Runs whose result meets `condition`: the merged result when the run has one, else any result."""
+    merged = aliased(ModelResearchResult)
+    has_merged = select(merged.id).where(merged.run_id == ModelResearchResult.run_id, merged.source == "merged").exists()
+    return select(ModelResearchResult.id).where(
+        ModelResearchResult.run_id == ModelResearchRun.id, condition,
+        or_(ModelResearchResult.source == "merged", ~has_merged)).exists()
+
+
+def research_filter_options(session: Session) -> dict[str, list[str]]:
+    """Family names and parent model ids found in the stored results, for the history filters."""
+    # Like the filters, a run speaks through its merged result when it has one.
+    merged = aliased(ModelResearchResult)
+    shown = or_(ModelResearchResult.source == "merged", ~select(merged.id).where(
+        merged.run_id == ModelResearchResult.run_id, merged.source == "merged").exists())
+
+    def values(column) -> list[str]:
+        found: dict[str, str] = {}
+        for value in session.scalars(select(column).where(column.is_not(None), shown).distinct()):
+            found.setdefault(value.casefold(), value)  # "unknown" and "Unknown" are one choice
+        return sorted(found.values(), key=str.casefold)
+    return {"families": values(ModelResearchResult.family_name), "parents": values(ModelResearchResult.parent_model_id)}
+
+
 def page_research_runs(session: Session, status: str = "all", reviewer: str = "all", query: str | None = None,
                        search_by: str = "model", offset: int = 0, limit: int = 100,
-                       label: str = "all") -> dict[str, Any]:
+                       label: str = "all", family: str | None = None, parent: str | None = None,
+                       verified: bool = False) -> dict[str, Any]:
     """One page of run summaries (newest first) for the research history page.
 
     `label` narrows the list to the runs carrying one result badge (see `_result_label_condition`).
@@ -268,6 +313,10 @@ def page_research_runs(session: Session, status: str = "all", reviewer: str = "a
     `reviewer` is "all", "none" or a reviewer id and follows the run's current owner: the assignee
     while it waits, the person who reviewed it once saved. `counts` are the status totals inside
     that reviewer filter (the status tabs); `stats` are the totals of every stored run.
+
+    `family` is a family name (any case), `parent` a part of the parent model id, and `verified`
+    keeps the runs whose Hugging Face, paper and merged results were all found. They apply to
+    `counts` too.
     """
     run = ModelResearchRun
     pending, saved = run.model_id.is_(None), run.model_id.is_not(None)
@@ -281,6 +330,14 @@ def page_research_runs(session: Session, status: str = "all", reviewer: str = "a
     label_condition = _result_label_condition(label)
     if label_condition is not None:
         conditions.append(label_condition)
+    if (family or "").strip():
+        conditions.append(_shown_result(func.lower(ModelResearchResult.family_name) == family.strip().lower()))
+    if (parent or "").strip():
+        conditions.append(_shown_result(_like(ModelResearchResult.parent_model_id, parent.strip())))
+    if verified:
+        conditions.append(select(func.count()).where(
+            ModelResearchResult.run_id == run.id, ModelResearchResult.status == "found",
+            ModelResearchResult.source.in_(STORED_SOURCES)).scalar_subquery() == len(STORED_SOURCES))
     counts = session.execute(select(func.count(), _count_if(pending), _count_if(saved)).where(*conditions)).one()
     stats = session.execute(select(func.count(), _count_if(pending), _count_if(saved),
                                    _count_if(pending & run.reviewer_id.is_(None)))).one()
@@ -292,13 +349,8 @@ def page_research_runs(session: Session, status: str = "all", reviewer: str = "a
         number = text.lstrip("#")
         conditions.append(run.id == int(number) if number.isdigit() else false())
     elif text:
-        escaped = text.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        pattern = f"%{escaped}%"
-
-        def contains(column):
-            return func.lower(column).like(pattern, escape="\\")
-        conditions.append(or_(contains(run.requested_model), contains(run.model_id), select(ModelResearchResult.id).where(
-            ModelResearchResult.run_id == run.id, contains(ModelResearchResult.result_model_id)).exists()))
+        conditions.append(or_(_like(run.requested_model, text), _like(run.model_id, text), select(ModelResearchResult.id).where(
+            ModelResearchResult.run_id == run.id, _like(ModelResearchResult.result_model_id, text)).exists()))
 
     total = session.scalar(select(func.count()).select_from(run).where(*conditions)) or 0
     rows = list(session.scalars(_run_query().where(*conditions).order_by(run.created_at.desc(), run.id.desc())
