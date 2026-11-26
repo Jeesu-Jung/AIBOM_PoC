@@ -1,7 +1,6 @@
 import logging
-from copy import deepcopy
 
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
@@ -30,8 +29,10 @@ from .evidence import ModelEvidenceWrite, load_model_evidence, replace_model_evi
 from .database import SessionLocal, get_db
 from pydantic import BaseModel, Field
 
+from .review import ReviewSubmission, claim_finalize, finalize_run, load_review, submit_review
 from .research_store import (
     AssignRunsRequest,
+    DistributeRunsRequest,
     ReviewerWrite,
     SaveResearchResultsRequest,
     assign_runs,
@@ -42,20 +43,22 @@ from .research_store import (
     delete_research_results,
     delete_research_run,
     get_research_run,
+    get_research_run_status,
     link_research_run,
     list_research_runs,
     page_research_runs,
     research_filter_options,
     load_research_results,
+    reviewer_open_run_ids,
+    runs_ready_to_finalize,
     save_research_results,
 )
 from .research import (
     CatalogContext,
     MergeResearchRequest,
     ModelResearchRequest,
-    attach_evidence,
     load_catalog_context,
-    resolve_catalog_lineage,
+    resolve_stored_results,
     stream_model_merge,
     stream_model_research,
 )
@@ -201,14 +204,11 @@ def _refresh_stored_results(db: Session, data: dict) -> dict:
     they are placed in the tree again; evidence rows follow the lineage (inherited fields carry
     none) and older runs stored none.
     """
-    context = load_catalog_context(db)
-    for row in data["results"].values():
+    resolved = resolve_stored_results({key: (row or {}).get("result") for key, row in data["results"].items()},
+                                      load_catalog_context(db))
+    for key, row in data["results"].items():
         if row and isinstance(row.get("result"), dict):
-            row["result"] = resolve_catalog_lineage(deepcopy(row["result"]), context)
-    inputs = {key: (data["results"].get(key) or {}).get("result") for key in ("huggingface", "paper")}
-    for row in data["results"].values():
-        if row and isinstance(row.get("result"), dict):
-            attach_evidence(row["result"], inputs)
+            row["result"] = resolved[key]
     return data
 
 
@@ -287,23 +287,41 @@ def admin_update_reviewer(reviewer_id: int, payload: ReviewerWrite, db: Session 
     return _store_call(db, lambda: save_reviewer(db, payload, reviewer_id))
 
 
+def _start_finalize(db: Session, tasks: BackgroundTasks, run_ids: list[int]) -> None:
+    """Save the runs whose reviewers have all submitted, in the background (app/review.py)."""
+    for run_id in run_ids:
+        if claim_finalize(db, run_id):
+            tasks.add_task(finalize_run, run_id, SessionLocal)
+
+
 @app.delete("/api/v1/admin/reviewers/{reviewer_id}", tags=["admin"])
-def admin_delete_reviewer(reviewer_id: int, db: Session = Depends(get_db)) -> list[dict]:
-    """Soft-delete a reviewer: hidden and unassigned from pending runs, past reviews keep the name.
-    Creating a reviewer with the same name restores them."""
-    return _store_call(db, lambda: delete_reviewer(db, reviewer_id))
+def admin_delete_reviewer(reviewer_id: int, tasks: BackgroundTasks, db: Session = Depends(get_db)) -> list[dict]:
+    """Soft-delete a reviewer: hidden and unassigned from the reviews they had not submitted, past
+    reviews keep the name. Creating a reviewer with the same name restores them."""
+    def action() -> list[dict]:
+        open_runs = reviewer_open_run_ids(db, reviewer_id)
+        reviewers = delete_reviewer(db, reviewer_id)
+        # Runs that only waited for this reviewer are complete now.
+        _start_finalize(db, tasks, runs_ready_to_finalize(db, open_runs))
+        return reviewers
+    return _store_call(db, action)
 
 
 @app.post("/api/v1/admin/research-runs/assign", tags=["admin"])
-def admin_assign_runs(payload: AssignRunsRequest, db: Session = Depends(get_db)) -> dict:
-    """Assign pending runs to a reviewer (`reviewerId: null` unassigns)."""
-    return _store_call(db, lambda: assign_runs(db, payload))
+def admin_assign_runs(payload: AssignRunsRequest, tasks: BackgroundTasks, db: Session = Depends(get_db)) -> dict:
+    """Change who reviews pending runs: `mode` add / remove / set with `reviewerIds`. A run can have
+    several reviewers. A run left with only submitted reviews starts being saved."""
+    def action() -> dict:
+        result = assign_runs(db, payload)
+        _start_finalize(db, tasks, result.pop("readyRunIds", []))
+        return result
+    return _store_call(db, action)
 
 
 @app.post("/api/v1/admin/research-runs/distribute", tags=["admin"])
-def admin_distribute_runs(db: Session = Depends(get_db)) -> dict:
-    """Share the unassigned pending runs between the active reviewers, least loaded first."""
-    return _store_call(db, lambda: distribute_runs(db))
+def admin_distribute_runs(payload: DistributeRunsRequest, db: Session = Depends(get_db)) -> dict:
+    """Give every unassigned pending run to all of the reviewers in `reviewerIds`."""
+    return _store_call(db, lambda: distribute_runs(db, payload.reviewer_ids))
 
 
 @app.get("/api/v1/admin/research-runs", tags=["admin"])
@@ -350,6 +368,16 @@ def admin_research_run(run_id: int, resolve: bool = False, db: Session = Depends
         raise _database_error(error) from error
 
 
+@app.get("/api/v1/admin/research-runs/{run_id}/status", tags=["admin"])
+def admin_research_run_status(run_id: int, db: Session = Depends(get_db)) -> dict:
+    """Review state of a run (reviewers, progress, the save and how each value was decided) without
+    the result payloads. Polled by the UI while the run is `saving` / `merging`."""
+    try:
+        return get_research_run_status(db, run_id)
+    except SQLAlchemyError as error:
+        raise _database_error(error) from error
+
+
 @app.put("/api/v1/admin/research-runs/{run_id}/model", tags=["admin"])
 def admin_link_research_run(run_id: int, payload: ResearchRunLink, db: Session = Depends(get_db)) -> dict:
     """Record which catalog model was registered from this run (null to unlink)."""
@@ -361,6 +389,38 @@ def admin_link_research_run(run_id: int, payload: ResearchRunLink, db: Session =
     except SQLAlchemyError as error:
         db.rollback()
         raise _database_error(error) from error
+
+
+@app.get("/api/v1/admin/research-runs/{run_id}/reviews/{reviewer_id}", tags=["admin"])
+def admin_research_run_review(run_id: int, reviewer_id: int, db: Session = Depends(get_db)) -> dict:
+    """One reviewer's review of the run: `review` is the answer they submitted (null until then)."""
+    return _store_call(db, lambda: load_review(db, run_id, reviewer_id))
+
+
+@app.put("/api/v1/admin/research-runs/{run_id}/reviews/{reviewer_id}", tags=["admin"])
+def admin_submit_research_run_review(run_id: int, reviewer_id: int, payload: ReviewSubmission,
+                                     tasks: BackgroundTasks, db: Session = Depends(get_db)) -> dict:
+    """Submit (or replace) a reviewer's answer. Nothing is written to the catalog yet.
+
+    When this was the last review the run was waiting for, it is saved in the background: each value
+    is the one most reviewers chose, and the values they tied on are merged by the AI. The returned
+    run then has `reviewStatus` `saving`; poll the run until it is `saved` (or `failed`).
+    """
+    def action() -> dict:
+        submit_review(db, run_id, reviewer_id, payload)
+        _start_finalize(db, tasks, [run_id])
+        return get_research_run(db, run_id)
+    return _store_call(db, action)
+
+
+@app.post("/api/v1/admin/research-runs/{run_id}/finalize", tags=["admin"])
+def admin_finalize_research_run(run_id: int, tasks: BackgroundTasks, db: Session = Depends(get_db)) -> dict:
+    """Start saving a fully reviewed run again, after a failed (or cut off) save."""
+    def action() -> dict:
+        claim_finalize(db, run_id, strict=True)
+        tasks.add_task(finalize_run, run_id, SessionLocal)
+        return get_research_run(db, run_id)
+    return _store_call(db, action)
 
 
 @app.delete("/api/v1/admin/research-runs/{run_id}", tags=["admin"], status_code=status.HTTP_204_NO_CONTENT)

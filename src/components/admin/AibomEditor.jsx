@@ -205,7 +205,8 @@ const AibomEditor = forwardRef(function AibomEditor({ modelId, initialAibom = nu
   const [form, setForm] = useState(null); const [options, setOptions] = useState(null); const [saving, setSaving] = useState(false); const [loadError, setLoadError] = useState(null);
   const load = useCallback(() => {
     setLoadError(null);
-    const requests = modelId ? [fetchAdminModelAibom(modelId), fetchAdminAibomOptions()] : [Promise.resolve(initialAibom), fetchAdminAibomOptions()];
+    // `initialAibom` wins over the stored AIBOM: a research draft, or the answer a reviewer already submitted.
+    const requests = [initialAibom || !modelId ? Promise.resolve(initialAibom) : fetchAdminModelAibom(modelId), fetchAdminAibomOptions()];
     return Promise.all(requests).then(([aibom, opts]) => { setForm(toEditable(aibom)); setOptions(opts); }).catch((error) => setLoadError(error.message));
   }, [initialAibom, modelId]);
   useEffect(() => { setForm(null); load(); }, [load, refreshKey]);

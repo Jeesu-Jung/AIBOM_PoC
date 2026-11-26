@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { assignResearchRuns, createReviewer, deleteResearchRun, deleteReviewer, distributeResearchRuns, fetchResearchFilterOptions, fetchResearchRun, fetchResearchRunPage, fetchResearchRuns, fetchReviewers, previewAssignRuns, updateReviewer } from "../../api/admin.js";
+import { assignResearchRuns, createReviewer, deleteResearchRun, deleteReviewer, distributeResearchRuns, fetchResearchFilterOptions, fetchResearchRun, fetchResearchRunPage, fetchResearchRunStatus, fetchResearchRuns, fetchReviewers, finalizeResearchRun, previewAssignRuns, updateReviewer } from "../../api/admin.js";
 import { aibomDraftToView } from "../../domain/aibomView.js";
 import { historyFields } from "../../constants/researchFields.js";
 import { downloadJson, jsonFilename } from "../../utils/download.js";
@@ -94,8 +94,8 @@ export function ModelResearchRuns({ modelId, refreshKey }) {
             : <ul className="research-run-list is-compact">{runs.map((run) => (
               <li key={run.runId}><a href={`/admin/research?run=${run.runId}`}>
                 <strong>#{run.runId}</strong><span>{formatDateTime(run.createdAt)}</span><SourceBadges run={run} />
-                <em>{run.modelId === modelId ? "검토 완료 · 이 실행으로 저장" : run.reviewStatus === "saved" ? `저장됨 → ${run.modelId}` : "검토 대기"}
-                  {" · "}{run.reviewStatus === "saved" ? `검토자 ${run.reviewedByName || "기록 없음"}` : `담당 ${run.reviewerName || "미배정"}`}</em>
+                <em>{run.modelId === modelId ? "검토 완료 · 이 실행으로 저장" : run.reviewStatus === "saved" ? `저장됨 → ${run.modelId}` : REVIEW_STATE[run.reviewStatus] || "검토 대기"}
+                  {" · "}{run.reviewStatus === "saved" ? `검토자 ${savedReviewers(run)}` : `담당 ${assignedReviewers(run) || "미배정"}`}</em>
               </a></li>
             ))}</ul>}
     </fieldset>
@@ -162,13 +162,70 @@ function SourceDetail({ item, fields, sourceKey }) {
 }
 
 const modelLink = (modelId) => `/admin?model=${encodeURIComponent(modelId)}`;
-const reviewLink = (runId) => `/admin?run=${runId}`;
+// `reviewerId`: who the review opens as (the reviewer the list is filtered to).
+const reviewLink = (runId, reviewerId) => `/admin?run=${runId}${reviewerId ? `&reviewer=${reviewerId}` : ""}`;
 const runLink = (runId) => `/admin/research?run=${runId}`;
 
-/** Review state of a run: saved (linked to the registered model) or only cached. */
+// A run is saved by the server once every assigned reviewer has submitted: `saving`, or `merging`
+// while the AI merges the values the reviewers tied on.
+const REVIEW_STATE = { saving: "저장 중…", merging: "AI 병합 중…", failed: "저장 실패" };
+const isFinalizing = (run) => run?.reviewStatus === "saving" || run?.reviewStatus === "merging";
+const reviewerName = (reviewer) => reviewer.name || "삭제된 작업자";
+/** "Kim ✓ · Lee": who reviews the run, with a mark for those who submitted. */
+const assignedReviewers = (run) => (run.reviewers || []).map((reviewer) => `${reviewerName(reviewer)}${reviewer.status === "submitted" ? " ✓" : ""}`).join(" · ");
+/** Who the saved values come from: the reviewers who submitted, or the one who saved directly. */
+const savedReviewers = (run) => run.reviewedByName
+  || (run.reviewers || []).filter((reviewer) => reviewer.status === "submitted").map(reviewerName).join(", ") || "기록 없음";
+
+/** Review state of a run: saved (linked to the registered model), being saved, or still waiting for reviews. */
 function ReviewBadge({ run }) {
   if (run.reviewStatus === "saved") return <b className="research-review-badge is-saved">검토 완료 · 저장됨</b>;
-  return <b className="research-review-badge is-pending">검토 대기{run.catalogModelId ? " · 카탈로그에 같은 모델 있음" : ""}</b>;
+  if (isFinalizing(run)) return <b className="research-review-badge is-working">{REVIEW_STATE[run.reviewStatus]}</b>;
+  if (run.reviewStatus === "failed") return <b className="research-review-badge is-failed">저장 실패</b>;
+  const { submitted = 0, total = 0 } = run.reviewProgress || {};
+  return <b className="research-review-badge is-pending">검토 대기{total ? ` · ${submitted}/${total} 제출` : ""}{run.catalogModelId ? " · 카탈로그에 같은 모델 있음" : ""}</b>;
+}
+
+const CHOSEN = { huggingface: "HF 값", paper: "논문 값", combined: "값 결합" };
+const preview = (value, absent) => {
+  if (absent) return "항목 없음";
+  if (value == null || value === "" || (Array.isArray(value) && !value.length)) return "값 없음";
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  return text.length > 700 ? `${text.slice(0, 700)}…` : text;
+};
+
+/** One decided value: what was saved, and what each group of reviewers had answered. */
+function DecidedValue({ item, names }) {
+  return <li>
+    <p><b>{item.label}</b>{item.chosen && <em>{CHOSEN[item.chosen] || "검토자 답 선택"}</em>}{item.tieBreak && <em>먼저 제출한 값</em>}</p>
+    {item.rationale && <p className="consensus-rationale">{item.rationale}</p>}
+    <pre className="consensus-value">{preview(item.value, item.absent)}</pre>
+    <ul className="consensus-votes">{item.votes.map((vote, index) => <li key={index}>
+      <span>{vote.count}표 · {vote.reviewerIds.map((id) => names[id] || `#${id}`).join(", ")}</span>
+      <pre>{preview(vote.value, vote.absent)}</pre>
+    </li>)}</ul>
+  </li>;
+}
+
+/** How a run saved from several reviews was decided: unanimous, by majority, or merged by the AI. */
+function ConsensusSummary({ summary, reviewers }) {
+  const names = Object.fromEntries(reviewers.map((reviewer) => [reviewer.id, reviewerName(reviewer)]));
+  const { counts } = summary;
+  return <div className="consensus-summary">
+    <p className="consensus-counts">비교한 값 <b>{counts.units}</b>개 · 만장일치 <b>{counts.unanimous}</b> · 다수결 <b>{counts.majority}</b> · AI 병합 <b>{counts.aiMerged}</b></p>
+    {summary.aiMerged.length > 0 && <details open><summary>AI 병합으로 정한 값 {summary.aiMerged.length}개 <small>동점이어서 검토자 답 · HF · 논문 값을 보고 AI가 정했습니다{summary.ai?.model ? ` (${summary.ai.model})` : ""}</small></summary>
+      <ul className="consensus-list">{summary.aiMerged.map((item) => <DecidedValue key={item.id} item={item} names={names} />)}</ul></details>}
+    {summary.majority.length > 0 && <details><summary>다수결로 정한 값 {summary.majority.length}개 <small>검토자 답이 갈렸고 가장 많이 선택된 값을 저장했습니다</small></summary>
+      <ul className="consensus-list">{summary.majority.map((item) => <DecidedValue key={item.id} item={item} names={names} />)}</ul></details>}
+    {summary.notes?.length > 0 && <ul className="consensus-notes">{summary.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>}
+  </div>;
+}
+
+/** The reviewers of a run and whether each has submitted. */
+function ReviewerChips({ reviewers }) {
+  return <span className="reviewer-chips">{reviewers.map((reviewer) => <b key={reviewer.id} className={reviewer.status === "submitted" ? "is-submitted" : ""}
+    title={reviewer.status === "submitted" ? `제출 ${formatDateTime(reviewer.submittedAt)}` : "아직 제출하지 않음"}>
+    {reviewerName(reviewer)} {reviewer.status === "submitted" ? "✓ 제출" : "검토 중"}</b>)}</span>;
 }
 
 const FILTERS = [["all", "전체"], ["pending", "검토 대기"], ["saved", "저장 완료"]];
@@ -193,10 +250,11 @@ const UNASSIGNED = "none";
 // The page has two workspaces: reviewing runs (everyone) and handing them out (project manager).
 const VIEWS = [["review", "검토 작업", "조사 결과를 확인하고 모델로 저장"], ["manage", "배정 · 작업자 관리", "프로젝트 관리자용"]];
 
-/** Who a run belongs to: the assignee while it waits, the person who reviewed it once saved. */
+/** Who a run belongs to: its reviewers while it waits (✓ = submitted), the people whose reviews were saved after. */
 function RunReviewer({ run }) {
-  if (run.reviewStatus === "saved") return <span className="research-run-reviewer">검토자 {run.reviewedByName || "기록 없음"}</span>;
-  return <span className={`research-run-reviewer${run.reviewerName ? "" : " is-unassigned"}`}>{run.reviewerName ? `담당 ${run.reviewerName}` : "미배정"}</span>;
+  if (run.reviewStatus === "saved") return <span className="research-run-reviewer">검토자 {savedReviewers(run)}</span>;
+  const assigned = assignedReviewers(run);
+  return <span className={`research-run-reviewer${assigned ? "" : " is-unassigned"}`}>{assigned ? `담당 ${assigned}` : "미배정"}</span>;
 }
 
 /** Add, rename and delete reviewers. Deleting is soft: past reviews keep the name, and adding the
@@ -216,7 +274,7 @@ function ReviewerManager({ reviewers, onChange, onError }) {
     run(updateReviewer(editing.id, { name: editing.name, email: reviewer.email })).then(() => setEditing(null));
   };
   const remove = (reviewer) => {
-    const waiting = reviewer.pendingCount ? ` 담당 중인 검토 대기 ${reviewer.pendingCount}건은 미배정으로 돌아갑니다.` : "";
+    const waiting = reviewer.pendingCount ? ` 아직 제출하지 않은 검토 ${reviewer.pendingCount}건은 배정이 해제됩니다.` : "";
     if (window.confirm(`검토 작업자 '${reviewer.name}'을(를) 삭제할까요?${waiting} 이미 검토한 기록은 그대로 남고, 같은 이름으로 다시 추가하면 복구됩니다.`)) run(deleteReviewer(reviewer.id));
   };
   return <section className="reviewer-manager">
@@ -233,7 +291,7 @@ function ReviewerManager({ reviewers, onChange, onError }) {
     </li>)}</ul>
     {!reviewers.length && <p className="admin-help">등록된 검토 작업자가 없습니다. 이름을 추가하면 조사 실행을 배정할 수 있습니다.</p>}
     <form className="reviewer-add" onSubmit={add}><input value={name} maxLength="100" placeholder="새 작업자 이름" onChange={(event) => setName(event.target.value)} aria-label="새 작업자 이름" /><button type="submit" disabled={!name.trim()}>추가</button></form>
-    <p className="admin-help">삭제한 작업자는 목록에서 사라지고 맡고 있던 검토 대기 실행은 미배정이 됩니다. 이미 검토한 기록에는 이름이 남으며, 같은 이름을 다시 추가하면 복구됩니다.</p>
+    <p className="admin-help">삭제한 작업자는 목록에서 사라지고 아직 제출하지 않은 검토는 배정이 해제됩니다. 이미 제출한 검토에는 이름이 남으며, 같은 이름을 다시 추가하면 복구됩니다.</p>
   </section>;
 }
 
@@ -261,7 +319,7 @@ function LoadMore({ hasMore, loading, shown, total, onLoad }) {
 /**
  * The research history as its own page (/admin/research). Every run is listed with whether a
  * human reviewed and saved it; a run that is only cached can be opened straight in the editor.
- * Review work is shared between reviewers: runs are assigned by hand or distributed evenly, and
+ * Review work is shared between reviewers: runs are assigned by hand, or every unassigned run is given to the chosen reviewers, and
  * the list can be narrowed to one reviewer's runs.
  * The list is filtered and paged on the server (PAGE_SIZE runs at a time).
  */
@@ -286,7 +344,10 @@ export default function ResearchHistoryPage() {
   const [verifiedOnly, setVerifiedOnly] = useState(params.get("verified") === "1"); // Hugging Face, paper and merge all found
   const [selectedId, setSelectedId] = useState(Number(params.get("run")) || null);
   const [checked, setChecked] = useState(() => new Set());
-  const [assignTo, setAssignTo] = useState("");
+  const [assignTo, setAssignTo] = useState(() => new Set()); // reviewer ids the bulk assignment names
+  const [assignMode, setAssignMode] = useState("add");       // add | set | clear (unassign everyone)
+  const [distributeTo, setDistributeTo] = useState(() => new Set()); // reviewers who all get every unassigned run
+  const [retrying, setRetrying] = useState(false);
   const [rangeText, setRangeText] = useState("");
   const [rangePreview, setRangePreview] = useState(null); // { found, pending } of the typed id range
   const [detail, setDetail] = useState(null);
@@ -306,6 +367,7 @@ export default function ResearchHistoryPage() {
   const resetResultFilters = () => { setBadgeFilter("all"); setFamily(""); setParentText(""); setParent(""); setVerifiedOnly(false); };
   const lineageFilters = (labelled) => <LineageFilters options={filterOptions} family={family} parent={parentText} verified={verifiedOnly}
     onFamily={setFamily} onParent={setParentText} onVerified={setVerifiedOnly} active={resultFiltered} onReset={resetResultFilters} labelled={labelled} />;
+  const filteredReviewer = /^\d+$/.test(reviewerFilter) ? reviewerFilter : ""; // the reviewer filter names a person
   const activeReviewers = reviewers; // the API lists only reviewers that can be given work
 
   useEffect(() => {
@@ -374,7 +436,8 @@ export default function ResearchHistoryPage() {
   // Opens a pending run from the manage view. The reviewer filter stays unless it would hide the run.
   const openRun = (runId) => {
     const run = runs.find((item) => item.runId === runId);
-    const shown = reviewerFilter === "all" || (reviewerFilter === UNASSIGNED ? run?.reviewerId == null : String(run?.reviewerId) === reviewerFilter);
+    const shown = reviewerFilter === "all" || (reviewerFilter === UNASSIGNED ? !run?.reviewers.length
+      : run?.reviewers.some((reviewer) => String(reviewer.id) === reviewerFilter));
     if (!shown) setReviewerFilter("all");
     keepSelection.current = true;
     setQuery(""); setSearch(""); setStatus("all"); setSelectedId(runId); switchView("review");
@@ -392,6 +455,28 @@ export default function ResearchHistoryPage() {
     }).catch((err) => { if (!cancelled) setError(err.message); });
     return () => { cancelled = true; };
   }, [selectedId]);
+
+  // The server saves a run once its last review arrives. While that runs ("저장 중" / "AI 병합 중") the
+  // detail is re-read every 2s; a run still waiting for reviewers is re-read now and then.
+  const detailState = detail && detail.runId === selectedId ? detail.reviewStatus : null;
+  const awaitingReviews = detailState === "pending" && detail.reviewers.length > 0;
+  useEffect(() => {
+    if (!isFinalizing({ reviewStatus: detailState }) && !awaitingReviews) return undefined;
+    const runId = selectedId;
+    const timer = setInterval(() => fetchResearchRunStatus(runId).then((state) => {
+      setDetail((current) => (current?.runId === runId ? { ...current, ...state, results: current.results } : current));
+      if (state.reviewStatus !== detailState) refreshList();
+    }).catch(() => {}), awaitingReviews ? 15000 : 2000);
+    return () => clearInterval(timer);
+  }, [selectedId, detailState, awaitingReviews]);
+  async function retryFinalize() {
+    setError(null); setRetrying(true);
+    try {
+      const state = await finalizeResearchRun(detail.runId);
+      setDetail((current) => (current?.runId === state.runId ? { ...current, ...state } : current));
+      refreshList();
+    } catch (err) { setError(err.message); } finally { setRetrying(false); }
+  }
 
   // Only pending runs can be (re)assigned; saved ones keep who reviewed them.
   const assignable = visibleRuns.filter((run) => run.reviewStatus === "pending");
@@ -417,30 +502,55 @@ export default function ResearchHistoryPage() {
     return next;
   });
   // Re-reads what is on screen in one request, so the scroll position and the loaded pages stay.
+  const refreshList = () => Promise.all([loadRuns({ limit: Math.min(Math.max(runs?.length || 0, PAGE_SIZE), 500) }), loadReviewers(), loadFilterOptions()]);
   const refresh = async () => {
-    await Promise.all([loadRuns({ limit: Math.min(Math.max(runs?.length || 0, PAGE_SIZE), 500) }), loadReviewers(), loadFilterOptions()]);
+    await refreshList();
     if (selectedId) loadDetail(selectedId).then(setDetail).catch(() => {});
   };
-  async function assign(runIds, reviewerId) {
+  /** Change who reviews the runs: mode "add" | "remove" | "set" (see assignResearchRuns). */
+  async function assign(runIds, reviewerIds, mode = "add") {
     setError(null); setMessage(null);
     try {
-      const result = { assigned: 0 };
+      let changed = 0;
       for (let start = 0; start < runIds.length; start += MAX_ASSIGN) {
-        result.assigned += (await assignResearchRuns(runIds.slice(start, start + MAX_ASSIGN), reviewerId)).assigned;
+        changed += (await assignResearchRuns(runIds.slice(start, start + MAX_ASSIGN), reviewerIds, mode)).assigned;
       }
-      const name = reviewers.find((reviewer) => reviewer.id === reviewerId)?.name;
-      setMessage(reviewerId == null ? `${result.assigned}건의 배정을 해제했습니다.` : `${result.assigned}건을 ${name}에게 배정했습니다.`);
+      const names = reviewerIds.map((id) => reviewers.find((reviewer) => reviewer.id === id)?.name).filter(Boolean).join(", ");
+      setMessage(mode === "add" ? `${changed}건에 ${names}을(를) 배정했습니다.`
+        : mode === "remove" ? `${changed}건에서 ${names}의 배정을 해제했습니다.`
+          : reviewerIds.length ? `${changed}건의 검토자를 ${names}(으)로 바꿨습니다.` : `${changed}건의 배정을 모두 해제했습니다.`);
       setChecked(new Set());
       setRangeText("");
       await refresh();
     } catch (err) { setError(err.message); }
   }
+  // The bulk controls: the chosen reviewers are added, replace the current ones, or everyone is unassigned.
+  const bulkReviewers = assignMode === "clear" ? [] : reviewers.filter((reviewer) => assignTo.has(reviewer.id)).map((reviewer) => reviewer.id);
+  const bulkReady = assignMode === "clear" || bulkReviewers.length > 0;
+  const bulkAssign = (runIds) => assign(runIds, bulkReviewers, assignMode === "add" ? "add" : "set");
+  const toggleAssignTo = (reviewerId) => setAssignTo((current) => {
+    const next = new Set(current);
+    if (next.has(reviewerId)) next.delete(reviewerId); else next.add(reviewerId);
+    return next;
+  });
+  const unassign = (run, reviewer) => {
+    if (reviewer.status === "submitted" && !window.confirm(`${reviewerName(reviewer)}은(는) #${run.runId} 검토를 이미 제출했습니다. 배정을 해제하면 제출한 검토 내용도 지워집니다. 해제할까요?`)) return;
+    assign([run.runId], [reviewer.id], "remove");
+  };
+  const distributeIds = reviewers.filter((reviewer) => distributeTo.has(reviewer.id)).map((reviewer) => reviewer.id);
+  const toggleDistributeTo = (reviewerId) => setDistributeTo((current) => {
+    const next = new Set(current);
+    if (next.has(reviewerId)) next.delete(reviewerId); else next.add(reviewerId);
+    return next;
+  });
   async function distribute() {
+    const names = reviewers.filter((reviewer) => distributeTo.has(reviewer.id)).map((reviewer) => reviewer.name).join(", ");
+    if (!window.confirm(`미배정 ${counts.unassigned}건 전부를 ${names} ${distributeIds.length}명 모두에게 배정할까요?`)) return;
     setError(null); setMessage(null);
     try {
-      const result = await distributeResearchRuns();
+      const result = await distributeResearchRuns(distributeIds);
       setMessage(result.assigned
-        ? `미배정 ${result.assigned}건을 나눠 배정했습니다: ${result.byReviewer.map((item) => `${item.name} ${item.assigned}건`).join(", ")}`
+        ? `미배정 ${result.assigned}건을 ${result.reviewers.map((item) => item.name).join(", ")} ${result.reviewers.length}명 모두에게 배정했습니다.`
         : "배정할 미배정 실행이 없습니다.");
       await refresh();
     } catch (err) { setError(err.message); }
@@ -479,9 +589,18 @@ export default function ResearchHistoryPage() {
         <section className="research-assign">
           <div className="research-assign-head">
             <div><h2>검토 대기 배정</h2>
-              <p className="admin-help">검토 대기 {counts.pending}건 중 미배정 {counts.unassigned}건. 저장된 실행은 다시 배정하지 않습니다.</p></div>
-            <button type="button" className="admin-primary" disabled={!counts.unassigned || !activeReviewers.length} onClick={distribute}
-              title="미배정 검토 대기 실행을 검토 작업자에게, 대기 건이 적은 사람부터 고르게 나눕니다.">미배정 {counts.unassigned}건 자동 분배</button>
+              <p className="admin-help">검토 대기 {counts.pending}건 중 미배정 {counts.unassigned}건. 한 실행에 여러 명을 배정할 수 있고, 배정된 사람이 모두 검토를 제출하면 다수결로 저장됩니다(동점인 값은 AI가 병합). 저장된 실행은 다시 배정하지 않습니다.</p></div>
+            <div className="research-distribute">
+              <span className="research-distribute-label">미배정 전체 배정</span>
+              <span className="research-assign-reviewers" role="group" aria-label="미배정 실행을 모두 배정할 검토 작업자">
+                {activeReviewers.map((reviewer) => <label key={reviewer.id} className={distributeTo.has(reviewer.id) ? "is-checked" : ""}>
+                  <input type="checkbox" checked={distributeTo.has(reviewer.id)} onChange={() => toggleDistributeTo(reviewer.id)} /> {reviewer.name}</label>)}
+                {!activeReviewers.length && <small>검토 작업자를 먼저 추가하세요.</small>}
+              </span>
+              <button type="button" className="admin-primary" disabled={!counts.unassigned || !distributeIds.length} onClick={distribute}
+                title="아직 아무도 배정되지 않은 검토 대기 실행 전부를, 체크한 검토 작업자 모두에게 배정합니다. 이미 배정된 실행은 바꾸지 않습니다.">
+                {distributeIds.length ? `미배정 ${counts.unassigned}건을 ${distributeIds.length}명 모두에게 배정` : "배정할 검토자를 체크하세요"}</button>
+            </div>
           </div>
           <div className="research-assign-filters">
             <div className="research-search">
@@ -501,25 +620,32 @@ export default function ResearchHistoryPage() {
           </div>
           {runs && <p className="research-assign-count">조건에 맞는 검토 대기 <strong>{page.total.toLocaleString()}</strong>건</p>}
           <div className="research-assign-bar">
-            <label>일괄 배정 대상
-              <select value={assignTo} onChange={(event) => setAssignTo(event.target.value)} aria-label="배정할 검토 작업자">
-                <option value="">작업자 선택</option>
-                {activeReviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
-                <option value={UNASSIGNED}>배정 해제</option>
-              </select>
-            </label>
-            <button type="button" disabled={!checkedIds.length || !assignTo} onClick={() => assign(checkedIds, assignTo === UNASSIGNED ? null : Number(assignTo))}>선택 {checkedIds.length}건 배정</button>
+            <div className="research-assign-target">
+              <label>일괄 배정
+                <select value={assignMode} onChange={(event) => setAssignMode(event.target.value)} aria-label="일괄 배정 방식">
+                  <option value="add">검토자 추가</option>
+                  <option value="set">검토자 교체</option>
+                  <option value="clear">배정 모두 해제</option>
+                </select>
+              </label>
+              {assignMode !== "clear" && <span className="research-assign-reviewers" role="group" aria-label="배정할 검토 작업자">
+                {activeReviewers.map((reviewer) => <label key={reviewer.id} className={assignTo.has(reviewer.id) ? "is-checked" : ""}>
+                  <input type="checkbox" checked={assignTo.has(reviewer.id)} onChange={() => toggleAssignTo(reviewer.id)} /> {reviewer.name}</label>)}
+                {!activeReviewers.length && <small>검토 작업자를 먼저 추가하세요.</small>}
+              </span>}
+            </div>
+            <button type="button" disabled={!checkedIds.length || !bulkReady} onClick={() => bulkAssign(checkedIds)}>선택 {checkedIds.length}건 {assignMode === "clear" ? "해제" : "배정"}</button>
             <span className="research-assign-or">또는</span>
             <div className="research-range">
               <input value={rangeText} onChange={(event) => setRangeText(event.target.value)} placeholder="실행 ID 범위 (예: 10-25 또는 3, 5, 8-12)" aria-label="배정할 실행 ID 범위" />
-              <button type="button" disabled={!rangePending || !assignTo} onClick={() => assign(rangeList, assignTo === UNASSIGNED ? null : Number(assignTo))}>범위 {rangePending}건 배정</button>
+              <button type="button" disabled={!rangePending || !bulkReady} onClick={() => bulkAssign(rangeList)}>범위 {rangePending}건 {assignMode === "clear" ? "해제" : "배정"}</button>
             </div>
             {rangeText.trim() && <small className={`research-range-note${rangeIds && !rangeTooLong ? "" : " is-error"}`}>{!rangeIds
               ? "숫자와 범위만 입력할 수 있습니다. 예: 10-25 또는 3, 5, 8-12"
               : rangeTooLong ? `한 번에 ${MAX_ASSIGN}개 ID까지 배정할 수 있습니다. 범위를 나눠 입력하세요.`
                 : !rangePreview ? "범위를 확인하는 중..."
                   : !rangePreview.found ? "이 범위에 해당하는 조사 실행이 없습니다."
-                    : `범위 안의 실행 ${rangePreview.found}건 중 검토 대기 ${rangePending}건이 배정됩니다${rangePreview.found > rangePending ? ` (저장된 ${rangePreview.found - rangePending}건은 제외)` : ""}.${assignTo ? "" : " 작업자를 선택하세요."}`}</small>}
+                    : `범위 안의 실행 ${rangePreview.found}건 중 검토 대기 ${rangePending}건에 적용됩니다${rangePreview.found > rangePending ? ` (저장된 ${rangePreview.found - rangePending}건은 제외)` : ""}.${bulkReady ? "" : " 작업자를 선택하세요."}`}</small>}
           </div>
           {!runs ? <p className="admin-help">불러오는 중...</p> : !visibleRuns.length
             ? <p className="admin-help">{counts.pending ? "조건에 맞는 검토 대기 실행이 없습니다." : "배정할 검토 대기 실행이 없습니다."}</p>
@@ -535,11 +661,17 @@ export default function ResearchHistoryPage() {
                 <td><strong>{run.modelName}</strong></td>
                 <td className="research-assign-lineage">{run.familyName || "-"}<small>{run.parentModelId || "parent 없음"}</small></td>
                 <td>{formatDateTime(run.createdAt)}</td>
-                <td><select className={run.reviewerId == null ? "is-unassigned" : ""} value={run.reviewerId ?? ""} aria-label={`#${run.runId} 담당`}
-                  onChange={(event) => assign([run.runId], event.target.value ? Number(event.target.value) : null)}>
-                  <option value="">미배정</option>
-                  {reviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
-                </select></td>
+                <td>{run.reviewStatus !== "pending" && run.reviewStatus !== "failed" ? <ReviewBadge run={run} /> : <div className="research-assignees">
+                  {run.reviewers.map((reviewer) => <span key={reviewer.id} className={reviewer.status === "submitted" ? "is-submitted" : ""}>
+                    {reviewerName(reviewer)}{reviewer.status === "submitted" ? " ✓" : ""}
+                    <button type="button" onClick={() => unassign(run, reviewer)} aria-label={`#${run.runId}에서 ${reviewerName(reviewer)} 배정 해제`} title="배정 해제">×</button></span>)}
+                  {run.reviewStatus === "failed" && <ReviewBadge run={run} />}
+                  <select className={run.reviewers.length ? "" : "is-unassigned"} value="" aria-label={`#${run.runId} 검토자 추가`}
+                    onChange={(event) => event.target.value && assign([run.runId], [Number(event.target.value)], "add")}>
+                    <option value="">{run.reviewers.length ? "+ 추가" : "미배정 · 추가"}</option>
+                    {reviewers.filter((reviewer) => !run.reviewers.some((item) => item.id === reviewer.id)).map((reviewer) => <option key={reviewer.id} value={reviewer.id}>{reviewer.name}</option>)}
+                  </select>
+                </div>}</td>
                 <td><button type="button" className="research-assign-open" onClick={() => openRun(run.runId)}>결과 보기 →</button></td>
               </tr>)}</tbody>
             </table>
@@ -550,7 +682,7 @@ export default function ResearchHistoryPage() {
           <label className="research-owner-filter">담당자
             <select className="research-reviewer-filter" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} aria-label="담당자로 찾기">
               <option value="all">담당자 전체</option>
-              <option value={UNASSIGNED}>미배정 / 검토자 기록 없음</option>
+              <option value={UNASSIGNED}>미배정</option>
               {reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name} · 대기 {reviewer.pendingCount}</option>)}
             </select>
           </label>
@@ -592,21 +724,45 @@ export default function ResearchHistoryPage() {
                 <p><ReviewBadge run={detail} /> {formatDateTime(detail.createdAt)} · 결과 모델 {detail.resultModelId || "-"} · 총 검색 {detail.totalWebSearches ?? "-"} · 총 비용 {formatCost(detail.totalCostUsd)}</p></div>
               <button type="button" className="admin-danger" onClick={removeRun}>이 실행 삭제</button>
             </div>
-            <div className={`research-review-panel is-${detail.reviewStatus}`}>
+            <div className={`research-review-panel is-${detail.reviewStatus}`} aria-live="polite">
               {detail.reviewStatus === "saved" ? <>
                 <p><strong>검토를 마치고 저장된 실행입니다.</strong> 이 조사 결과로 <code>{detail.modelId}</code> 모델이 저장되었습니다.
-                  <br />검토자 <b>{detail.reviewedByName || "기록 없음"}</b> · 저장 {formatDateTime(detail.reviewedAt)}{detail.reviewerName && detail.reviewerName !== detail.reviewedByName ? ` · 배정 ${detail.reviewerName}` : ""}</p>
+                  <br />검토자 <b>{savedReviewers(detail)}</b> · 저장 {formatDateTime(detail.reviewedAt)}{detail.finalize.summary ? ` · 검토자 ${detail.finalize.summary.reviewerIds.length}명의 답을 다수결로 저장` : ""}</p>
                 <a className="admin-secondary" href={modelLink(detail.modelId)}>저장된 모델 열기</a>
-              </> : <>
-                <p><strong>아직 검토되지 않았습니다.</strong> {detail.catalogModelId
-                  ? <>카탈로그에 <code>{detail.catalogModelId}</code> 모델이 이미 있어, 그 모델의 편집 화면에서 이 조사 결과의 값을 골라 반영합니다. 저장하면 검토 완료로 표시됩니다.</>
-                  : "조사 결과만 저장되어 있습니다. 편집 화면에서 값과 근거를 확인하고 모델로 등록할 수 있습니다."}</p>
+              </> : isFinalizing(detail) ? <>
+                <span className="review-spinner" aria-hidden="true" />
+                <p><strong>{detail.reviewStatus === "merging" ? "AI 병합 중…" : "저장 중…"}</strong> {detail.reviewStatus === "merging"
+                  ? "검토자들의 답이 동점인 값을 AI가 검토자 답 · HF · 논문 값을 보고 병합하고 있습니다. 끝나면 자동으로 저장됩니다."
+                  : "모든 검토가 제출되어 다수결 결과를 저장하고 있습니다."}
+                  <br /><ReviewerChips reviewers={detail.reviewers} /></p>
+                {detail.finalize.stale && <button type="button" className="admin-secondary" disabled={retrying} onClick={retryFinalize}>다시 시도</button>}
+              </> : detail.reviewStatus === "failed" ? <>
+                <p><strong>검토 결과를 저장하지 못했습니다.</strong> {detail.finalize.error}
+                  <br /><ReviewerChips reviewers={detail.reviewers} /> 다시 시도하거나, 검토자가 답을 고쳐 다시 제출하면 저장을 다시 시작합니다.</p>
                 <div className="research-review-actions">
-                  <span className={`research-review-owner${detail.reviewerName ? "" : " is-unassigned"}`}>담당 <b>{detail.reviewerName || "미배정"}</b></span>
-                  <a className="admin-primary" href={reviewLink(detail.runId)}>{detail.catalogModelId ? "기존 모델에 반영하며 검토 →" : "검토 후 저장 →"}</a>
+                  <a className="admin-secondary" href={reviewLink(detail.runId, filteredReviewer)}>검토 화면 열기</a>
+                  <button type="button" className="admin-primary" disabled={retrying} onClick={retryFinalize}>{retrying ? "시작하는 중…" : "다시 시도"}</button>
+                </div>
+              </> : detail.reviewers.length ? <>
+                <p><strong>검토 중입니다 ({detail.reviewProgress.submitted}/{detail.reviewProgress.total} 제출).</strong> 배정된 검토자가 모두 제출하면 가장 많이 선택된 값으로 자동 저장됩니다. 동점인 값만 AI가 병합합니다.{detail.catalogModelId
+                  ? <> 카탈로그에 <code>{detail.catalogModelId}</code> 모델이 이미 있어 그 모델에 반영됩니다.</> : ""}
+                  <br /><ReviewerChips reviewers={detail.reviewers} /></p>
+                <div className="research-review-actions">
+                  {detail.reviewProgress.submitted === detail.reviewProgress.total
+                    && <button type="button" className="admin-secondary" disabled={retrying} onClick={retryFinalize}>저장 시작</button>}
+                  <a className="admin-primary" href={reviewLink(detail.runId, filteredReviewer)}>검토하기 →</a>
+                </div>
+              </> : <>
+                <p><strong>아직 검토되지 않았습니다.</strong> 배정된 검토자가 없습니다. “배정 · 작업자 관리”에서 검토자를 배정하면 여러 명이 검토한 뒤 다수결로 저장됩니다. {detail.catalogModelId
+                  ? <>카탈로그에 <code>{detail.catalogModelId}</code> 모델이 이미 있어, 배정 없이 열면 그 모델의 편집 화면에서 값을 골라 바로 저장합니다.</>
+                  : "배정 없이 열면 편집 화면에서 값과 근거를 확인하고 바로 모델로 등록합니다."}</p>
+                <div className="research-review-actions">
+                  <span className="research-review-owner is-unassigned">담당 <b>미배정</b></span>
+                  <a className="admin-primary" href={reviewLink(detail.runId)}>{detail.catalogModelId ? "기존 모델에 반영하며 바로 저장 →" : "배정 없이 바로 저장 →"}</a>
                 </div>
               </>}
             </div>
+            {detail.reviewStatus === "saved" && detail.finalize.summary && <ConsensusSummary summary={detail.finalize.summary} reviewers={detail.reviewers} />}
             <div className="research-source-tabs" role="tablist">{SOURCES.map(([key, label]) => (
               <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "is-active" : ""} onClick={() => setTab(key)}>
                 {label} <small>{detail.results[key] ? STATUS[detail.results[key].status] || detail.results[key].status : "없음"}</small>

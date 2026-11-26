@@ -218,10 +218,14 @@ CREATE TABLE IF NOT EXISTS `model_research_run` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `requested_model` varchar(512) NOT NULL COMMENT 'Model name or id typed by the admin (normalized)',
   `model_id` varchar(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Catalog model registered from this run, set when the admin saves the draft',
-  `reviewer_id` bigint unsigned DEFAULT NULL COMMENT 'reviewer the run is assigned to; NULL = unassigned',
+  `reviewer_id` bigint unsigned DEFAULT NULL COMMENT 'no longer read: assignments are in model_research_review (sql/016)',
   `assigned_at` timestamp(6) NULL DEFAULT NULL,
   `reviewed_by` bigint unsigned DEFAULT NULL COMMENT 'reviewer who reviewed the run and saved the model',
   `reviewed_at` timestamp(6) NULL DEFAULT NULL COMMENT 'when the run was saved to the catalog',
+  `finalize_status` varchar(20) DEFAULT NULL COMMENT 'saving | merging | failed while the reviews are being saved, NULL otherwise',
+  `finalize_error` text COMMENT 'why the save failed',
+  `finalize_started_at` timestamp(6) NULL DEFAULT NULL,
+  `finalize_json` json DEFAULT NULL COMMENT 'how each value was decided: unanimous, majority or AI merge',
   `created_at` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `updated_at` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
@@ -232,6 +236,21 @@ CREATE TABLE IF NOT EXISTS `model_research_run` (
   CONSTRAINT `fk_model_research_run_model` FOREIGN KEY (`model_id`) REFERENCES `model_info` (`model_id`) ON DELETE SET NULL,
   CONSTRAINT `fk_model_research_run_reviewed_by` FOREIGN KEY (`reviewed_by`) REFERENCES `reviewer` (`id`) ON DELETE SET NULL,
   CONSTRAINT `fk_model_research_run_reviewer` FOREIGN KEY (`reviewer_id`) REFERENCES `reviewer` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `model_research_review` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `run_id` bigint unsigned NOT NULL,
+  `reviewer_id` bigint unsigned NOT NULL,
+  `status` varchar(20) NOT NULL DEFAULT 'assigned' COMMENT 'assigned | submitted',
+  `review_json` json DEFAULT NULL COMMENT 'the submitted answer: { model, aibom, evidence }',
+  `assigned_at` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `submitted_at` timestamp(6) NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ux_model_research_review_run_reviewer` (`run_id`,`reviewer_id`),
+  KEY `ix_model_research_review_reviewer` (`reviewer_id`,`status`),
+  CONSTRAINT `fk_model_research_review_run` FOREIGN KEY (`run_id`) REFERENCES `model_research_run` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_model_research_review_reviewer` FOREIGN KEY (`reviewer_id`) REFERENCES `reviewer` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `model_research_result` (

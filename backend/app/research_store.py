@@ -6,7 +6,7 @@ new run, so the admin can compare past runs at any time.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import case, delete, false, func, or_, select
 from sqlalchemy.orm import Session, aliased, selectinload
 
-from .models import ModelInfo, ModelResearchResult, ModelResearchRun, Reviewer
+from .models import ModelInfo, ModelResearchResult, ModelResearchReview, ModelResearchRun, Reviewer
 
 StoredSource = Literal["huggingface", "paper", "merged"]
 STORED_SOURCES: tuple[StoredSource, ...] = ("huggingface", "paper", "merged")
@@ -116,7 +116,10 @@ def _row_to_dict(row: ModelResearchResult, include_result: bool = True) -> dict[
     return summary
 
 
-def _run_to_dict(run: ModelResearchRun, include_results: bool = True) -> dict[str, Any]:
+def _run_to_dict(run: ModelResearchRun, include_results: bool = True,
+                 include_summary: bool | None = None) -> dict[str, Any]:
+    """`include_summary` (default: as `include_results`) adds how each value was decided (`finalize.summary`)."""
+    include_summary = include_results if include_summary is None else include_summary
     results: dict[str, Any] = {key: None for key in STORED_SOURCES}
     for row in run.results:
         results[row.source] = _row_to_dict(row, include_results)
@@ -132,8 +135,11 @@ def _run_to_dict(run: ModelResearchRun, include_results: bool = True) -> dict[st
                                if results[k] and results[k]["resultModelId"]), None),
         "familyName": shown.get("familyName"),
         "parentModelId": shown.get("parentModelId"),
-        "reviewerId": run.reviewer_id,
-        "assignedAt": _iso(run.assigned_at),
+        "reviews": [{"reviewerId": review.reviewer_id, "status": review.status, "assignedAt": _iso(review.assigned_at),
+                     "submittedAt": _iso(review.submitted_at)} for review in run.reviews],
+        "finalize": {"status": run.finalize_status, "error": run.finalize_error,
+                     "startedAt": _iso(run.finalize_started_at), "stale": finalize_is_stale(run),
+                     **({"summary": run.finalize_json} if include_summary else {})},
         "reviewedById": run.reviewed_by,
         "reviewedAt": _iso(run.reviewed_at),
         "createdAt": _iso(run.created_at),
@@ -144,30 +150,54 @@ def _run_to_dict(run: ModelResearchRun, include_results: bool = True) -> dict[st
     }
 
 
+# The save that follows the last review (app/review.py) is running in these states.
+FINALIZING = ("saving", "merging")
+# A save still "running" after this long was cut off (server restart) and may be started again.
+FINALIZE_STALE_AFTER = timedelta(minutes=15)
+
+
+def finalize_is_stale(run: ModelResearchRun) -> bool:
+    if run.finalize_status not in FINALIZING or run.finalize_started_at is None:
+        return False
+    return datetime.now(timezone.utc).replace(tzinfo=None) - run.finalize_started_at > FINALIZE_STALE_AFTER
+
+
+def reviews_complete(run: ModelResearchRun) -> bool:
+    """Every assigned reviewer has submitted (and there is at least one)."""
+    return bool(run.reviews) and all(review.status == "submitted" for review in run.reviews)
+
+
 def _reviewer_names(session: Session) -> dict[int, str]:
     return dict(session.execute(select(Reviewer.id, Reviewer.name)).all())
 
 
 def _add_review_state(run: dict[str, Any], catalog_ids: set[str],
                       reviewer_names: dict[int, str] | None = None) -> dict[str, Any]:
-    """Whether a human reviewed and saved the run, and which catalog model it belongs to.
+    """Where the review of the run stands, who reviews it, and which catalog model it belongs to.
 
     `saved`: the run is linked to the catalog model that was registered (or updated) from it.
-    `pending`: the results are only stored; `catalogModelId` then names the catalog model with the
-    researched id when one already exists, so the review continues on that model instead of
-    creating a duplicate.
+    `pending`: the results are only stored and reviewers may still be working; `catalogModelId` then
+    names the catalog model with the researched id when one already exists, so the review continues
+    on that model instead of creating a duplicate.
+    `saving` / `merging` / `failed`: every reviewer submitted and the save is running (`merging`:
+    the AI is merging the values they tied on) or stopped with `finalize.error`.
     """
     result_id = run.get("resultModelId")
-    run["reviewStatus"] = "saved" if run.get("modelId") else "pending"
+    run["reviewStatus"] = "saved" if run.get("modelId") else run["finalize"]["status"] or "pending"
     run["catalogModelId"] = run.get("modelId") or (result_id if result_id in catalog_ids else None)
     names = reviewer_names or {}
-    run["reviewerName"] = names.get(run.get("reviewerId"))
+    run["reviewers"] = [{"id": review["reviewerId"], "name": names.get(review["reviewerId"]),
+                         "status": review["status"], "submittedAt": review["submittedAt"]}
+                        for review in run.pop("reviews")]
+    run["reviewProgress"] = {"submitted": sum(item["status"] == "submitted" for item in run["reviewers"]),
+                             "total": len(run["reviewers"])}
     run["reviewedByName"] = names.get(run.get("reviewedById"))
     return run
 
 
 def _run_query():
-    return select(ModelResearchRun).options(selectinload(ModelResearchRun.results))
+    return select(ModelResearchRun).options(selectinload(ModelResearchRun.results),
+                                            selectinload(ModelResearchRun.reviews))
 
 
 def _latest_run(session: Session, requested: str) -> ModelResearchRun | None:
@@ -310,9 +340,9 @@ def page_research_runs(session: Session, status: str = "all", reviewer: str = "a
     `label` narrows the list to the runs carrying one result badge (see `_result_label_condition`).
     Like the reviewer filter it also applies to `counts`.
 
-    `reviewer` is "all", "none" or a reviewer id and follows the run's current owner: the assignee
-    while it waits, the person who reviewed it once saved. `counts` are the status totals inside
-    that reviewer filter (the status tabs); `stats` are the totals of every stored run.
+    `reviewer` is "all", "none" or a reviewer id: the runs that reviewer reviews (or saved directly),
+    or the runs nobody is assigned to. `counts` are the status totals inside that reviewer filter
+    (the status tabs); `stats` are the totals of every stored run.
 
     `family` is a family name (any case), `parent` a parent model id or a part of one, and `verified`
     keeps the runs whose Hugging Face, paper and merged results were all found. They apply to
@@ -321,12 +351,12 @@ def page_research_runs(session: Session, status: str = "all", reviewer: str = "a
     run = ModelResearchRun
     pending, saved = run.model_id.is_(None), run.model_id.is_not(None)
     conditions = []
-    if reviewer != "all":
-        owner = case((saved, run.reviewed_by), else_=run.reviewer_id)
-        if reviewer == "none":
-            conditions.append(owner.is_(None))
-        else:
-            conditions.append(owner == int(reviewer) if reviewer.isdigit() else false())
+    of_run = select(ModelResearchReview.id).where(ModelResearchReview.run_id == run.id)
+    if reviewer == "none":
+        conditions.append(~of_run.exists() & run.reviewed_by.is_(None))
+    elif reviewer != "all":
+        conditions.append(or_(of_run.where(ModelResearchReview.reviewer_id == int(reviewer)).exists(),
+                              run.reviewed_by == int(reviewer)) if reviewer.isdigit() else false())
     label_condition = _result_label_condition(label)
     if label_condition is not None:
         conditions.append(label_condition)
@@ -344,7 +374,7 @@ def page_research_runs(session: Session, status: str = "all", reviewer: str = "a
             ModelResearchResult.source.in_(STORED_SOURCES)).scalar_subquery() == len(STORED_SOURCES))
     counts = session.execute(select(func.count(), _count_if(pending), _count_if(saved)).where(*conditions)).one()
     stats = session.execute(select(func.count(), _count_if(pending), _count_if(saved),
-                                   _count_if(pending & run.reviewer_id.is_(None)))).one()
+                                   _count_if(pending & ~of_run.exists()))).one()
 
     if status in ("pending", "saved"):
         conditions.append(pending if status == "pending" else saved)
@@ -383,6 +413,17 @@ def get_research_run(session: Session, run_id: int) -> dict[str, Any]:
                              _reviewer_names(session))
 
 
+def get_research_run_status(session: Session, run_id: int) -> dict[str, Any]:
+    """The review state of one run without its result payloads: small enough to poll while it is saved."""
+    run = session.scalar(_run_query().where(ModelResearchRun.id == run_id))
+    if run is None:
+        raise HTTPException(status_code=404, detail="Research run not found.")
+    data = _run_to_dict(run, include_results=False, include_summary=True)
+    result_id = data.get("resultModelId")
+    return _add_review_state(data, {result_id} if result_id and session.get(ModelInfo, result_id) else set(),
+                             _reviewer_names(session))
+
+
 def link_research_run(session: Session, run_id: int, model_id: str | None,
                       reviewed_by: int | None = None) -> dict[str, Any]:
     """Mark the run as reviewed and saved to `model_id` (None undoes it).
@@ -397,6 +438,7 @@ def link_research_run(session: Session, run_id: int, model_id: str | None,
     if reviewed_by is not None and session.get(Reviewer, reviewed_by) is None:
         raise HTTPException(status_code=422, detail="The reviewer does not exist.")
     run.model_id = model_id
+    run.finalize_status, run.finalize_error, run.finalize_started_at = None, None, None
     if model_id is None:
         run.reviewed_by, run.reviewed_at = None, None
     else:
@@ -419,27 +461,44 @@ class AssignRunsRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     run_ids: list[int] = Field(alias="runIds", min_length=1, max_length=500)
-    reviewer_id: int | None = Field(default=None, alias="reviewerId", description="null removes the assignment")
+    reviewer_ids: list[int] = Field(default_factory=list, alias="reviewerIds", max_length=50)
+    mode: Literal["add", "remove", "set"] = Field(
+        default="add",
+        description="add: also assign these reviewers. remove: unassign them. "
+                    "set: the runs are reviewed by exactly these reviewers (an empty list unassigns everyone).")
     dry_run: bool = Field(default=False, alias="dryRun", description="Only count what the ids cover; change nothing.")
 
 
+class DistributeRunsRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    reviewer_ids: list[int] = Field(alias="reviewerIds", min_length=1, max_length=50,
+                                    description="Reviewers who all review every unassigned run.")
+
+
 def _pending_load(session: Session) -> dict[int, int]:
-    """Runs still waiting for review, per assigned reviewer."""
+    """Reviews still to be done, per reviewer."""
     load: dict[int, int] = {}
-    for (reviewer_id,) in session.execute(select(ModelResearchRun.reviewer_id).where(
-            ModelResearchRun.model_id.is_(None), ModelResearchRun.reviewer_id.is_not(None))):
+    for (reviewer_id,) in session.execute(
+            select(ModelResearchReview.reviewer_id).join(ModelResearchRun, ModelResearchRun.id == ModelResearchReview.run_id)
+            .where(ModelResearchRun.model_id.is_(None), ModelResearchReview.status == "assigned")):
         load[reviewer_id] = load.get(reviewer_id, 0) + 1
     return load
 
 
 def list_reviewers(session: Session) -> list[dict[str, Any]]:
     """Reviewers that can be given work. Deleted ones (`is_active` false) are left out; their rows
-    stay so the runs they reviewed keep showing their name."""
+    stay so the runs they reviewed keep showing their name.
+
+    `pendingCount`: runs waiting for this reviewer's review. `reviewedCount`: reviews they submitted,
+    plus the runs they saved directly from the editor."""
     pending = _pending_load(session)
     reviewed: dict[int, int] = {}
-    for (reviewer_id,) in session.execute(select(ModelResearchRun.reviewed_by).where(
-            ModelResearchRun.reviewed_by.is_not(None))):
-        reviewed[reviewer_id] = reviewed.get(reviewer_id, 0) + 1
+    done = [select(ModelResearchReview.reviewer_id).where(ModelResearchReview.status == "submitted"),
+            select(ModelResearchRun.reviewed_by).where(ModelResearchRun.reviewed_by.is_not(None))]
+    for query in done:
+        for (reviewer_id,) in session.execute(query):
+            reviewed[reviewer_id] = reviewed.get(reviewer_id, 0) + 1
     return [{"id": row.id, "name": row.name, "email": row.email,
              "pendingCount": pending.get(row.id, 0), "reviewedCount": reviewed.get(row.id, 0)}
             for row in session.scalars(select(Reviewer).where(Reviewer.is_active.is_(True)).order_by(Reviewer.name))]
@@ -469,21 +528,49 @@ def save_reviewer(session: Session, payload: ReviewerWrite, reviewer_id: int | N
     return list_reviewers(session)
 
 
+def _assignable(run: ModelResearchRun) -> bool:
+    """Reviewers can be changed until the run is saved, and not while its save is running."""
+    return run.model_id is None and (run.finalize_status not in FINALIZING or finalize_is_stale(run))
+
+
+def _after_assignment_change(run: ModelResearchRun) -> None:
+    # A failed save is void once the reviewers change: the run waits (or is saved) again.
+    run.finalize_status, run.finalize_error, run.finalize_started_at = None, None, None
+
+
 def delete_reviewer(session: Session, reviewer_id: int) -> list[dict[str, Any]]:
     """Soft delete: the reviewer disappears from the lists and gets no more work.
 
-    The row stays (`is_active` false) so runs they reviewed keep their name; runs still waiting
-    for them go back to unassigned. Adding the same name again restores the reviewer.
+    The row stays (`is_active` false) so the reviews they submitted keep their name; reviews they
+    had not submitted yet are unassigned. Adding the same name again restores the reviewer.
     """
     row = session.get(Reviewer, reviewer_id)
     if row is None or not row.is_active:
         raise HTTPException(status_code=404, detail="Reviewer not found.")
     row.is_active = False
-    for run in session.scalars(select(ModelResearchRun).where(
-            ModelResearchRun.reviewer_id == reviewer_id, ModelResearchRun.model_id.is_(None))):
-        run.reviewer_id, run.assigned_at = None, None
+    for run in session.scalars(_run_query().where(ModelResearchRun.id.in_(reviewer_open_run_ids(session, reviewer_id)))):
+        if not _assignable(run):
+            continue
+        run.reviews[:] = [review for review in run.reviews if review.reviewer_id != reviewer_id]
+        _after_assignment_change(run)
     session.commit()
     return list_reviewers(session)
+
+
+def reviewer_open_run_ids(session: Session, reviewer_id: int) -> list[int]:
+    """Unsaved runs this reviewer has not submitted a review for yet."""
+    return list(session.scalars(
+        select(ModelResearchReview.run_id).join(ModelResearchRun, ModelResearchRun.id == ModelResearchReview.run_id)
+        .where(ModelResearchReview.reviewer_id == reviewer_id, ModelResearchReview.status == "assigned",
+               ModelResearchRun.model_id.is_(None))))
+
+
+def runs_ready_to_finalize(session: Session, run_ids: list[int]) -> list[int]:
+    """Of these runs, the ones every reviewer has submitted and whose save has not started."""
+    if not run_ids:
+        return []
+    return [run.id for run in session.scalars(_run_query().where(ModelResearchRun.id.in_(run_ids)))
+            if run.model_id is None and run.finalize_status is None and reviews_complete(run)]
 
 
 def _active_reviewer(session: Session, reviewer_id: int) -> Reviewer:
@@ -494,7 +581,11 @@ def _active_reviewer(session: Session, reviewer_id: int) -> Reviewer:
 
 
 def assign_runs(session: Session, payload: AssignRunsRequest) -> dict[str, Any]:
-    """Assign runs to a reviewer (or unassign them). Runs that are already saved are left alone.
+    """Change who reviews the runs (see `AssignRunsRequest.mode`). A run can have several reviewers.
+
+    Runs that are saved, or being saved, are left alone. Unassigning a reviewer drops the review
+    they submitted for that run. `readyRunIds` are the changed runs whose remaining reviewers have
+    all submitted: their save can start.
 
     A dry run changes nothing and reports how many of the ids exist (`found`) and still wait for
     review (`pending`), so a range of ids can be previewed without loading those runs.
@@ -503,45 +594,51 @@ def assign_runs(session: Session, payload: AssignRunsRequest) -> dict[str, Any]:
         found, waiting = session.execute(select(func.count(), _count_if(ModelResearchRun.model_id.is_(None)))
                                          .where(ModelResearchRun.id.in_(payload.run_ids))).one()
         return {"found": int(found), "pending": int(waiting)}
-    if payload.reviewer_id is not None:
-        _active_reviewer(session, payload.reviewer_id)
+    reviewer_ids = list(dict.fromkeys(payload.reviewer_ids))
+    if payload.mode != "remove":
+        for reviewer_id in reviewer_ids:
+            _active_reviewer(session, reviewer_id)
+    if payload.mode != "set" and not reviewer_ids:
+        raise HTTPException(status_code=422, detail="Name the reviewers to assign or unassign.")
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    changed = 0
-    for run in session.scalars(select(ModelResearchRun).where(ModelResearchRun.id.in_(payload.run_ids))):
-        if run.model_id is not None or run.reviewer_id == payload.reviewer_id:
+    changed: list[int] = []
+    for run in session.scalars(_run_query().where(ModelResearchRun.id.in_(payload.run_ids))):
+        if not _assignable(run):
             continue
-        run.reviewer_id = payload.reviewer_id
-        run.assigned_at = now if payload.reviewer_id is not None else None
-        changed += 1
+        current = [review.reviewer_id for review in run.reviews]
+        keep = (current + [item for item in reviewer_ids if item not in current] if payload.mode == "add"
+                else [item for item in current if item not in reviewer_ids] if payload.mode == "remove"
+                else reviewer_ids)
+        if set(keep) == set(current):
+            continue
+        run.reviews[:] = [review for review in run.reviews if review.reviewer_id in keep]
+        run.reviews.extend(ModelResearchReview(reviewer_id=reviewer_id, status="assigned", assigned_at=now)
+                           for reviewer_id in keep if reviewer_id not in current)
+        _after_assignment_change(run)
+        changed.append(run.id)
     session.commit()
-    return {"assigned": changed}
+    return {"assigned": len(changed), "readyRunIds": runs_ready_to_finalize(session, changed)}
 
 
-def distribute_runs(session: Session) -> dict[str, Any]:
-    """Share the unassigned pending runs between the active reviewers.
+def distribute_runs(session: Session, reviewer_ids: list[int]) -> dict[str, Any]:
+    """Give every unassigned pending run to all of the named reviewers.
 
-    Each run goes to whoever has the fewest runs waiting at that moment, so people who already
-    carry more get fewer new ones. Oldest runs are handed out first.
+    Nothing is balanced or picked: each run nobody reviews yet gets exactly these reviewers.
     """
-    reviewers = list(session.scalars(select(Reviewer).where(Reviewer.is_active.is_(True)).order_by(Reviewer.id)))
-    if not reviewers:
-        raise HTTPException(status_code=422, detail="There is no active reviewer to assign runs to.")
-    load = _pending_load(session)
-    counts = {reviewer.id: load.get(reviewer.id, 0) for reviewer in reviewers}
+    wanted = list(dict.fromkeys(reviewer_ids))
+    reviewers = list(session.scalars(select(Reviewer).where(
+        Reviewer.id.in_(wanted), Reviewer.is_active.is_(True)).order_by(Reviewer.id))) if wanted else []
+    if not wanted or len(reviewers) != len(wanted):
+        raise HTTPException(status_code=422, detail="Choose active reviewers to assign the runs to.")
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    given: dict[int, int] = {}
-    runs = session.scalars(select(ModelResearchRun).where(
-        ModelResearchRun.model_id.is_(None), ModelResearchRun.reviewer_id.is_(None))
-        .order_by(ModelResearchRun.created_at, ModelResearchRun.id))
+    runs = list(session.scalars(_run_query().where(
+        ModelResearchRun.model_id.is_(None), ModelResearchRun.finalize_status.is_(None),
+        ~select(ModelResearchReview.id).where(ModelResearchReview.run_id == ModelResearchRun.id).exists())))
     for run in runs:
-        target = min(counts, key=lambda reviewer_id: (counts[reviewer_id], reviewer_id))
-        run.reviewer_id, run.assigned_at = target, now
-        counts[target] += 1
-        given[target] = given.get(target, 0) + 1
+        for reviewer in reviewers:
+            run.reviews.append(ModelResearchReview(reviewer_id=reviewer.id, status="assigned", assigned_at=now))
     session.commit()
-    names = {reviewer.id: reviewer.name for reviewer in reviewers}
-    return {"assigned": sum(given.values()),
-            "byReviewer": [{"reviewerId": key, "name": names[key], "assigned": value} for key, value in given.items()]}
+    return {"assigned": len(runs), "reviewers": [{"reviewerId": reviewer.id, "name": reviewer.name} for reviewer in reviewers]}
 
 
 def delete_research_run(session: Session, run_id: int) -> None:
@@ -557,6 +654,7 @@ def delete_research_results(session: Session, model_name: str) -> int:
     requested = normalize_requested_model(model_name)
     run_ids = list(session.scalars(select(ModelResearchRun.id).where(ModelResearchRun.requested_model == requested)))
     if run_ids:
+        session.execute(delete(ModelResearchReview).where(ModelResearchReview.run_id.in_(run_ids)))
         session.execute(delete(ModelResearchResult).where(ModelResearchResult.run_id.in_(run_ids)))
         session.execute(delete(ModelResearchRun).where(ModelResearchRun.id.in_(run_ids)))
     session.commit()

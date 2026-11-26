@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, AsyncIterator, Literal
@@ -925,6 +926,23 @@ def attach_evidence(result: dict[str, Any],
     return result
 
 
+def resolve_stored_results(results: dict[str, dict[str, Any] | None],
+                           context: CatalogContext | None) -> dict[str, dict[str, Any] | None]:
+    """Stored research results (`huggingface` / `paper` / `merged`) brought up to date, as copies.
+
+    Stored drafts predate later catalog changes (e.g. the parent was registered afterwards), so
+    they are placed in the tree again; evidence rows follow the lineage (inherited fields carry
+    none) and older runs stored none.
+    """
+    resolved = {key: resolve_catalog_lineage(deepcopy(result), context) if isinstance(result, dict) else result
+                for key, result in results.items()}
+    inputs = {key: resolved.get(key) for key in ("huggingface", "paper")}
+    for result in resolved.values():
+        if isinstance(result, dict):
+            attach_evidence(result, inputs)
+    return resolved
+
+
 def parse_openrouter_response(
     payload: dict[str, Any],
     context: CatalogContext | None = None,
@@ -1513,3 +1531,26 @@ async def stream_model_merge(
         yield _sse("complete", {"result": result})
     except (RuntimeError, ValueError, httpx.HTTPError) as error:
         yield _sse("error", {"message": _stream_error_message(error)})
+
+
+async def complete_json(request_payload: dict[str, Any]) -> dict[str, Any]:
+    """Run one OpenRouter completion to its end, for server-side work nobody watches live.
+
+    Returns `{content, model, usage, metrics}` with `content` the answer text (the JSON the response
+    format asked for). Raises RuntimeError carrying OpenRouter's own message when the call fails.
+    """
+    if not settings.openrouter_api_key:
+        raise RuntimeError("OPENROUTER_API_KEY is not configured.")
+    sink: dict[str, Any] = {}
+    error: str | None = None
+    try:
+        async for event in _stream_completion(request_payload, {"stage": "merging", "message": ""}, sink):
+            if event.startswith("event: error\n"):
+                error = json.loads(event.split("data: ", 1)[1]).get("message")
+    except httpx.HTTPError as exc:
+        raise RuntimeError(_stream_error_message(exc)) from exc
+    if sink.get("failed") or "assembled" not in sink:
+        raise RuntimeError(error or "OpenRouter request failed.")
+    assembled = sink["assembled"]
+    return {"content": _content_text(assembled["choices"][0]["message"]["content"]), "model": assembled["model"],
+            "usage": assembled["usage"], "metrics": sink["metrics"]}

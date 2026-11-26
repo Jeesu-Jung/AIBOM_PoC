@@ -25,6 +25,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON aibom.model_hierarchy       TO 'aibom_mc
 GRANT SELECT, INSERT, UPDATE, DELETE ON aibom.model_info            TO 'aibom_mcp'@'localhost';
 GRANT SELECT, INSERT, UPDATE, DELETE ON aibom.model_research_result TO 'aibom_mcp'@'localhost';
 GRANT SELECT, INSERT, UPDATE, DELETE ON aibom.model_research_run    TO 'aibom_mcp'@'localhost';
+GRANT SELECT, INSERT, UPDATE, DELETE ON aibom.model_research_review TO 'aibom_mcp'@'localhost';
 GRANT SELECT, INSERT, UPDATE, DELETE ON aibom.model_evidence        TO 'aibom_mcp'@'localhost';
 GRANT SELECT, INSERT, UPDATE, DELETE ON aibom.reviewer              TO 'aibom_mcp'@'localhost';
 GRANT SELECT, INSERT, UPDATE, DELETE ON aibom.dataset               TO 'aibom_mcp'@'localhost';

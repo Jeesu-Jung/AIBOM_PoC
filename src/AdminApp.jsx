@@ -8,7 +8,7 @@ import { composeEvidence, datasetsWithoutEvidence, describeEvidence, pruneEviden
 import EvidenceLinks from "./components/admin/EvidenceLinks.jsx";
 import { focusInputOnLabelClick } from "./utils/labelClick.js";
 import SourcePicker, { MANUAL, RESEARCH_SOURCES, sourceLabel as chipLabel } from "./components/admin/SourcePicker.jsx";
-import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, fetchAdminModelEvidence, fetchResearchRun, fetchResearchRuns, linkResearchRun, saveAdminModelEvidence, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, updateAdminModel } from "./api/admin.js";
+import { createAdminModel, deleteAdminModel, fetchAdminModels, fetchAdminResearchResults, fetchAdminModelEvidence, fetchResearchRun, fetchResearchRunStatus, fetchResearchRuns, fetchRunReview, finalizeResearchRun, linkResearchRun, saveAdminModelEvidence, saveAdminModelWithAibom, saveAdminResearchResults, streamAdminModelMerge, streamAdminModelResearch, submitRunReview, updateAdminModel } from "./api/admin.js";
 
 const EMPTY_MODEL = {
   modelId: "", namespace: "", modelName: "", familyKey: "", familyName: "", modelRole: "DERIVED",
@@ -1052,6 +1052,16 @@ function ConfirmSaveModal({ open, title, message, warningItems = [], confirmLabe
   );
 }
 
+// The reviewer this browser last reviewed as (the app has no login).
+const REVIEWER_KEY = "aibom.reviewerId";
+const rememberedReviewer = () => { try { return window.localStorage.getItem(REVIEWER_KEY) || ""; } catch { return ""; } };
+const rememberReviewer = (reviewerId) => { try { window.localStorage.setItem(REVIEWER_KEY, String(reviewerId)); } catch { /* private mode */ } };
+// The part of a run the review mode needs.
+const reviewStateOf = (run) => ({ runId: run.runId, modelId: run.modelId, reviewStatus: run.reviewStatus, reviewers: run.reviewers || [],
+  reviewProgress: run.reviewProgress || { submitted: 0, total: 0 }, finalize: run.finalize || {} });
+const reviewerNames = (reviewers, submittedOnly = false) => (reviewers || [])
+  .filter((reviewer) => !submittedOnly || reviewer.status === "submitted").map((reviewer) => reviewer.name || "삭제된 작업자").join(", ");
+
 export default function AdminApp() {
   const [models, setModels] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -1079,16 +1089,17 @@ export default function AdminApp() {
   // Research results ({ huggingface, paper, merged }) whose values the editor can switch between.
   const [candidates, setCandidates] = useState(null);
   const [candidateRunId, setCandidateRunId] = useState(null);
-  // Review state of that run ({ runId, reviewStatus, reviewerName, reviewedByName }), shown next to the model title.
+  // Review state of that run ({ runId, reviewStatus, reviewers, reviewedByName }), shown next to the model title.
   const [modelRun, setModelRun] = useState(null);
   // Result last picked per catalog field; decides the marked chip when several results agree.
   const [pickedSource, setPickedSource] = useState({});
   // A stored run opened from the research history for review: { runId, modelId } once its catalog model is known.
   const [reviewRun, setReviewRun] = useState(null);
-  // The reviewer the run on screen is assigned to ({ id, name }), and whether to record them as the
-  // person who reviewed it when it is saved ("" = record nobody).
-  const [assignee, setAssignee] = useState(null);
-  const [reviewedBy, setReviewedBy] = useState("");
+  // A run with assigned reviewers is reviewed, not saved: everyone submits an answer and the server
+  // saves the majority (see reviewStateOf). `reviewerId` is who this browser reviews as ("" = not chosen).
+  const [reviewInfo, setReviewInfo] = useState(null);
+  const [reviewerId, setReviewerId] = useState("");
+  const [retrying, setRetrying] = useState(false);
   const aibomEditorRef = useRef(null);
 
   const reload = async (preferredId = selectedId) => {
@@ -1111,7 +1122,8 @@ export default function AdminApp() {
       const selected = data.find((model) => model.modelId === requestedId) || data[0];
       // /admin?run=<id>: review a stored research run (from the research history page).
       const runId = Number(params.get("run"));
-      if (runId) return openRunForReview(runId, data).catch((error) => {
+      // &reviewer=<id>: review as that reviewer (the research history's reviewer filter).
+      if (runId) return openRunForReview(runId, data, params.get("reviewer")).catch((error) => {
         setNotice({ type: "error", text: `AI 조사 #${runId} 결과를 불러오지 못했습니다: ${error.message}` });
         if (selected) selectModel(selected);
       });
@@ -1132,23 +1144,79 @@ export default function AdminApp() {
     window.history.replaceState({}, "", url);
   }, [selectedId, activeReviewRunId, loading]);
 
+  // Review mode: the run on screen has assigned reviewers, so "save" hands in one reviewer's answer.
+  const reviewMode = Boolean(activeReviewRunId && reviewInfo?.runId === activeReviewRunId && reviewInfo.reviewers.length);
+  const me = reviewMode ? reviewInfo.reviewers.find((reviewer) => String(reviewer.id) === reviewerId) || null : null;
+  const mySubmitted = me?.status === "submitted";
+  // Whether this submission is the one the run is still waiting for.
+  const lastReview = reviewMode && reviewInfo.reviewers.every((reviewer) => reviewer.status === "submitted" || reviewer === me);
+  const reviewBusy = reviewMode && (reviewInfo.reviewStatus === "saving" || reviewInfo.reviewStatus === "merging");
+  // While the server saves the run ("저장 중" / "AI 병합 중") its state is polled; a submitted review
+  // that still waits for the other reviewers is checked now and then.
+  const reviewPoll = !reviewMode ? 0 : reviewBusy ? 2000 : reviewInfo.reviewStatus === "pending" && mySubmitted ? 10000 : 0;
+  useEffect(() => {
+    if (!reviewPoll) return undefined;
+    const runId = activeReviewRunId;
+    const timer = setInterval(() => fetchResearchRunStatus(runId).then((run) => {
+      if (run.reviewStatus === "saved") return finishReview(run);
+      return setReviewInfo((current) => (current?.runId === runId ? reviewStateOf(run) : current));
+    }).catch(() => {}), reviewPoll);
+    return () => clearInterval(timer);
+  }, [reviewPoll, activeReviewRunId]);
+  // Review as someone else (or start over as the same reviewer): everything is loaded again.
+  function switchReviewer(nextId) {
+    if (nextId) rememberReviewer(nextId);
+    setReviewerId(nextId);
+    openRunForReview(activeReviewRunId, models, nextId || "").catch((error) => setNotice({ type: "error", text: error.message }));
+  }
+
   // Open a stored research run for review. When the catalog already has the researched model the
   // review happens on that model (its values can be switched to the run's); otherwise the run
   // becomes a new-model draft.
-  async function openRunForReview(runId, catalog = models) {
+  // A run with assigned reviewers opens in review mode as `asReviewer` (default: the reviewer this
+  // browser reviewed as last); an answer they already submitted is loaded so they can go on from it.
+  async function openRunForReview(runId, catalog = models, asReviewer = null) {
     const run = await fetchResearchRun(runId, true);
     const results = Object.fromEntries(RESEARCH_SOURCES.map(([key]) => [key, run.results[key]?.result || null]));
-    setAssignee(run.reviewerId ? { id: run.reviewerId, name: run.reviewerName } : null);
-    setReviewedBy(run.reviewerId ? String(run.reviewerId) : ""); // the assignee is recorded unless switched off
+    const reviewing = run.reviewers?.length > 0;
+    if (reviewing && run.reviewStatus === "saved") {
+      // Already saved from its reviews: nothing left to review, show the model.
+      const saved = catalog.find((model) => model.modelId === run.modelId);
+      setReviewInfo(null); setReviewRun(null);
+      if (!saved) throw new Error("이 실행으로 저장된 모델을 찾지 못했습니다.");
+      selectModel(saved);
+      return;
+    }
+    const known = (id) => run.reviewers.some((reviewer) => String(reviewer.id) === String(id));
+    const me = !reviewing || asReviewer === "" ? "" : asReviewer != null && known(asReviewer) ? String(asReviewer)
+      : known(rememberedReviewer()) ? rememberedReviewer() : run.reviewers.length === 1 ? String(run.reviewers[0].id) : "";
+    setReviewInfo(reviewing ? reviewStateOf(run) : null);
+    setReviewerId(me);
     const existing = catalog.find((model) => model.modelId === run.catalogModelId);
     if (existing) {
       setReviewRun({ runId, modelId: existing.modelId });
       selectModel(existing);
-      return;
+      setAibomRefresh((value) => value + 1); // back to the stored AIBOM and evidence when the reviewer changes
+    } else {
+      const prepared = draftFromResults(results);
+      if (!prepared) throw new Error("이 실행에는 초안으로 쓸 조사 결과가 없습니다.");
+      useAiDraft(prepared.draft, prepared.aibom, runId, prepared.evidence, results);
     }
-    const prepared = draftFromResults(results);
-    if (!prepared) throw new Error("이 실행에는 초안으로 쓸 조사 결과가 없습니다.");
-    useAiDraft(prepared.draft, prepared.aibom, runId, prepared.evidence, results);
+    if (me && run.reviewers.find((reviewer) => String(reviewer.id) === me)?.status === "submitted") {
+      const mine = await fetchRunReview(runId, me);
+      if (mine.review) applySubmittedReview(mine.review, Boolean(existing));
+    }
+  }
+
+  // Show the answer a reviewer already submitted in place of the starting values.
+  function applySubmittedReview(review, registered) {
+    setForm((current) => normalizeForForm({ ...current, ...review.model }));
+    setDetailsText(jsonText(review.model.detailsJson || {}));
+    setChangeText(review.model.changeDetailsJson ? jsonText(review.model.changeDetailsJson) : "");
+    setLicenseText(review.model.licenseReported == null ? "" : jsonText(review.model.licenseReported));
+    if (review.aibom) setPendingAibom(review.aibom);
+    (registered ? setStoredEvidence : setPendingEvidence)(review.evidence || []);
+    setPickedSource({});
   }
 
   // Evidence of the researched values: stored rows for a registered model, the draft's rows before that.
@@ -1157,7 +1225,8 @@ export default function AdminApp() {
     setEvidenceDirty(false);
     if (!selectedId) return undefined;
     let cancelled = false;
-    fetchAdminModelEvidence(selectedId).then((rows) => { if (!cancelled) setStoredEvidence(rows); }).catch(() => {});
+    // A reviewer's submitted answer (applySubmittedReview) may already be in place: it stays.
+    fetchAdminModelEvidence(selectedId).then((rows) => { if (!cancelled) setStoredEvidence((current) => current ?? rows); }).catch(() => {});
     return () => { cancelled = true; };
   }, [selectedId, aibomRefresh]);
   const evidenceRows = selectedId ? storedEvidence : pendingEvidence;
@@ -1179,7 +1248,7 @@ export default function AdminApp() {
         if (cancelled || !run) return;
         setCandidates(Object.fromEntries(RESEARCH_SOURCES.map(([key]) => [key, run.results[key]?.result || null])));
         setCandidateRunId(run.runId);
-        setModelRun({ runId: run.runId, reviewStatus: run.reviewStatus, reviewerName: run.reviewerName, reviewedByName: run.reviewedByName });
+        setModelRun({ runId: run.runId, reviewStatus: run.reviewStatus, reviewers: run.reviewers, reviewedByName: run.reviewedByName });
       }).catch(() => {});
     return () => { cancelled = true; };
   }, [selectedId, aibomRefresh, reviewRun]);
@@ -1296,26 +1365,67 @@ export default function AdminApp() {
     setConfirmingSave(true);
   }
 
+  // The model form as the API takes it.
+  function modelPayload() {
+    const parentId = form.parentModelId || null;
+    return {
+      ...form,
+      parentModelId: parentId,
+      relationshipType: parentId ? (form.relationshipType || null) : null,
+      siblingOrder: Number(form.siblingOrder || 0),
+      detailsJson: parseJson(detailsText, "Details", {}),
+      changeDetailsJson: parseJson(changeText, "Change details", null),
+      licenseReported: parseJson(licenseText, "License reported", null),
+      checklistPresentFields: form.checklistPresentFields === "" ? null : Number(form.checklistPresentFields),
+      checklistTotalFields: form.checklistTotalFields === "" ? null : Number(form.checklistTotalFields),
+      checklistScore: form.checklistScore === "" ? null : Number(form.checklistScore),
+      checklistPenaltyFactor: form.checklistPenaltyFactor === "" ? null : Number(form.checklistPenaltyFactor),
+      sourceGeneratedAt: form.sourceGeneratedAt || null,
+      releaseDate: form.releaseDate || null
+    };
+  }
+
+  // Review mode: hand in this reviewer's answer. Nothing is written to the catalog here; the server
+  // saves the run once every assigned reviewer has submitted (majority, ties merged by the AI).
+  async function submitReview() {
+    setConfirmingSave(false);
+    setSaving(true); setNotice(null);
+    try {
+      const aibomPayload = aibomEditorRef.current?.getValue();
+      const renames = aibomEditorRef.current?.getEvidenceRenames() || [];
+      const evidence = aibomPayload ? pruneEvidence(rekeyEvidence(evidenceRows || [], renames), aibomPayload) : evidenceRows || [];
+      rememberReviewer(reviewerId);
+      const run = await submitRunReview(activeReviewRunId, Number(reviewerId), { model: modelPayload(), aibom: aibomPayload, evidence });
+      if (run.reviewStatus === "saved") await finishReview(run);
+      else setReviewInfo(reviewStateOf(run));
+      window.scrollTo({ top: 0, behavior: "smooth" }); // the review bar at the top says what happens next
+    } catch (error) {
+      setNotice({ type: "error", text: error.message });
+    } finally { setSaving(false); }
+  }
+
+  // The run was saved from its reviews: leave review mode and show the saved model.
+  async function finishReview(run) {
+    const merged = run.finalize?.summary?.counts?.aiMerged || 0;
+    setReviewInfo(null); setReviewRun(null);
+    setPendingAibom(null); setPendingRunId(null); setPendingEvidence(null);
+    await reload(run.modelId);
+    setAibomRefresh((value) => value + 1);
+    setNotice({ type: "success", text: `AI 조사 #${run.runId}의 검토가 모두 끝나 다수결 결과가 '${run.modelId}' 모델로 저장되었습니다.${merged ? ` 동점이던 값 ${merged}개는 AI 병합 결과로 저장했습니다.` : ""}` });
+  }
+
+  async function retryFinalize() {
+    setRetrying(true);
+    try { setReviewInfo(reviewStateOf(await finalizeResearchRun(reviewInfo.runId))); }
+    catch (error) { setNotice({ type: "error", text: error.message }); }
+    finally { setRetrying(false); }
+  }
+
   async function save() {
     setConfirmingSave(false);
     setSaving(true); setNotice(null);
     try {
-      const parentId = form.parentModelId || null;
-      const payload = {
-        ...form,
-        parentModelId: parentId,
-        relationshipType: parentId ? (form.relationshipType || null) : null,
-        siblingOrder: Number(form.siblingOrder || 0),
-        detailsJson: parseJson(detailsText, "Details", {}),
-        changeDetailsJson: parseJson(changeText, "Change details", null),
-        licenseReported: parseJson(licenseText, "License reported", null),
-        checklistPresentFields: form.checklistPresentFields === "" ? null : Number(form.checklistPresentFields),
-        checklistTotalFields: form.checklistTotalFields === "" ? null : Number(form.checklistTotalFields),
-        checklistScore: form.checklistScore === "" ? null : Number(form.checklistScore),
-        checklistPenaltyFactor: form.checklistPenaltyFactor === "" ? null : Number(form.checklistPenaltyFactor),
-        sourceGeneratedAt: form.sourceGeneratedAt || null,
-        releaseDate: form.releaseDate || null
-      };
+      const payload = modelPayload();
       const aibomPayload = aibomEditorRef.current?.getValue();
       const evidenceRenames = aibomEditorRef.current?.getEvidenceRenames() || [];
       const savedResult = aibomPayload
@@ -1325,7 +1435,7 @@ export default function AdminApp() {
       if (activeReviewRunId) {
         // Remember which research run this catalog record was saved from: the research history
         // shows the run as reviewed and saved.
-        await linkResearchRun(activeReviewRunId, saved.modelId, reviewedBy ? Number(reviewedBy) : null).catch(() => {});
+        await linkResearchRun(activeReviewRunId, saved.modelId, null).catch(() => {});
       }
       setReviewRun(null);
       let evidenceError = null;
@@ -1369,11 +1479,18 @@ export default function AdminApp() {
   return (
     <div className="admin-shell">
       <NoticeModal notice={notice} onClose={() => setNotice(null)} />
-      <ConfirmSaveModal open={confirmingSave} onConfirm={save} onCancel={cancelSave}
-        title={selectedId ? "변경사항을 저장할까요?" : "모델을 등록할까요?"}
-        message={selectedId ? `'${selectedId}' 모델에 지금 편집한 내용을 저장합니다.` : `'${form.modelId}' 모델을 카탈로그에 새로 등록합니다.`}
-        warningItems={unevidencedDatasets} confirmLabel={selectedId ? "저장" : "등록"} />
-      {createMode && <CreateModelDialog mode={createMode} onModeChange={setCreateMode} onManual={startCreate} onUseDraft={(...draft) => { setAssignee(null); setReviewedBy(""); useAiDraft(...draft); }} onClose={() => setCreateMode(null)} />}
+      {reviewMode
+        ? <ConfirmSaveModal open={confirmingSave} onConfirm={submitReview} onCancel={cancelSave}
+          title={mySubmitted ? "검토를 다시 제출할까요?" : "검토를 완료할까요?"}
+          message={`AI 조사 #${activeReviewRunId}에 대한 ${me?.name || "검토자"}의 검토 결과를 제출합니다. ${lastReview
+            ? "마지막 검토입니다. 제출하면 다수결 결과가 바로 저장되고, 동점인 값이 있으면 AI 병합을 거칩니다."
+            : `배정된 검토자 ${reviewInfo.reviewers.length}명이 모두 제출하면 다수결 결과가 자동으로 저장됩니다. 그 전까지는 다시 제출할 수 있습니다.`}`}
+          warningItems={unevidencedDatasets} confirmLabel={mySubmitted ? "다시 제출" : "검토 완료"} />
+        : <ConfirmSaveModal open={confirmingSave} onConfirm={save} onCancel={cancelSave}
+          title={selectedId ? "변경사항을 저장할까요?" : "모델을 등록할까요?"}
+          message={selectedId ? `'${selectedId}' 모델에 지금 편집한 내용을 저장합니다.` : `'${form.modelId}' 모델을 카탈로그에 새로 등록합니다.`}
+          warningItems={unevidencedDatasets} confirmLabel={selectedId ? "저장" : "등록"} />}
+      {createMode && <CreateModelDialog mode={createMode} onModeChange={setCreateMode} onManual={startCreate} onUseDraft={(...draft) => { setReviewInfo(null); useAiDraft(...draft); }} onClose={() => setCreateMode(null)} />}
       <header className="admin-header">
         <div><p className="eyebrow">AIBOM ADMIN</p><h1>Model catalog</h1><p>등록된 모델 정보와 모델 간 연결 관계를 조회하고 수정할 수 있습니다.</p></div>
         <div className="admin-header-actions"><a href="/" className="admin-secondary">메인으로</a><a href="/admin/research" className="admin-secondary">AI 조사 이력</a><button type="button" className="admin-primary" onClick={() => setCreateMode("method")}>+ 새 모델</button></div>
@@ -1410,21 +1527,33 @@ export default function AdminApp() {
               {modelRun && <a className={`admin-owner is-${modelRun.reviewStatus}`} href={`/admin/research?run=${modelRun.runId}`}
                 title={`AI 조사 #${modelRun.runId} · ${modelRun.reviewStatus === "saved" ? "검토 완료 · 저장됨" : "검토 대기"} (눌러서 조사 이력 보기)`}>
                 {modelRun.reviewStatus === "saved"
-                  ? <>검토자 <b>{modelRun.reviewedByName || "기록 없음"}</b></>
-                  : <>담당 <b>{modelRun.reviewerName || "미배정"}</b></>}
+                  ? <>검토자 <b>{modelRun.reviewedByName || reviewerNames(modelRun.reviewers, true) || "기록 없음"}</b></>
+                  : <>담당 <b>{reviewerNames(modelRun.reviewers) || "미배정"}</b></>}
                 <small>AI 조사 #{modelRun.runId}</small>
               </a>}
               <span className="admin-depth">Depth {form.hierarchyDepth}</span>
             </div>}
           </div>
-          {activeReviewRunId && assignee && <label className="review-by"><span>검토자</span>
-            <select value={reviewedBy} onChange={(event) => setReviewedBy(event.target.value)}>
-              <option value={assignee.id}>{assignee.name}</option>
-              <option value="">선택 안 함</option>
-            </select>
-            <small>{reviewedBy ? `저장할 때 AI 조사 #${activeReviewRunId}의 검토자로 ${assignee.name}이(가) 기록됩니다.` : `저장해도 AI 조사 #${activeReviewRunId}에 검토자를 기록하지 않습니다.`}</small></label>}
-          {selectedId && activeReviewRunId && <div className="ai-draft-banner"><span>✦</span><div><strong>AI 조사 #{activeReviewRunId} 결과를 검토하고 있습니다</strong><p>이미 등록된 모델이라 새로 만들지 않고 이 모델에 반영합니다. 각 항목 위의 HF / 논문 / AI 병합 칩으로 조사 값을 골라 넣고 저장하면, 이 조사 실행이 검토 완료로 표시됩니다.</p></div><em>검토 중</em></div>}
-          {aiDraft && <div className="ai-draft-banner"><span>✦</span><div><strong>AI가 작성한 초안입니다</strong><p>내용과 출처를 확인하고 필요한 항목을 수정한 뒤 등록해 주세요. 각 항목 위의 HF / 논문 / AI 병합 칩으로 다른 조사 결과의 값으로 바꿀 수 있습니다.{pendingAibom ? ` AIBOM(평가 ${pendingAibom.evaluation?.length || 0}건 · 데이터셋 ${pendingAibom.dataset?.length || 0}개 · 근거 ${pendingAibom.reference?.length || 0}개)을 포함한 전체 정보가 한 번에 저장됩니다.` : ""}</p></div><em>검토 필요</em></div>}
+          {reviewMode && <div className="review-bar" aria-live="polite">
+            <div className="review-bar-row">
+              <label>검토자
+                <select className={reviewerId ? "" : "is-missing"} value={reviewerId} disabled={saving || reviewBusy}
+                  onChange={(event) => switchReviewer(event.target.value)} aria-label="검토자 선택">
+                  <option value="">내 이름을 선택하세요</option>
+                  {reviewInfo.reviewers.map((reviewer) => <option key={reviewer.id} value={String(reviewer.id)}>{reviewer.name || "삭제된 작업자"}{reviewer.status === "submitted" ? " (제출함)" : ""}</option>)}
+                </select>
+              </label>
+              <small>AI 조사 #{activeReviewRunId} · 검토 {reviewInfo.reviewProgress.submitted}/{reviewInfo.reviewProgress.total} 제출 · {reviewInfo.reviewers.map((reviewer) => `${reviewer.name || "삭제된 작업자"}${reviewer.status === "submitted" ? " ✓" : ""}`).join(" · ")}</small>
+            </div>
+            {reviewInfo.reviewStatus === "merging" ? <p className="review-state is-merging"><span className="review-spinner" aria-hidden="true" />AI 병합 중… 검토자들의 답이 동점인 값을 AI가 병합하고 있습니다. 끝나면 자동으로 저장됩니다.</p>
+              : reviewInfo.reviewStatus === "saving" ? <p className="review-state is-saving"><span className="review-spinner" aria-hidden="true" />저장 중… 모든 검토가 제출되어 다수결 결과를 저장하고 있습니다.</p>
+                : reviewInfo.reviewStatus === "failed" ? <p className="review-state is-failed">저장하지 못했습니다: {reviewInfo.finalize.error} 답을 고쳐 다시 제출하거나 다시 시도하세요.
+                  <button type="button" className="admin-secondary" disabled={retrying} onClick={retryFinalize}>{retrying ? "시작하는 중…" : "다시 시도"}</button></p>
+                  : mySubmitted ? <p className="review-state is-submitted">검토를 제출했습니다. 다른 검토자 {reviewInfo.reviewProgress.total - reviewInfo.reviewProgress.submitted}명이 제출하면 다수결 결과가 자동으로 저장됩니다. 그 전까지는 값을 고쳐 다시 제출할 수 있습니다.</p>
+                    : <p className="review-state">{reviewerId ? "값과 근거를 확인해 고른 뒤 아래 “검토 완료”를 누르세요. 카탈로그에는 배정된 검토자가 모두 제출한 뒤 다수결로 저장됩니다(동점인 값은 AI가 병합)." : "검토를 시작하려면 먼저 검토자(내 이름)를 선택하세요."}</p>}
+          </div>}
+          {selectedId && activeReviewRunId && <div className="ai-draft-banner"><span>✦</span><div><strong>AI 조사 #{activeReviewRunId} 결과를 검토하고 있습니다</strong><p>이미 등록된 모델이라 새로 만들지 않고 이 모델에 반영합니다. 각 항목 위의 HF / 논문 / AI 병합 칩으로 조사 값을 골라 넣{reviewMode ? "은 뒤 검토를 제출하세요." : "고 저장하면, 이 조사 실행이 검토 완료로 표시됩니다."}</p></div><em>검토 중</em></div>}
+          {aiDraft && <div className="ai-draft-banner"><span>✦</span><div><strong>AI가 작성한 초안입니다</strong><p>내용과 출처를 확인하고 필요한 항목을 수정한 뒤 {reviewMode ? "검토를 제출해 주세요" : "등록해 주세요"}. 각 항목 위의 HF / 논문 / AI 병합 칩으로 다른 조사 결과의 값으로 바꿀 수 있습니다.{pendingAibom && !reviewMode ? ` AIBOM(평가 ${pendingAibom.evaluation?.length || 0}건 · 데이터셋 ${pendingAibom.dataset?.length || 0}개 · 근거 ${pendingAibom.reference?.length || 0}개)을 포함한 전체 정보가 한 번에 저장됩니다.` : ""}</p></div><em>검토 필요</em></div>}
           <form onSubmit={requestSave}>
             <fieldset><legend>기본 정보</legend><div className="admin-form-grid">
               <Field label="Model ID" evidence={cev("modelId")} picker={pkOnly("modelId")}><Input field="modelId" form={form} setForm={setForm} required disabled={Boolean(selectedId)} readOnly={chipOnly("modelId")} /></Field>
@@ -1453,13 +1582,21 @@ export default function AdminApp() {
               <Field label="License reported JSON" wide><textarea className="code-input" value={licenseText} onChange={(e) => setLicenseText(e.target.value)} rows="3" placeholder='"apache-2.0" 또는 ["license-a"]' /></Field>
             </div></fieldset>
 
-            {(selectedId || pendingAibom) && <AibomEditor ref={aibomEditorRef} modelId={selectedId} initialAibom={pendingAibom} refreshKey={aibomRefresh} disabled={saving} evidence={evidenceRows} candidates={candidates} onPickEvidence={pickAibomEvidence} />}
+            {(selectedId || pendingAibom) && <AibomEditor ref={aibomEditorRef} modelId={selectedId} initialAibom={pendingAibom} refreshKey={aibomRefresh} disabled={saving || reviewBusy} evidence={evidenceRows} candidates={candidates} onPickEvidence={pickAibomEvidence} />}
 
             <div className="admin-form-actions">
-              {selectedId && <button type="button" className="admin-danger" onClick={remove} disabled={saving}>삭제</button>}
-              <span />
-              <button type="button" className="admin-secondary" onClick={() => selectedId ? selectModel(models.find((m) => m.modelId === selectedId)) : startCreate()} disabled={saving}>변경 취소</button>
-              <button type="submit" className="admin-primary" disabled={saving}>{saving ? "저장 중..." : selectedId ? "변경사항 저장" : aiDraft ? "검토 완료 및 모델 등록" : "모델 등록"}</button>
+              {reviewMode ? <i aria-hidden="true" /> : selectedId && <button type="button" className="admin-danger" onClick={remove} disabled={saving}>삭제</button>}
+              <span className="review-action-state" aria-live="polite">{!reviewMode ? "" : reviewInfo.reviewStatus === "merging" ? "AI 병합 중… 끝나면 자동으로 저장됩니다."
+                : reviewInfo.reviewStatus === "saving" ? "저장 중…" : mySubmitted ? `제출 완료 · ${reviewInfo.reviewProgress.submitted}/${reviewInfo.reviewProgress.total}명 제출` : ""}</span>
+              {reviewMode ? <>
+                <button type="button" className="admin-secondary" onClick={() => switchReviewer(reviewerId)} disabled={saving || reviewBusy}>변경 취소</button>
+                <button type="submit" className="admin-primary" disabled={saving || reviewBusy || !reviewerId}
+                  title={reviewerId ? undefined : "먼저 위에서 검토자(내 이름)를 선택하세요."}>
+                  {saving ? "제출 중..." : reviewInfo.reviewStatus === "merging" ? "AI 병합 중…" : reviewInfo.reviewStatus === "saving" ? "저장 중…" : mySubmitted ? "검토 다시 제출" : "검토 완료"}</button>
+              </> : <>
+                <button type="button" className="admin-secondary" onClick={() => selectedId ? selectModel(models.find((m) => m.modelId === selectedId)) : startCreate()} disabled={saving}>변경 취소</button>
+                <button type="submit" className="admin-primary" disabled={saving}>{saving ? "저장 중..." : selectedId ? "변경사항 저장" : aiDraft ? "검토 완료 및 모델 등록" : "모델 등록"}</button>
+              </>}
             </div>
           </form>
           {selectedId && <ModelResearchRuns modelId={selectedId} refreshKey={aibomRefresh} />}

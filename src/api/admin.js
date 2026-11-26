@@ -99,6 +99,8 @@ export const fetchResearchRunPage = ({ status = "all", reviewer = "all", label =
 export const fetchResearchFilterOptions = () => request("/api/v1/admin/research-runs/filter-options");
 // resolve: results placed in the current catalog tree with evidence rows (what the editor needs).
 export const fetchResearchRun = (runId, resolve = false) => request(`/api/v1/admin/research-runs/${runId}${resolve ? "?resolve=true" : ""}`);
+// Review state only (reviewers, progress, the save, how each value was decided): cheap enough to poll.
+export const fetchResearchRunStatus = (runId) => request(`/api/v1/admin/research-runs/${runId}/status`);
 // reviewedBy: reviewer who did the review; null records nobody.
 export const linkResearchRun = (runId, modelId, reviewedBy = null) => request(`/api/v1/admin/research-runs/${runId}/model`, {
   method: "PUT", body: JSON.stringify({ modelId, reviewedBy })
@@ -108,17 +110,31 @@ export const createReviewer = (reviewer) => request("/api/v1/admin/reviewers", {
 export const updateReviewer = (reviewerId, reviewer) => request(`/api/v1/admin/reviewers/${reviewerId}`, {
   method: "PUT", body: JSON.stringify(reviewer)
 });
-// reviewerId null removes the assignment; runs that are already saved are skipped.
-// Soft delete: hidden and unassigned from pending runs; adding the same name again restores the reviewer.
+// Soft delete: hidden and unassigned from the reviews not submitted yet; adding the same name again restores the reviewer.
 export const deleteReviewer = (reviewerId) => request(`/api/v1/admin/reviewers/${reviewerId}`, { method: "DELETE" });
-export const assignResearchRuns = (runIds, reviewerId) => request("/api/v1/admin/research-runs/assign", {
-  method: "POST", body: JSON.stringify({ runIds, reviewerId })
+// A run can have several reviewers. mode "add" also assigns `reviewerIds`, "remove" unassigns them,
+// "set" makes them the only reviewers ([] unassigns everyone). Saved runs are skipped.
+export const assignResearchRuns = (runIds, reviewerIds, mode = "add") => request("/api/v1/admin/research-runs/assign", {
+  method: "POST", body: JSON.stringify({ runIds, reviewerIds, mode })
 });
+// One reviewer's review of a run: { status, submittedAt, review: { model, aibom, evidence } | null }.
+export const fetchRunReview = (runId, reviewerId) => request(`/api/v1/admin/research-runs/${runId}/reviews/${reviewerId}`);
+// Submit (or replace) a reviewer's answer. Returns the run: once every reviewer has submitted, the
+// server saves it in the background (reviewStatus "saving" / "merging", then "saved" or "failed").
+export const submitRunReview = (runId, reviewerId, { model, aibom, evidence }) => request(`/api/v1/admin/research-runs/${runId}/reviews/${reviewerId}`, {
+  method: "PUT",
+  body: JSON.stringify({ model, aibom: aibom || null, evidence: (evidence || []).map(({ area, itemKey, field, url, locator, confidence, note, source }) => ({ area, itemKey, field, url, locator, confidence, note, source })) })
+});
+// Start the save of a fully reviewed run again after it failed.
+export const finalizeResearchRun = (runId) => request(`/api/v1/admin/research-runs/${runId}/finalize`, { method: "POST" });
 // How many of the ids exist and still wait for review ({ found, pending }); nothing is changed.
 export const previewAssignRuns = (runIds) => request("/api/v1/admin/research-runs/assign", {
   method: "POST", body: JSON.stringify({ runIds, dryRun: true })
 });
-export const distributeResearchRuns = () => request("/api/v1/admin/research-runs/distribute", { method: "POST" });
+// Every unassigned pending run is given to all of these reviewers.
+export const distributeResearchRuns = (reviewerIds) => request("/api/v1/admin/research-runs/distribute", {
+  method: "POST", body: JSON.stringify({ reviewerIds })
+});
 export const deleteResearchRun = (runId) => request(`/api/v1/admin/research-runs/${runId}`, { method: "DELETE" });
 export const createAdminModel = (payload) => request("/api/v1/admin/models", {
   method: "POST", body: JSON.stringify(payload)

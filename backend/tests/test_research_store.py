@@ -219,40 +219,44 @@ def test_runs_are_assigned_distributed_and_record_who_reviewed_them() -> None:
     kim, lee, park = reviewers["Kim Review"], reviewers["Lee"], reviewers["Park"]
     assert {row["name"] for row in delete_reviewer(db, park)} == {"Kim Review", "Lee"}  # soft-deleted: hidden
 
-    # Kim already has two runs; the three unassigned ones go to the least loaded active reviewer.
-    assert assign_runs(db, AssignRunsRequest(runIds=run_ids[:2], reviewerId=kim)) == {"assigned": 2}
-    shared = distribute_runs(db)
-    assert shared["assigned"] == 3
-    assert {row["name"]: row["assigned"] for row in shared["byReviewer"]} == {"Lee": 2, "Kim Review": 1}
-    load = {row["name"]: row["pendingCount"] for row in list_reviewers(db)}
-    assert load == {"Kim Review": 3, "Lee": 2}  # the deleted reviewer gets nothing
+    # Kim already has two runs; the three unassigned ones go to every reviewer that is named.
+    assert assign_runs(db, AssignRunsRequest(runIds=run_ids[:2], reviewerIds=[kim])) == {"assigned": 2, "readyRunIds": []}
     with pytest.raises(HTTPException):
-        assign_runs(db, AssignRunsRequest(runIds=[run_ids[4]], reviewerId=park))
-    assert get_research_run(db, run_ids[0])["reviewerName"] == "Kim Review"
+        distribute_runs(db, [lee, park])  # a deleted reviewer cannot be named
+    shared = distribute_runs(db, [lee])
+    assert shared == {"assigned": 3, "reviewers": [{"reviewerId": lee, "name": "Lee"}]}
+    load = {row["name"]: row["pendingCount"] for row in list_reviewers(db)}
+    assert load == {"Kim Review": 2, "Lee": 3}  # runs that already had a reviewer are left alone
+    with pytest.raises(HTTPException):
+        assign_runs(db, AssignRunsRequest(runIds=[run_ids[4]], reviewerIds=[park]))
+
+    def names(run: dict) -> list[str]:
+        return [reviewer["name"] for reviewer in run["reviewers"]]
+    assert names(get_research_run(db, run_ids[0])) == ["Kim Review"]
 
     create_admin_model(db, AdminModelWrite.model_validate({
         "modelId": "org/model-0", "namespace": "org", "modelName": "model-0", "familyKey": "family",
         "familyName": "Family", "modelRole": "BASE", "modelUrl": "https://example.test/model", "detailsJson": {}}))
     saved = link_research_run(db, run_ids[0], "org/model-0", reviewed_by=lee)  # reviewed by someone else
-    assert (saved["reviewStatus"], saved["reviewerName"], saved["reviewedByName"]) == ("saved", "Kim Review", "Lee")
+    assert (saved["reviewStatus"], names(saved), saved["reviewedByName"]) == ("saved", ["Kim Review"], "Lee")
     assert saved["reviewedAt"] is not None
     # A saved run is not reassigned, and the reviewer's counts follow.
-    assert assign_runs(db, AssignRunsRequest(runIds=[run_ids[0]], reviewerId=lee)) == {"assigned": 0}
+    assert assign_runs(db, AssignRunsRequest(runIds=[run_ids[0]], reviewerIds=[lee])) == {"assigned": 0, "readyRunIds": []}
     counts = {row["name"]: (row["pendingCount"], row["reviewedCount"]) for row in list_reviewers(db)}
-    assert counts == {"Kim Review": (2, 0), "Lee": (2, 1)}
+    assert counts == {"Kim Review": (1, 0), "Lee": (3, 1)}
 
     # Deleting Lee frees the runs still waiting for Lee but keeps the review Lee did.
     delete_reviewer(db, lee)
     assert get_research_run(db, run_ids[0])["reviewedByName"] == "Lee"
     waiting = [get_research_run(db, run_id) for run_id in run_ids[1:]]
-    assert sorted(run["reviewerName"] or "-" for run in waiting) == ["-", "-", "Kim Review", "Kim Review"]
+    assert sorted(", ".join(names(run)) or "-" for run in waiting) == ["-", "-", "-", "Kim Review"]
     # Adding the same name again restores the same reviewer with that history.
     restored = {row["name"]: row for row in save_reviewer(db, ReviewerWrite(name="lee" if False else "Lee"))}
     assert (restored["Lee"]["id"], restored["Lee"]["pendingCount"], restored["Lee"]["reviewedCount"]) == (lee, 0, 1)
 
     # Without a reviewer nobody is recorded, even though the run is assigned.
     anonymous = link_research_run(db, run_ids[0], "org/model-0")
-    assert (anonymous["reviewStatus"], anonymous["reviewerName"], anonymous["reviewedByName"]) == ("saved", "Kim Review", None)
+    assert (anonymous["reviewStatus"], names(anonymous), anonymous["reviewedByName"]) == ("saved", ["Kim Review"], None)
 
     undone = link_research_run(db, run_ids[0], None)
     assert (undone["reviewStatus"], undone["reviewedByName"], undone["reviewedAt"]) == ("pending", None, None)
@@ -272,11 +276,11 @@ def test_reviewer_endpoints_validate_names_and_targets() -> None:
         assert client.delete(f"/api/v1/admin/reviewers/{reviewer_id}").json() == []
         assert client.delete(f"/api/v1/admin/reviewers/{reviewer_id}").status_code == 404
         assert client.put(f"/api/v1/admin/reviewers/{reviewer_id}", json={"name": "Kim K"}).status_code == 404
-        assert client.post("/api/v1/admin/research-runs/distribute").status_code == 422  # nobody left to assign to
+        assert client.post("/api/v1/admin/research-runs/distribute", json={"reviewerIds": [reviewer_id]}).status_code == 422  # deleted
         restored = client.post("/api/v1/admin/reviewers", json={"name": "Kim J"})
         assert restored.status_code == 201 and restored.json()[0]["id"] == reviewer_id
         assert client.put("/api/v1/admin/reviewers/999", json={"name": "Nobody"}).status_code == 404
-        assert client.post("/api/v1/admin/research-runs/assign", json={"runIds": [1], "reviewerId": 999}).status_code == 422
+        assert client.post("/api/v1/admin/research-runs/assign", json={"runIds": [1], "reviewerIds": [999]}).status_code == 422
         assert client.get("/api/v1/admin/reviewers").json()[0]["pendingCount"] == 0
     finally:
         main.app.dependency_overrides.clear()
@@ -292,7 +296,7 @@ def test_research_run_page_filters_counts_and_pages() -> None:
         "modelName": f"org/model-{index}", "replacePrevious": True,
         "results": {"merged": result("merged", f"Org/Result_{index}")}}))["runId"] for index in range(5)]
     kim = save_reviewer(db, ReviewerWrite(name="Kim"))[0]["id"]
-    assign_runs(db, AssignRunsRequest(runIds=run_ids[:3], reviewerId=kim))
+    assign_runs(db, AssignRunsRequest(runIds=run_ids[:3], reviewerIds=[kim]))
     create_admin_model(db, AdminModelWrite.model_validate({
         "modelId": "org/model-0", "namespace": "org", "modelName": "model-0", "familyKey": "family",
         "familyName": "Family", "modelRole": "BASE", "modelUrl": "https://example.test/model", "detailsJson": {}}))
@@ -305,17 +309,17 @@ def test_research_run_page_filters_counts_and_pages() -> None:
     assert rest["nextOffset"] is None
     assert sorted(run["runId"] for run in first["items"] + rest["items"]) == sorted(run_ids)
 
-    # The reviewer filter follows the owner: Kim's two pending runs; the saved one has no reviewer.
+    # The reviewer filter: the three runs Kim was assigned to (one was saved meanwhile); nobody has the other two.
     mine = page_research_runs(db, reviewer=str(kim))
-    assert mine["counts"] == {"all": 2, "pending": 2, "saved": 0}
-    assert page_research_runs(db, reviewer="none")["counts"] == {"all": 3, "pending": 2, "saved": 1}
-    assert page_research_runs(db, reviewer=str(kim), status="saved")["total"] == 0
+    assert mine["counts"] == {"all": 3, "pending": 2, "saved": 1}
+    assert page_research_runs(db, reviewer="none")["counts"] == {"all": 2, "pending": 2, "saved": 0}
+    assert page_research_runs(db, reviewer=str(kim), status="saved")["total"] == 1
 
     # The result badge filter: every run has a found merged result and no Hugging Face result.
     assert page_research_runs(db, label="merged:found")["total"] == 5
     assert page_research_runs(db, label="merged:not_found")["total"] == 0
     missing = page_research_runs(db, label="huggingface:missing", reviewer=str(kim))
-    assert (missing["total"], missing["counts"]) == (2, {"all": 2, "pending": 2, "saved": 0})
+    assert (missing["total"], missing["counts"]) == (3, {"all": 3, "pending": 2, "saved": 1})
     assert page_research_runs(db, label="merged:missing")["counts"]["all"] == 0
     assert page_research_runs(db, label="nonsense")["total"] == 5
     assert [run["runId"] for run in page_research_runs(db, status="saved")["items"]] == [run_ids[0]]

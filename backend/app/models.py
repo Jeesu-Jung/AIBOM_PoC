@@ -2,7 +2,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -200,17 +200,24 @@ class ModelResearchRun(Base):
     id: Mapped[int] = mapped_column(_BIGINT, primary_key=True, autoincrement=True)
     requested_model: Mapped[str] = mapped_column(String(512))
     model_id: Mapped[str | None] = mapped_column(String(512), ForeignKey("model_info.model_id"))
-    # Review work (sql/010): who the run is assigned to, and who reviewed and saved it.
-    reviewer_id: Mapped[int | None] = mapped_column(_BIGINT, ForeignKey("reviewer.id"))
-    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+    # Who reviews the run is in `reviews` (sql/016). `reviewed_by` names the one reviewer of a run
+    # saved directly from the editor; a run saved from its reviews leaves it empty.
     reviewed_by: Mapped[int | None] = mapped_column(_BIGINT, ForeignKey("reviewer.id"))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+    # The save that starts once every reviewer has submitted (app/review.py):
+    # saving | merging (the AI merges the tied values) | failed, None otherwise.
+    finalize_status: Mapped[str | None] = mapped_column(String(20))
+    finalize_error: Mapped[str | None] = mapped_column(Text)
+    finalize_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+    finalize_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow,
                                                  onupdate=_utcnow)
 
     results: Mapped[list["ModelResearchResult"]] = relationship(
         back_populates="run", cascade="all, delete-orphan", order_by="ModelResearchResult.id")
+    reviews: Mapped[list["ModelResearchReview"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan", order_by="ModelResearchReview.id")
 
 
 class ModelResearchResult(Base):
@@ -239,6 +246,24 @@ class ModelResearchResult(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow)
 
     run: Mapped[ModelResearchRun] = relationship(back_populates="results")
+
+
+class ModelResearchReview(Base):
+    """One reviewer's review of one run (sql/016): the assignment, and the answer once submitted."""
+
+    __tablename__ = "model_research_review"
+    __table_args__ = (UniqueConstraint("run_id", "reviewer_id"),)
+
+    id: Mapped[int] = mapped_column(_BIGINT, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(_BIGINT, ForeignKey("model_research_run.id"))
+    reviewer_id: Mapped[int] = mapped_column(_BIGINT, ForeignKey("reviewer.id"))
+    status: Mapped[str] = mapped_column(String(20), default="assigned")  # assigned | submitted
+    # { model, aibom, evidence }: what the reviewer would have saved (app/review.py).
+    review_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=_utcnow)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
+
+    run: Mapped[ModelResearchRun] = relationship(back_populates="reviews")
 
 
 class ModelEvidence(Base):
