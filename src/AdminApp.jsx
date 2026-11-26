@@ -1100,6 +1100,8 @@ export default function AdminApp() {
   const [reviewInfo, setReviewInfo] = useState(null);
   const [reviewerId, setReviewerId] = useState("");
   const [retrying, setRetrying] = useState(false);
+  // The run just saved from its reviews ({ runId, modelId, merged }): shown as a line above the saved model, not a modal.
+  const [savedReview, setSavedReview] = useState(null);
   const aibomEditorRef = useRef(null);
 
   const reload = async (preferredId = selectedId) => {
@@ -1324,6 +1326,7 @@ export default function AdminApp() {
     setPendingAibom(null);
     setPendingEvidence(null);
     setNotice(null);
+    setSavedReview(null);
     if (model.modelId !== selectedId) { setCandidates(null); setCandidateRunId(null); }
     setPickedSource({});
   }
@@ -1331,7 +1334,7 @@ export default function AdminApp() {
   function startCreate() {
     const family = familyFilter !== "all" ? families.find(([key]) => key === familyFilter) : null;
     const fresh = { ...EMPTY_MODEL, familyKey: family?.[0] || "", familyName: family?.[1] || "" };
-    setSelectedId(null); setForm(normalizeForForm(fresh)); setDetailsText("{}"); setChangeText(""); setLicenseText(""); setNotice(null); setCreateMode(null); setAiDraft(false); setPendingAibom(null); setPendingEvidence(null); setCandidates(null); setCandidateRunId(null); setPickedSource({});
+    setSelectedId(null); setForm(normalizeForForm(fresh)); setDetailsText("{}"); setChangeText(""); setLicenseText(""); setNotice(null); setSavedReview(null); setCreateMode(null); setAiDraft(false); setPendingAibom(null); setPendingEvidence(null); setCandidates(null); setCandidateRunId(null); setPickedSource({});
   }
 
   function useAiDraft(draft, aibom = null, runId = null, evidence = null, results = null) {
@@ -1411,7 +1414,7 @@ export default function AdminApp() {
     setPendingAibom(null); setPendingRunId(null); setPendingEvidence(null);
     await reload(run.modelId);
     setAibomRefresh((value) => value + 1);
-    setNotice({ type: "success", text: `AI 조사 #${run.runId}의 검토가 모두 끝나 다수결 결과가 '${run.modelId}' 모델로 저장되었습니다.${merged ? ` 동점이던 값 ${merged}개는 AI 병합 결과로 저장했습니다.` : ""}` });
+    setSavedReview({ runId: run.runId, modelId: run.modelId, merged });
   }
 
   async function retryFinalize() {
@@ -1551,6 +1554,9 @@ export default function AdminApp() {
                   <button type="button" className="admin-secondary" disabled={retrying} onClick={retryFinalize}>{retrying ? "시작하는 중…" : "다시 시도"}</button></p>
                   : mySubmitted ? <p className="review-state is-submitted">검토를 제출했습니다. 다른 검토자 {reviewInfo.reviewProgress.total - reviewInfo.reviewProgress.submitted}명이 제출하면 다수결 결과가 자동으로 저장됩니다. 그 전까지는 값을 고쳐 다시 제출할 수 있습니다.</p>
                     : <p className="review-state">{reviewerId ? "값과 근거를 확인해 고른 뒤 아래 “검토 완료”를 누르세요. 카탈로그에는 배정된 검토자가 모두 제출한 뒤 다수결로 저장됩니다(동점인 값은 AI가 병합)." : "검토를 시작하려면 먼저 검토자(내 이름)를 선택하세요."}</p>}
+          </div>}
+          {savedReview && savedReview.modelId === selectedId && <div className="review-bar" role="status">
+            <p className="review-state is-submitted">AI 조사 #{savedReview.runId}의 검토가 모두 끝나 다수결 결과가 이 모델로 저장되었습니다.{savedReview.merged ? ` 동점이던 값 ${savedReview.merged}개는 AI 병합 결과로 저장했습니다.` : ""}</p>
           </div>}
           {selectedId && activeReviewRunId && <div className="ai-draft-banner"><span>✦</span><div><strong>AI 조사 #{activeReviewRunId} 결과를 검토하고 있습니다</strong><p>이미 등록된 모델이라 새로 만들지 않고 이 모델에 반영합니다. 각 항목 위의 HF / 논문 / AI 병합 칩으로 조사 값을 골라 넣{reviewMode ? "은 뒤 검토를 제출하세요." : "고 저장하면, 이 조사 실행이 검토 완료로 표시됩니다."}</p></div><em>검토 중</em></div>}
           {aiDraft && <div className="ai-draft-banner"><span>✦</span><div><strong>AI가 작성한 초안입니다</strong><p>내용과 출처를 확인하고 필요한 항목을 수정한 뒤 {reviewMode ? "검토를 제출해 주세요" : "등록해 주세요"}. 각 항목 위의 HF / 논문 / AI 병합 칩으로 다른 조사 결과의 값으로 바꿀 수 있습니다.{pendingAibom && !reviewMode ? ` AIBOM(평가 ${pendingAibom.evaluation?.length || 0}건 · 데이터셋 ${pendingAibom.dataset?.length || 0}개 · 근거 ${pendingAibom.reference?.length || 0}개)을 포함한 전체 정보가 한 번에 저장됩니다.` : ""}</p></div><em>검토 필요</em></div>}
