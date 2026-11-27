@@ -12,7 +12,7 @@ from app.aibom import load_model_aibom
 from app.database import get_db
 from app.evidence import load_model_evidence
 from app.models import Base, ModelInfo
-from app.research_store import (AssignRunsRequest, ReviewerWrite, SaveResearchResultsRequest, assign_runs,
+from app.research_store import (AssignRunsRequest, DistributeRunsRequest, ReviewerWrite, SaveResearchResultsRequest, assign_runs,
                                 distribute_runs, get_research_run, list_reviewers, page_research_runs,
                                 save_research_results, save_reviewer)
 from app.review import ABSENT, Unit, build_units, canonical, decide
@@ -283,7 +283,7 @@ def test_runs_get_several_reviewers_and_unassigning_the_last_open_review_saves_t
     other = save_research_results(db, SaveResearchResultsRequest.model_validate({
         "modelName": "org/other", "replacePrevious": True, "results": {"huggingface": research("huggingface", "Org")}}))["runId"]
 
-    shared = distribute_runs(db, [first, second])
+    shared = distribute_runs(db, DistributeRunsRequest(reviewerIds=[first, second]))
     assert shared["assigned"] == 1  # only the run nobody had
     assert sorted(reviewer["id"] for reviewer in get_research_run(db, other)["reviewers"]) == sorted([first, second])
     assert {row["id"]: row["pendingCount"] for row in list_reviewers(db)}[first] >= 1

@@ -320,8 +320,9 @@ def admin_assign_runs(payload: AssignRunsRequest, tasks: BackgroundTasks, db: Se
 
 @app.post("/api/v1/admin/research-runs/distribute", tags=["admin"])
 def admin_distribute_runs(payload: DistributeRunsRequest, db: Session = Depends(get_db)) -> dict:
-    """Give every unassigned pending run to all of the reviewers in `reviewerIds`."""
-    return _store_call(db, lambda: distribute_runs(db, payload.reviewer_ids))
+    """Assign the unassigned pending runs automatically: `perRun` reviewers each (default 3), shared
+    evenly between `reviewerIds` (default: every active reviewer). `dryRun` only reports the plan."""
+    return _store_call(db, lambda: distribute_runs(db, payload))
 
 
 @app.get("/api/v1/admin/research-runs", tags=["admin"])

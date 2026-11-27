@@ -205,8 +205,9 @@ def test_runs_are_assigned_distributed_and_record_who_reviewed_them() -> None:
     import pytest
     from fastapi import HTTPException
 
-    from app.research_store import (AssignRunsRequest, ReviewerWrite, assign_runs, delete_reviewer, distribute_runs,
-                                    get_research_run, link_research_run, list_reviewers, save_reviewer)
+    from app.research_store import (AssignRunsRequest, DistributeRunsRequest, ReviewerWrite, assign_runs,
+                                    delete_reviewer, distribute_runs, get_research_run, link_research_run,
+                                    list_reviewers, save_reviewer)
 
     db = session()
     run_ids = [save_research_results(db, SaveResearchResultsRequest.model_validate({
@@ -219,12 +220,14 @@ def test_runs_are_assigned_distributed_and_record_who_reviewed_them() -> None:
     kim, lee, park = reviewers["Kim Review"], reviewers["Lee"], reviewers["Park"]
     assert {row["name"] for row in delete_reviewer(db, park)} == {"Kim Review", "Lee"}  # soft-deleted: hidden
 
-    # Kim already has two runs; the three unassigned ones go to every reviewer that is named.
+    # Kim already has two runs; the three unassigned ones go to the reviewer that is named. One
+    # reviewer is fewer than the three a run should have, so every run is reported as short.
     assert assign_runs(db, AssignRunsRequest(runIds=run_ids[:2], reviewerIds=[kim])) == {"assigned": 2, "readyRunIds": []}
     with pytest.raises(HTTPException):
-        distribute_runs(db, [lee, park])  # a deleted reviewer cannot be named
-    shared = distribute_runs(db, [lee])
-    assert shared == {"assigned": 3, "reviewers": [{"reviewerId": lee, "name": "Lee"}]}
+        distribute_runs(db, DistributeRunsRequest(reviewerIds=[lee, park]))  # a deleted reviewer cannot be named
+    shared = distribute_runs(db, DistributeRunsRequest(reviewerIds=[lee]))
+    assert shared == {"assigned": 3, "reviews": 3, "perRun": 3, "shortRuns": 3,
+                      "reviewers": [{"reviewerId": lee, "name": "Lee", "assigned": 3, "pending": 3}]}
     load = {row["name"]: row["pendingCount"] for row in list_reviewers(db)}
     assert load == {"Kim Review": 2, "Lee": 3}  # runs that already had a reviewer are left alone
     with pytest.raises(HTTPException):
@@ -284,6 +287,54 @@ def test_reviewer_endpoints_validate_names_and_targets() -> None:
         assert client.get("/api/v1/admin/reviewers").json()[0]["pendingCount"] == 0
     finally:
         main.app.dependency_overrides.clear()
+
+
+def test_automatic_assignment_gives_each_run_three_reviewers_and_keeps_the_load_level() -> None:
+    from app.research_store import (AssignRunsRequest, DistributeRunsRequest, ReviewerWrite, assign_runs,
+                                    distribute_runs, get_research_run, list_reviewers, save_reviewer)
+
+    db = session()
+    run_ids = [save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": f"org/model-{index}", "replacePrevious": True,
+        "results": {"merged": result("merged", f"org/model-{index}")}}))["runId"] for index in range(11)]
+    for index in range(11):
+        reviewers = save_reviewer(db, ReviewerWrite(name=f"Reviewer {index:02d}"))
+    ids = [row["id"] for row in reviewers]
+
+    def reviewer_ids(run_id: int) -> list[int]:
+        return [reviewer["id"] for reviewer in get_research_run(db, run_id)["reviewers"]]
+
+    # A dry run reports the plan and changes nothing.
+    plan = distribute_runs(db, DistributeRunsRequest(dryRun=True))
+    assert (plan["assigned"], plan["reviews"], plan["perRun"], plan["shortRuns"]) == (11, 33, 3, 0)
+    assert all(not reviewer_ids(run_id) for run_id in run_ids)
+
+    # 11 runs x 3 reviewers between 11 people: three different reviewers per run, three runs each.
+    done = distribute_runs(db, DistributeRunsRequest())
+    assert done == plan
+    assert all(len(set(reviewer_ids(run_id))) == 3 for run_id in run_ids)
+    assert {row["pendingCount"] for row in list_reviewers(db)} == {3}
+    assert distribute_runs(db, DistributeRunsRequest())["assigned"] == 0  # nothing is left unassigned
+
+    # New runs go to whoever has the least waiting: the busiest reviewer is passed over.
+    assign_runs(db, AssignRunsRequest(runIds=run_ids, reviewerIds=[ids[0]]))
+    extra = save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": "org/extra", "replacePrevious": True, "results": {"merged": result("merged", "org/extra")}}))["runId"]
+    assert distribute_runs(db, DistributeRunsRequest(perRun=10))["assigned"] == 1
+    assert sorted(reviewer_ids(extra)) == ids[1:]
+
+    # Fewer reviewers than a run should have: each run gets all of them and counts as short.
+    two = [save_research_results(db, SaveResearchResultsRequest.model_validate({
+        "modelName": f"org/short-{index}", "replacePrevious": True,
+        "results": {"merged": result("merged", f"org/short-{index}")}}))["runId"] for index in range(2)]
+    short = distribute_runs(db, DistributeRunsRequest(reviewerIds=ids[:2]))
+    assert (short["assigned"], short["reviews"], short["shortRuns"]) == (2, 4, 2)
+    assert all(sorted(reviewer_ids(run_id)) == ids[:2] for run_id in two)
+    # They are left alone until asked to be filled; then only the missing reviewer is added.
+    assert distribute_runs(db, DistributeRunsRequest())["assigned"] == 0
+    filled = distribute_runs(db, DistributeRunsRequest(fillPartial=True))
+    assert (filled["assigned"], filled["reviews"], filled["shortRuns"]) == (2, 2, 0)
+    assert all(len(set(reviewer_ids(run_id))) == 3 and set(ids[:2]) < set(reviewer_ids(run_id)) for run_id in two)
 
 
 def test_research_run_page_filters_counts_and_pages() -> None:

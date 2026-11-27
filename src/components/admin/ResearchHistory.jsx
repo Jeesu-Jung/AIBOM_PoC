@@ -295,6 +295,131 @@ function ReviewerManager({ reviewers, onChange, onError }) {
   </section>;
 }
 
+const PER_RUN_KEY = "aibom.autoAssign.perRun";
+const DEFAULT_PER_RUN = 3;  // reviewers one run gets (the server default)
+const MAX_PER_RUN = 50;
+const storedPerRun = () => {
+  try {
+    const value = Number(window.localStorage.getItem(PER_RUN_KEY));
+    return Number.isInteger(value) && value >= 1 && value <= MAX_PER_RUN ? value : DEFAULT_PER_RUN;
+  } catch { return DEFAULT_PER_RUN; }
+};
+
+/**
+ * Automatic assignment: every unassigned run gets `perRun` reviewers (3 unless changed), taken from
+ * the checked reviewers, fewest waiting reviews first. The plan is previewed by the server (dry run)
+ * before anything is assigned. With fewer reviewers than `perRun` each run gets all of them; such
+ * runs can be filled later with "fill" once more reviewers exist.
+ */
+function AutoAssignPanel({ reviewers, unassigned, onDone, onError }) {
+  const [perRunText, setPerRunText] = useState(() => String(storedPerRun()));
+  const [excluded, setExcluded] = useState(() => new Set()); // reviewers left out; new reviewers take part
+  const [fillPartial, setFillPartial] = useState(false);
+  const [plan, setPlan] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const perRun = /^\d+$/.test(perRunText.trim()) ? Number(perRunText) : NaN;
+  const perRunValid = perRun >= 1 && perRun <= MAX_PER_RUN;
+  const pool = reviewers.filter((reviewer) => !excluded.has(reviewer.id));
+  const poolKey = pool.map((reviewer) => reviewer.id).join(",");
+  // Changes whenever an assignment elsewhere on the page moved the numbers the plan rests on.
+  const loadKey = `${unassigned}:${reviewers.map((reviewer) => reviewer.pendingCount).join(",")}`;
+  const request = (dryRun) => ({ reviewerIds: pool.map((reviewer) => reviewer.id), perRun, fillPartial, dryRun });
+
+  const setPerRun = (value) => {
+    setPerRunText(String(value));
+    try { if (Number.isInteger(value) && value >= 1 && value <= MAX_PER_RUN) window.localStorage.setItem(PER_RUN_KEY, String(value)); } catch { /* not remembered */ }
+  };
+  const step = (delta) => setPerRun(Math.min(MAX_PER_RUN, Math.max(1, (perRunValid ? perRun : DEFAULT_PER_RUN) + delta)));
+
+  useEffect(() => {
+    setPlan(null);
+    if (!perRunValid || !pool.length) return undefined;
+    let cancelled = false;
+    const timer = setTimeout(() => distributeResearchRuns(request(true))
+      .then((data) => { if (!cancelled) setPlan(data); })
+      .catch((err) => { if (!cancelled) onError(err.message); }), 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [perRunText, poolKey, fillPartial, loadKey]);
+
+  const toggle = (reviewerId) => setExcluded((current) => {
+    const next = new Set(current);
+    if (next.has(reviewerId)) next.delete(reviewerId); else next.add(reviewerId);
+    return next;
+  });
+  const each = Math.min(perRunValid ? perRun : 0, pool.length); // reviewers a new run really gets
+  const planned = new Map((plan?.reviewers || []).map((item) => [item.reviewerId, item]));
+  const shares = (plan?.reviewers || []).map((item) => item.assigned);
+  const shareText = shares.length ? (Math.min(...shares) === Math.max(...shares) ? `${shares[0]}건` : `${Math.min(...shares)}~${Math.max(...shares)}건`) : "";
+
+  async function run() {
+    const shortNote = each < perRun ? `\n\n참여 검토자가 ${pool.length}명이라 실행마다 ${each}명씩만 배정됩니다(목표 ${perRun}명).` : "";
+    if (!window.confirm(`실행 ${plan.assigned}건에 검토 ${plan.reviews}건을 자동 배정할까요?\n참여 검토자 ${pool.length}명 · 1인당 ${shareText} 추가${shortNote}`)) return;
+    setBusy(true);
+    try { await onDone(await distributeResearchRuns(request(false))); }
+    catch (err) { onError(err.message); }
+    finally { setBusy(false); }
+  }
+
+  return <section className="auto-assign" aria-label="자동 배정">
+    <div className="auto-assign-head">
+      <h3>자동 배정</h3>
+      <p>미배정 실행마다 검토자를 정한 수만큼, 대기 건수가 적은 사람부터 고르게 배정합니다. 이미 배정된 실행은 바꾸지 않습니다.</p>
+    </div>
+    <div className="auto-assign-controls">
+      <div className="auto-assign-per-run">
+        <label htmlFor="auto-assign-per-run">실행당 검토자 수</label>
+        <span className="auto-assign-stepper">
+          <button type="button" onClick={() => step(-1)} disabled={perRunValid && perRun <= 1} aria-label="검토자 수 줄이기">−</button>
+          <input id="auto-assign-per-run" type="number" inputMode="numeric" min="1" max={MAX_PER_RUN} value={perRunText} className={perRunValid ? "" : "is-invalid"}
+            onChange={(event) => (/^\d+$/.test(event.target.value) ? setPerRun(Number(event.target.value)) : setPerRunText(event.target.value))} />
+          <button type="button" onClick={() => step(1)} disabled={perRunValid && perRun >= MAX_PER_RUN} aria-label="검토자 수 늘리기">+</button>
+        </span>
+        <span>명</span>
+        {perRunValid && perRun !== DEFAULT_PER_RUN && <button type="button" className="auto-assign-link" onClick={() => setPerRun(DEFAULT_PER_RUN)}>기본값 {DEFAULT_PER_RUN}명으로</button>}
+      </div>
+      <label className="auto-assign-fill" title="검토자가 모자라 정한 수보다 적게 배정된 실행에, 부족한 인원만 더 배정합니다. 이미 배정된 사람과 제출한 검토는 그대로 둡니다.">
+        <input type="checkbox" checked={fillPartial} onChange={(event) => setFillPartial(event.target.checked)} />
+        이미 배정됐지만 {perRunValid ? perRun : DEFAULT_PER_RUN}명이 안 되는 실행도 채우기
+      </label>
+    </div>
+    <div className="auto-assign-pool">
+      <p className="auto-assign-pool-head">참여 검토자 <b>{pool.length}</b> / {reviewers.length}명
+        {reviewers.length > 1 && <>
+          <button type="button" className="auto-assign-link" disabled={!excluded.size} onClick={() => setExcluded(new Set())}>전체 선택</button>
+          <button type="button" className="auto-assign-link" disabled={!pool.length} onClick={() => setExcluded(new Set(reviewers.map((reviewer) => reviewer.id)))}>전체 해제</button>
+        </>}
+      </p>
+      <div className="auto-assign-reviewers" role="group" aria-label="자동 배정에 참여할 검토 작업자">
+        {reviewers.map((reviewer) => {
+          const on = !excluded.has(reviewer.id);
+          const share = on ? planned.get(reviewer.id) : null;
+          return <label key={reviewer.id} className={on ? "is-checked" : ""}>
+            <input type="checkbox" checked={on} onChange={() => toggle(reviewer.id)} /> {reviewer.name}
+            <small>{share ? (share.assigned ? `+${share.assigned} → 대기 ${share.pending}` : `대기 ${share.pending}`) : `대기 ${reviewer.pendingCount}`}</small>
+          </label>;
+        })}
+      </div>
+    </div>
+    {!reviewers.length ? <p className="auto-assign-note is-warning">검토 작업자가 없습니다. 왼쪽에서 작업자를 먼저 추가하세요.</p>
+      : !perRunValid ? <p className="auto-assign-note is-warning">실행당 검토자 수는 1~{MAX_PER_RUN} 사이의 숫자로 입력하세요.</p>
+        : !pool.length ? <p className="auto-assign-note is-warning">참여할 검토자를 한 명 이상 체크하세요.</p>
+          : <>
+            {each < perRun && <p className="auto-assign-note is-warning">참여 검토자가 <b>{pool.length}명</b>이라 실행마다 <b>{each}명</b>씩만 배정됩니다(목표 {perRun}명). 작업자를 추가한 뒤 “{perRun}명이 안 되는 실행도 채우기”를 켜고 다시 자동 배정하면 부족한 인원만 채워집니다.</p>}
+            {each === 1 ? <p className="auto-assign-note">검토자가 1명인 실행은 다수결 없이 그 사람의 답이 그대로 저장됩니다.</p>
+              : each % 2 === 0 && <p className="auto-assign-note">검토자가 짝수({each}명)이면 동점이 생기기 쉬워 AI 병합으로 정하는 값이 늘 수 있습니다.</p>}
+          </>}
+    <div className="auto-assign-foot">
+      <p className="auto-assign-plan" aria-live="polite">{!perRunValid || !pool.length ? ""
+        : !plan ? "배정 계획을 계산하는 중..."
+          : !plan.assigned ? (fillPartial ? "자동 배정할 실행이 없습니다. 미배정이거나 검토자가 모자란 실행이 없습니다." : "자동 배정할 미배정 실행이 없습니다.")
+            : <>대상 <b>{plan.assigned.toLocaleString()}</b>건 · 실행당 <b>{each}</b>명 · 검토 <b>{plan.reviews.toLocaleString()}</b>건 배정 · 1인당 <b>{shareText}</b> 추가</>}</p>
+      <button type="button" className="admin-primary" disabled={busy || !plan?.assigned} onClick={run}>
+        {busy ? "배정하는 중…" : plan?.assigned ? `${plan.assigned.toLocaleString()}건 자동 배정` : "자동 배정"}</button>
+    </div>
+  </section>;
+}
+
 const PAGE_SIZE = 100;   // runs per request; the next page loads when the end of the list scrolls into view
 const MAX_ASSIGN = 500;  // run ids the assign API takes in one call
 const NO_COUNTS = { all: 0, pending: 0, saved: 0, unassigned: 0 };
@@ -319,7 +444,8 @@ function LoadMore({ hasMore, loading, shown, total, onLoad }) {
 /**
  * The research history as its own page (/admin/research). Every run is listed with whether a
  * human reviewed and saved it; a run that is only cached can be opened straight in the editor.
- * Review work is shared between reviewers: runs are assigned by hand, or every unassigned run is given to the chosen reviewers, and
+ * Review work is shared between reviewers: runs are assigned by hand, or automatically (a set number of
+ * reviewers per run, shared evenly), and
  * the list can be narrowed to one reviewer's runs.
  * The list is filtered and paged on the server (PAGE_SIZE runs at a time).
  */
@@ -346,7 +472,6 @@ export default function ResearchHistoryPage() {
   const [checked, setChecked] = useState(() => new Set());
   const [assignTo, setAssignTo] = useState(() => new Set()); // reviewer ids the bulk assignment names
   const [assignMode, setAssignMode] = useState("add");       // add | set | clear (unassign everyone)
-  const [distributeTo, setDistributeTo] = useState(() => new Set()); // reviewers who all get every unassigned run
   const [retrying, setRetrying] = useState(false);
   const [rangeText, setRangeText] = useState("");
   const [rangePreview, setRangePreview] = useState(null); // { found, pending } of the typed id range
@@ -537,24 +662,15 @@ export default function ResearchHistoryPage() {
     if (reviewer.status === "submitted" && !window.confirm(`${reviewerName(reviewer)}은(는) #${run.runId} 검토를 이미 제출했습니다. 배정을 해제하면 제출한 검토 내용도 지워집니다. 해제할까요?`)) return;
     assign([run.runId], [reviewer.id], "remove");
   };
-  const distributeIds = reviewers.filter((reviewer) => distributeTo.has(reviewer.id)).map((reviewer) => reviewer.id);
-  const toggleDistributeTo = (reviewerId) => setDistributeTo((current) => {
-    const next = new Set(current);
-    if (next.has(reviewerId)) next.delete(reviewerId); else next.add(reviewerId);
-    return next;
-  });
-  async function distribute() {
-    const names = reviewers.filter((reviewer) => distributeTo.has(reviewer.id)).map((reviewer) => reviewer.name).join(", ");
-    if (!window.confirm(`미배정 ${counts.unassigned}건 전부를 ${names} ${distributeIds.length}명 모두에게 배정할까요?`)) return;
-    setError(null); setMessage(null);
-    try {
-      const result = await distributeResearchRuns(distributeIds);
-      setMessage(result.assigned
-        ? `미배정 ${result.assigned}건을 ${result.reviewers.map((item) => item.name).join(", ")} ${result.reviewers.length}명 모두에게 배정했습니다.`
-        : "배정할 미배정 실행이 없습니다.");
-      await refresh();
-    } catch (err) { setError(err.message); }
-  }
+  // What the automatic assignment did, as the page message.
+  const autoAssigned = async (result) => {
+    setError(null);
+    const shares = result.reviewers.filter((item) => item.assigned).map((item) => `${item.name} +${item.assigned}`).join(", ");
+    setMessage(result.assigned
+      ? `자동 배정: 실행 ${result.assigned}건에 검토 ${result.reviews}건을 배정했습니다 (${shares}).${result.shortRuns ? ` ${result.shortRuns}건은 검토자가 ${result.perRun}명보다 적습니다.` : ""}`
+      : "자동 배정할 실행이 없습니다.");
+    await refresh();
+  };
 
   async function removeRun() {
     if (!detail || !window.confirm(`조사 실행 #${detail.runId}(${detail.modelName})을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return;
@@ -589,19 +705,9 @@ export default function ResearchHistoryPage() {
         <section className="research-assign">
           <div className="research-assign-head">
             <div><h2>검토 대기 배정</h2>
-              <p className="admin-help">검토 대기 {counts.pending}건 중 미배정 {counts.unassigned}건. 한 실행에 여러 명을 배정할 수 있고, 배정된 사람이 모두 검토를 제출하면 다수결로 저장됩니다(동점인 값은 AI가 병합). 저장된 실행은 다시 배정하지 않습니다.</p></div>
-            <div className="research-distribute">
-              <span className="research-distribute-label">미배정 전체 배정</span>
-              <span className="research-assign-reviewers" role="group" aria-label="미배정 실행을 모두 배정할 검토 작업자">
-                {activeReviewers.map((reviewer) => <label key={reviewer.id} className={distributeTo.has(reviewer.id) ? "is-checked" : ""}>
-                  <input type="checkbox" checked={distributeTo.has(reviewer.id)} onChange={() => toggleDistributeTo(reviewer.id)} /> {reviewer.name}</label>)}
-                {!activeReviewers.length && <small>검토 작업자를 먼저 추가하세요.</small>}
-              </span>
-              <button type="button" className="admin-primary" disabled={!counts.unassigned || !distributeIds.length} onClick={distribute}
-                title="아직 아무도 배정되지 않은 검토 대기 실행 전부를, 체크한 검토 작업자 모두에게 배정합니다. 이미 배정된 실행은 바꾸지 않습니다.">
-                {distributeIds.length ? `미배정 ${counts.unassigned}건을 ${distributeIds.length}명 모두에게 배정` : "배정할 검토자를 체크하세요"}</button>
-            </div>
+              <p className="admin-help">검토 대기 {counts.pending}건 중 미배정 {counts.unassigned}건. 자동 배정은 미배정 실행에 검토자를 정한 수만큼 고르게 나눠 주고, 아래 표에서는 직접 배정하거나 바꿀 수 있습니다. 배정된 사람이 모두 검토를 제출하면 다수결로 저장됩니다(동점인 값은 AI가 병합). 저장된 실행은 다시 배정하지 않습니다.</p></div>
           </div>
+          <AutoAssignPanel reviewers={activeReviewers} unassigned={counts.unassigned} onDone={autoAssigned} onError={setError} />
           <div className="research-assign-filters">
             <div className="research-search">
               <select value={searchBy} onChange={(event) => { setSearchBy(event.target.value); setQuery(""); }} aria-label="검색 기준">

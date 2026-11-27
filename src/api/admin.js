@@ -131,9 +131,11 @@ export const finalizeResearchRun = (runId) => request(`/api/v1/admin/research-ru
 export const previewAssignRuns = (runIds) => request("/api/v1/admin/research-runs/assign", {
   method: "POST", body: JSON.stringify({ runIds, dryRun: true })
 });
-// Every unassigned pending run is given to all of these reviewers.
-export const distributeResearchRuns = (reviewerIds) => request("/api/v1/admin/research-runs/distribute", {
-  method: "POST", body: JSON.stringify({ reviewerIds })
+// Automatic assignment: every unassigned pending run gets `perRun` reviewers out of `reviewerIds`
+// ([] = every reviewer), fewest waiting reviews first. fillPartial also tops up runs that have fewer
+// than `perRun`. dryRun only reports the plan: { assigned, reviews, perRun, shortRuns, reviewers }.
+export const distributeResearchRuns = ({ reviewerIds = [], perRun = 3, fillPartial = false, dryRun = false } = {}) => request("/api/v1/admin/research-runs/distribute", {
+  method: "POST", body: JSON.stringify({ reviewerIds, perRun, fillPartial, dryRun })
 });
 export const deleteResearchRun = (runId) => request(`/api/v1/admin/research-runs/${runId}`, { method: "DELETE" });
 export const createAdminModel = (payload) => request("/api/v1/admin/models", {

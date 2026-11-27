@@ -469,11 +469,22 @@ class AssignRunsRequest(BaseModel):
     dry_run: bool = Field(default=False, alias="dryRun", description="Only count what the ids cover; change nothing.")
 
 
+# Reviewers one run gets from the automatic assignment unless the request says otherwise.
+DEFAULT_REVIEWERS_PER_RUN = 3
+
+
 class DistributeRunsRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
-    reviewer_ids: list[int] = Field(alias="reviewerIds", min_length=1, max_length=50,
-                                    description="Reviewers who all review every unassigned run.")
+    reviewer_ids: list[int] = Field(
+        default_factory=list, alias="reviewerIds", max_length=200,
+        description="Reviewers the runs are shared between. Empty: every active reviewer.")
+    per_run: int = Field(default=DEFAULT_REVIEWERS_PER_RUN, alias="perRun", ge=1, le=50,
+                         description="Reviewers each run should have.")
+    fill_partial: bool = Field(
+        default=False, alias="fillPartial",
+        description="Also bring runs that already have fewer than `perRun` reviewers up to that number.")
+    dry_run: bool = Field(default=False, alias="dryRun", description="Only report what would be assigned; change nothing.")
 
 
 def _pending_load(session: Session) -> dict[int, int]:
@@ -620,25 +631,55 @@ def assign_runs(session: Session, payload: AssignRunsRequest) -> dict[str, Any]:
     return {"assigned": len(changed), "readyRunIds": runs_ready_to_finalize(session, changed)}
 
 
-def distribute_runs(session: Session, reviewer_ids: list[int]) -> dict[str, Any]:
-    """Give every unassigned pending run to all of the named reviewers.
+def distribute_runs(session: Session, payload: DistributeRunsRequest) -> dict[str, Any]:
+    """Assign the unassigned pending runs automatically: `perRun` reviewers each, shared evenly.
 
-    Nothing is balanced or picked: each run nobody reviews yet gets exactly these reviewers.
+    Every run gets the reviewers with the fewest reviews waiting at that moment, so the work stays
+    level and people who already carry more get fewer new runs. Oldest runs are handed out first.
+    With fewer reviewers than `perRun`, each run gets all of them and counts as short (`shortRuns`);
+    `fillPartial` tops such runs up later, once more reviewers exist. Runs that already have a
+    reviewer are otherwise left alone, as are saved runs and runs being saved.
+
+    Returns the runs that got reviewers (`assigned`), the reviews handed out (`reviews`), and per
+    reviewer how many they got (`assigned`) and how many wait for them afterwards (`pending`).
     """
-    wanted = list(dict.fromkeys(reviewer_ids))
-    reviewers = list(session.scalars(select(Reviewer).where(
-        Reviewer.id.in_(wanted), Reviewer.is_active.is_(True)).order_by(Reviewer.id))) if wanted else []
-    if not wanted or len(reviewers) != len(wanted):
+    wanted = list(dict.fromkeys(payload.reviewer_ids))
+    query = select(Reviewer).where(Reviewer.is_active.is_(True)).order_by(Reviewer.id)
+    reviewers = list(session.scalars(query.where(Reviewer.id.in_(wanted)) if wanted else query))
+    if wanted and len(reviewers) != len(wanted):
         raise HTTPException(status_code=422, detail="Choose active reviewers to assign the runs to.")
+    if not reviewers:
+        raise HTTPException(status_code=422, detail="There is no active reviewer to assign runs to.")
+    load = _pending_load(session)
+    waiting = {reviewer.id: load.get(reviewer.id, 0) for reviewer in reviewers}
+    given = {reviewer.id: 0 for reviewer in reviewers}
     now = datetime.now(timezone.utc).replace(tzinfo=None)
-    runs = list(session.scalars(_run_query().where(
-        ModelResearchRun.model_id.is_(None), ModelResearchRun.finalize_status.is_(None),
-        ~select(ModelResearchReview.id).where(ModelResearchReview.run_id == ModelResearchRun.id).exists())))
+
+    conditions = [ModelResearchRun.model_id.is_(None), ModelResearchRun.finalize_status.is_(None)]
+    if not payload.fill_partial:
+        conditions.append(~select(ModelResearchReview.id).where(ModelResearchReview.run_id == ModelResearchRun.id).exists())
+    runs = session.scalars(select(ModelResearchRun).options(selectinload(ModelResearchRun.reviews))
+                           .where(*conditions).order_by(ModelResearchRun.created_at, ModelResearchRun.id))
+    changed = short = 0
     for run in runs:
-        for reviewer in reviewers:
-            run.reviews.append(ModelResearchReview(reviewer_id=reviewer.id, status="assigned", assigned_at=now))
-    session.commit()
-    return {"assigned": len(runs), "reviewers": [{"reviewerId": reviewer.id, "name": reviewer.name} for reviewer in reviewers]}
+        current = {review.reviewer_id for review in run.reviews}
+        missing = payload.per_run - len(current)
+        if missing <= 0 or reviews_complete(run):  # complete: about to be saved, not reopened
+            continue
+        picks = sorted((reviewer_id for reviewer_id in waiting if reviewer_id not in current),
+                       key=lambda reviewer_id: (waiting[reviewer_id], reviewer_id))[:missing]
+        short += len(picks) < missing
+        for reviewer_id in picks:
+            waiting[reviewer_id] += 1
+            given[reviewer_id] += 1
+            if not payload.dry_run:
+                run.reviews.append(ModelResearchReview(reviewer_id=reviewer_id, status="assigned", assigned_at=now))
+        changed += bool(picks)
+    if not payload.dry_run:
+        session.commit()
+    return {"assigned": changed, "reviews": sum(given.values()), "perRun": payload.per_run, "shortRuns": short,
+            "reviewers": [{"reviewerId": reviewer.id, "name": reviewer.name, "assigned": given[reviewer.id],
+                           "pending": waiting[reviewer.id]} for reviewer in reviewers]}
 
 
 def delete_research_run(session: Session, run_id: int) -> None:

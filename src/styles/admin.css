@@ -585,10 +585,37 @@
 .consensus-votes { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:8px; margin:8px 0 0; padding:0; list-style:none; }
 .consensus-votes span { display:block; margin-bottom:3px; color:var(--text-soft); font-size:.74rem; font-weight:650; }
 .consensus-notes { margin:0; padding-left:18px; color:#8a5a00; }
-.research-distribute { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
-.research-distribute-label { color:#58697e; font-size:.8rem; font-weight:650; }
-.research-distribute .research-assign-reviewers { font-size:.8rem; }
-.research-distribute .research-assign-reviewers label { display:inline-flex; align-items:center; gap:5px; }
+/* automatic assignment: N reviewers per run, shared evenly */
+.auto-assign { display:grid; gap:10px; padding:14px 16px; border:1px solid #c9d8f5; border-radius:12px; background:#f5f8ff; font-size:.84rem; }
+.auto-assign-head { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; }
+.auto-assign-head h3 { margin:0; font-size:.95rem; color:#1b3a8a; }
+.auto-assign-head p { margin:0; color:#58697e; font-size:.8rem; }
+.auto-assign-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px 22px; }
+.auto-assign-per-run { display:flex; flex-wrap:wrap; align-items:center; gap:8px; color:#25364a; font-weight:700; }
+.auto-assign-stepper { display:inline-flex; align-items:stretch; border:1px solid #b9c7dc; border-radius:9px; background:#fff; overflow:hidden; }
+.auto-assign-stepper button { width:34px; border:0; background:#eef3fb; color:#25364a; font:inherit; font-size:1rem; font-weight:700; cursor:pointer; }
+.auto-assign-stepper button:hover:not(:disabled) { background:#dfe9fa; }
+.auto-assign-stepper button:disabled { opacity:.4; cursor:not-allowed; }
+.auto-assign-stepper input { width:56px; min-height:36px; padding:4px; border:0; border-inline:1px solid #b9c7dc; background:#fff; font:inherit; font-weight:700; text-align:center; -moz-appearance:textfield; appearance:textfield; }
+.auto-assign-stepper input::-webkit-outer-spin-button,.auto-assign-stepper input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.auto-assign-stepper input.is-invalid { background:#fff1f1; color:#b42318; }
+.auto-assign-link { padding:0; border:0; background:none; color:#2251cc; font:inherit; font-size:.78rem; font-weight:600; text-decoration:underline; cursor:pointer; }
+.auto-assign-link:disabled { color:#9aa7b8; text-decoration:none; cursor:default; }
+.auto-assign-fill { display:inline-flex; align-items:center; gap:6px; color:#25364a; cursor:pointer; }
+.auto-assign-fill input { width:15px; height:15px; margin:0; accent-color:#2251cc; }
+.auto-assign-pool { display:grid; gap:6px; }
+.auto-assign-pool-head { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; margin:0; color:#58697e; font-size:.8rem; font-weight:650; }
+.auto-assign-pool-head b { color:#25364a; }
+.auto-assign-reviewers { display:flex; flex-wrap:wrap; gap:6px; }
+.auto-assign-reviewers label { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid #c6d0dd; border-radius:999px; background:#fff; color:#6b7a8d; font-size:.8rem; font-weight:650; cursor:pointer; }
+.auto-assign-reviewers label.is-checked { border-color:#2251cc; background:#edf3ff; color:#2251cc; }
+.auto-assign-reviewers input { width:14px; height:14px; margin:0; accent-color:#2251cc; }
+.auto-assign-reviewers small { color:#58697e; font-weight:500; font-variant-numeric:tabular-nums; }
+.auto-assign-note { margin:0; padding:8px 11px; border-radius:9px; background:#eef2f8; color:#3d4c60; font-size:.8rem; }
+.auto-assign-note.is-warning { background:#fff4d6; color:#7a4f00; }
+.auto-assign-foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
+.auto-assign-plan { margin:0; min-height:1.3em; color:#25364a; }
+.auto-assign-foot button:disabled { opacity:.5; cursor:not-allowed; }
 .research-assign .research-assign-bar > .research-assign-target { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; flex-basis:100%; }
 .research-assign-reviewers { display:flex; flex-wrap:wrap; gap:6px; }
 .research-assign-reviewers label { padding:4px 10px; border:1px solid #c6d0dd; border-radius:999px; background:#fff; color:#25364a; font-weight:650; cursor:pointer; }
